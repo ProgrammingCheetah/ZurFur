@@ -1,0 +1,11 @@
+[package]
+name = "application"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+domain = { path = "../domain" }
+serde = { workspace = true }
+shared = { path = "../shared" }
+thiserror = { workspace = true }
+tokio = { workspace = true }
