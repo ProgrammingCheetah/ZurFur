@@ -19,9 +19,7 @@ export function storeSession(session: StoredSession): void {
   localStorage.setItem(KEYS.refreshToken, session.refreshToken);
   localStorage.setItem(KEYS.userId, session.userId);
   localStorage.setItem(KEYS.did, session.did);
-  if (session.handle) {
-    localStorage.setItem(KEYS.handle, session.handle);
-  }
+  localStorage.setItem(KEYS.handle, session.handle ?? "");
 }
 
 export function clearSession(): void {

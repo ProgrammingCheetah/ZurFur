@@ -23,7 +23,7 @@ export default function LoginPage() {
     } catch (err) {
       if (err instanceof ApiError) {
         if (err.status === 404) {
-          setError("Could not find that handle. Check the spelling and try again.");
+          setError("Could not find that handle or reach its server. Check the spelling and try again.");
         } else if (err.status === 502) {
           setError("Could not reach Bluesky servers. Please try again later.");
         } else {
