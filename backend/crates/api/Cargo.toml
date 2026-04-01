@@ -5,9 +5,15 @@ edition = "2024"
 
 [dependencies]
 application = { path = "../application" }
+atproto-identity = { version = "0.14.3" }
+atproto-oauth = { version = "0.14.3", features = ["lru"] }
 axum = { workspace = true }
+base64 = "0.22"
 chrono = { workspace = true }
+domain = { path = "../domain" }
 persistence = { path = "../persistence" }
 serde = { workspace = true }
 shared = { path = "../shared" }
 tokio = { workspace = true }
+tower-http = { workspace = true }
+uuid = { workspace = true }
