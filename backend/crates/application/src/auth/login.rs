@@ -260,13 +260,16 @@ pub async fn complete_oauth_login(
     .map_err(|e: OAuthClientError| LoginError::OAuth(e.to_string()))?;
 
     // Delete OAuth request only after successful exchange (allows retry on transient failure)
-    storage.delete_oauth_request_by_state(state).await.ok();
+    if let Err(e) = storage.delete_oauth_request_by_state(state).await {
+        eprintln!("Failed to clean up OAuth request for state: {e}");
+    }
 
     let sub = token_response
         .sub
         .as_deref()
         .ok_or(LoginError::DidMismatch)?;
-    if sub != expected_did {
+    // Validate DID format and match against expected identity
+    if !sub.starts_with("did:") || sub != expected_did {
         return Err(LoginError::DidMismatch);
     }
 

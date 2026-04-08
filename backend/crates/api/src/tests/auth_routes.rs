@@ -88,12 +88,34 @@ async fn logout_with_valid_token_returns_204() {
 }
 
 #[tokio::test]
-async fn start_login_with_empty_handle_returns_error() {
+async fn start_login_with_empty_handle_returns_400() {
     let server = test_server();
     let response = server
         .post("/auth/start")
         .json(&serde_json::json!({"handle": ""}))
         .await;
-    // Empty handle is rejected early with 400
     response.assert_status_bad_request();
+}
+
+#[tokio::test]
+async fn start_login_with_invalid_handle_format_returns_400() {
+    let server = test_server();
+    // No dot → not a valid domain-style handle
+    let response = server
+        .post("/auth/start")
+        .json(&serde_json::json!({"handle": "notahandle"}))
+        .await;
+    response.assert_status_bad_request();
+}
+
+#[tokio::test]
+async fn start_login_accepts_did_format() {
+    let server = test_server();
+    // DID format bypasses handle validation but will fail on identity resolution
+    let response = server
+        .post("/auth/start")
+        .json(&serde_json::json!({"handle": "did:plc:fake"}))
+        .await;
+    // Fails at identity resolution, not validation
+    response.assert_status(StatusCode::BAD_GATEWAY);
 }

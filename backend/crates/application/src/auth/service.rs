@@ -195,7 +195,9 @@ impl<S: OAuthRequestStorage> AuthService<S> {
             did: session.did.clone(),
             access_token: session.access_token,
             refresh_token: session.refresh_token,
-            expires_at: Utc::now() + Duration::seconds(session.expires_in_secs as i64),
+            // Clamp expiry to reasonable bounds (1 second to 1 year)
+            expires_at: Utc::now()
+                + Duration::seconds((session.expires_in_secs as i64).clamp(1, 365 * 24 * 3600)),
             pds_url: None,
         };
         self.session_repo

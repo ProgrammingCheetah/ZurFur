@@ -27,7 +27,8 @@ pub struct StartLoginResponse {
 pub struct CallbackQuery {
     pub code: String,
     pub state: String,
-    #[allow(dead_code)]
+    /// Issuer identifier from the authorization server.
+    /// TODO: validate against expected issuer to prevent mix-up attacks.
     pub iss: Option<String>,
 }
 
@@ -65,13 +66,18 @@ async fn start_login(
     State(state): State<SharedState>,
     Json(body): Json<StartLoginRequest>,
 ) -> Result<Json<StartLoginResponse>, (StatusCode, String)> {
-    if body.handle.trim().is_empty() {
+    let handle = body.handle.trim();
+    if handle.is_empty() {
         return Err((StatusCode::BAD_REQUEST, "Handle is required".into()));
+    }
+    // Basic format validation: handles are domain-like or DIDs
+    if !handle.starts_with("did:") && (!handle.contains('.') || handle.len() > 253) {
+        return Err((StatusCode::BAD_REQUEST, "Invalid handle format".into()));
     }
 
     let result = state
         .auth
-        .start_login(&body.handle)
+        .start_login(handle)
         .await
         .map_err(map_login_error)?;
 
@@ -175,6 +181,8 @@ fn map_login_error(e: LoginError) -> (StatusCode, String) {
         LoginError::InvalidState => {
             (StatusCode::BAD_REQUEST, "Invalid or expired session state".into())
         }
-        LoginError::DidMismatch => (StatusCode::UNAUTHORIZED, "Identity mismatch".into()),
+        LoginError::DidMismatch => {
+            (StatusCode::BAD_GATEWAY, "Identity mismatch with OAuth provider".into())
+        }
     }
 }
