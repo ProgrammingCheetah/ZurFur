@@ -2,6 +2,7 @@ mod config;
 pub mod oauth_state_store_memory;
 mod pool;
 mod repositories;
+pub(crate) mod sqlx_utils;
 
 pub use config::{Config, ConfigError};
 pub use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
@@ -16,7 +17,9 @@ pub use domain::organization_profile::{
 };
 pub use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
 pub use domain::user::{User, UserError, UserRepository};
-pub use domain::user_preferences::{UserPreferences, UserPreferencesError, UserPreferencesRepository};
+pub use domain::user_preferences::{
+    UserPreferences, UserPreferencesError, UserPreferencesRepository,
+};
 pub use pool::{create, Pool};
 pub use repositories::{
     SqlxAtprotoSessionRepository, SqlxOrganizationMemberRepository,
