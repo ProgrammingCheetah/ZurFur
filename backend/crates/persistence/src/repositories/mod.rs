@@ -1,7 +1,15 @@
 mod atproto_session_repository;
+mod organization_member_repository;
+mod organization_profile_repository;
+mod organization_repository;
 mod refresh_token_repository;
+mod user_preferences_repository;
 mod user_repository;
 
 pub use atproto_session_repository::SqlxAtprotoSessionRepository;
+pub use organization_member_repository::SqlxOrganizationMemberRepository;
+pub use organization_profile_repository::SqlxOrganizationProfileRepository;
+pub use organization_repository::SqlxOrganizationRepository;
 pub use refresh_token_repository::SqlxRefreshTokenRepository;
+pub use user_preferences_repository::SqlxUserPreferencesRepository;
 pub use user_repository::SqlxUserRepository;
