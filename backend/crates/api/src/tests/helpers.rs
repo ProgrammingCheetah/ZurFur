@@ -142,12 +142,16 @@ impl RefreshTokenRepository for MockRefreshRepo {
             .find(|t| t.token_hash == token_hash)
             .cloned())
     }
-    async fn delete_by_hash(&self, token_hash: &str) -> Result<(), UserError> {
-        self.tokens
-            .lock()
-            .await
-            .retain(|t| t.token_hash != token_hash);
-        Ok(())
+    async fn take_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenEntity>, UserError> {
+        let mut tokens = self.tokens.lock().await;
+        if let Some(pos) = tokens.iter().position(|t| t.token_hash == token_hash) {
+            Ok(Some(tokens.remove(pos)))
+        } else {
+            Ok(None)
+        }
     }
     async fn delete_all_for_user(&self, user_id: Uuid) -> Result<(), UserError> {
         self.tokens.lock().await.retain(|t| t.user_id != user_id);

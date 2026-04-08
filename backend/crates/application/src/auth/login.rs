@@ -3,7 +3,7 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
-use atproto_identity::key::{KeyType, generate_key};
+use atproto_identity::key::{KeyType, generate_key, to_public};
 use atproto_identity::model::Document;
 use atproto_identity::resolve::{
     HickoryDnsResolver, InnerIdentityResolver, SharedIdentityResolver,
@@ -134,15 +134,16 @@ fn deserialize_dpop_key(s: &str) -> Result<atproto_identity::key::KeyData, Login
 
 // --- OAuth start (PAR + redirect URL) ----------------------------------------
 
-/// Start the AT Protocol OAuth flow: resolve identity, run PAR, store state, return redirect URL.
+/// Start the AT Protocol OAuth flow: run PAR using a pre-resolved identity document,
+/// store state, and return a redirect URL.
 pub async fn start_oauth_login(
     handle_or_did: &str,
+    document: &Document,
     config: &OAuthConfig,
     storage: &impl OAuthRequestStorage,
 ) -> Result<OAuthStartResult, LoginError> {
     let http_client = build_http_client().await?;
-    let document = resolve_identity(handle_or_did).await?;
-    let pds = pds_from_document(&document)?;
+    let pds = pds_from_document(document)?;
     let (_resource, auth_server) = pds_resources(&http_client, pds)
         .await
         .map_err(|e| LoginError::OAuth(e.to_string()))?;
@@ -189,7 +190,10 @@ pub async fn start_oauth_login(
         authorization_server: auth_server.issuer.clone(),
         nonce,
         pkce_verifier,
-        signing_public_key: serialize_key_data(&config.private_signing_key_data),
+        signing_public_key: serialize_key_data(
+            &to_public(&config.private_signing_key_data)
+                .map_err(|e| LoginError::InternalError(format!("Failed to derive public key: {}", e)))?,
+        ),
         dpop_private_key: serialize_key_data(&dpop_key),
         created_at: now,
         expires_at,
@@ -220,6 +224,7 @@ pub async fn complete_oauth_login(
     code: &str,
     state: &str,
     expected_did: &str,
+    handle: Option<&str>,
     config: &OAuthConfig,
     storage: &impl OAuthRequestStorage,
 ) -> Result<AtprotoSession, LoginError> {
@@ -266,7 +271,7 @@ pub async fn complete_oauth_login(
 
     Ok(AtprotoSession {
         did: sub.to_string(),
-        handle: None,
+        handle: handle.map(String::from),
         email: token_response
             .extra
             .get("email")
@@ -278,11 +283,10 @@ pub async fn complete_oauth_login(
     })
 }
 
-/// Resolve handle or DID to the account's DID. Use this before starting OAuth so you can
-/// pass the same DID to `complete_oauth_login` as `expected_did` after the callback.
-pub async fn resolve_did(handle_or_did: &str) -> Result<String, LoginError> {
-    let document = resolve_identity(handle_or_did).await?;
-    Ok(document.id.clone())
+/// Resolve handle or DID to the full identity document. Returns the DID document
+/// which can be passed to `start_oauth_login` to avoid redundant resolution.
+pub async fn resolve_identity_document(handle_or_did: &str) -> Result<Document, LoginError> {
+    resolve_identity(handle_or_did).await
 }
 
 // --- LRU storage constructor --------------------------------------------------

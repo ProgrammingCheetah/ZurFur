@@ -1,7 +1,7 @@
 use application::auth::login::LoginError;
 use axum::{
     Json, Router,
-    extract::{Query, State},
+    extract::State,
     http::StatusCode,
     routing::{get, post},
 };
@@ -79,7 +79,7 @@ async fn start_login(
 
 async fn callback(
     State(state): State<SharedState>,
-    Query(params): Query<CallbackQuery>,
+    Json(params): Json<CallbackQuery>,
 ) -> Result<Json<CallbackResponse>, (StatusCode, String)> {
     let result = state
         .auth
@@ -144,7 +144,7 @@ async fn logout(
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/start", post(start_login))
-        .route("/callback", get(callback))
+        .route("/callback", post(callback))
         .route("/refresh", post(refresh))
         .route("/me", get(me))
         .route("/logout", post(logout))

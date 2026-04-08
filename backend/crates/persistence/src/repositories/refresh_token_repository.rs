@@ -60,12 +60,15 @@ impl RefreshTokenRepository for SqlxRefreshTokenRepository {
             .map_err(|e| UserError::Database(e.to_string()))
     }
 
-    async fn delete_by_hash(&self, token_hash: &str) -> Result<(), UserError> {
-        sqlx::query("DELETE FROM refresh_tokens WHERE token_hash = $1")
+    async fn take_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenEntity>, UserError> {
+        sqlx::query("DELETE FROM refresh_tokens WHERE token_hash = $1 RETURNING id, user_id, token_hash, expires_at, created_at")
             .bind(token_hash)
-            .execute(&self.pool)
+            .fetch_optional(&self.pool)
             .await
-            .map(|_| ())
+            .map(|opt| opt.map(map_refresh_token))
             .map_err(|e| UserError::Database(e.to_string()))
     }
 

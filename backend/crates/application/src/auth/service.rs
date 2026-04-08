@@ -12,8 +12,8 @@ use shared::JwtConfig;
 use uuid::Uuid;
 
 use super::login::{
-    LoginError, OAuthConfig, complete_oauth_login, default_oauth_storage, resolve_did,
-    start_oauth_login,
+    LoginError, OAuthConfig, complete_oauth_login, default_oauth_storage,
+    resolve_identity_document, start_oauth_login,
 };
 
 use atproto_oauth::storage::OAuthRequestStorage;
@@ -90,15 +90,23 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         &self,
         handle_or_did: &str,
     ) -> Result<StartLoginResponse, LoginError> {
-        let did = resolve_did(handle_or_did).await?;
+        // Resolve identity once — the document is reused for OAuth init
+        let document = resolve_identity_document(handle_or_did).await?;
+        let did = &document.id;
 
-        let result =
-            start_oauth_login(handle_or_did, &self.oauth_config, self.oauth_storage.as_ref())
-                .await?;
+        let result = start_oauth_login(
+            handle_or_did,
+            &document,
+            &self.oauth_config,
+            self.oauth_storage.as_ref(),
+        )
+        .await?;
 
-        // Store DID keyed by state so the callback can look it up securely
+        // Store DID and handle keyed by state so the callback can look them up securely.
+        // Format: "did\thandle_or_did" so we can split on callback.
+        let state_value = format!("{}\t{}", did, handle_or_did);
         self.state_store
-            .store_did(&result.state, &did)
+            .store_did(&result.state, &state_value)
             .await
             .map_err(|e| LoginError::InternalError(e.to_string()))?;
 
@@ -115,18 +123,30 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         code: &str,
         state: &str,
     ) -> Result<CompleteLoginResponse, LoginError> {
-        // Retrieve DID from server-side storage (prevents client-side tampering)
-        let did = self
+        // Retrieve DID and handle from server-side storage (prevents client-side tampering)
+        let state_value = self
             .state_store
             .take_did(state)
             .await
             .map_err(|e| LoginError::InternalError(e.to_string()))?
             .ok_or(LoginError::InvalidState)?;
 
+        // Split "did\thandle" stored during start_login
+        let (did, handle) = state_value
+            .split_once('\t')
+            .map(|(d, h)| (d.to_string(), Some(h.to_string())))
+            .unwrap_or((state_value, None));
+
         // Exchange code for AT Protocol tokens
-        let session =
-            complete_oauth_login(code, state, &did, &self.oauth_config, self.oauth_storage.as_ref())
-                .await?;
+        let session = complete_oauth_login(
+            code,
+            state,
+            &did,
+            handle.as_deref(),
+            &self.oauth_config,
+            self.oauth_storage.as_ref(),
+        )
+        .await?;
 
         // Find or create user
         let (user, is_new) = match self
@@ -181,32 +201,26 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         })
     }
 
-    /// Rotate a refresh token: validate the old one, delete it, issue a new pair.
+    /// Rotate a refresh token: atomically consume the old one, issue a new pair.
     pub async fn refresh_session(
         &self,
         raw_refresh_token: &str,
     ) -> Result<RefreshResponse, LoginError> {
         let token_hash = hash_token(raw_refresh_token);
 
+        // Atomic take: DELETE ... RETURNING prevents TOCTOU race.
+        // If two concurrent requests race, only one gets the row back.
         let stored = self
             .refresh_repo
-            .find_by_hash(&token_hash)
+            .take_by_hash(&token_hash)
             .await
             .map_err(|e| LoginError::InternalError(e.to_string()))?
             .ok_or(LoginError::InvalidState)?;
 
-        // Check expiration
+        // Check expiration (token was already deleted, so no cleanup needed)
         if stored.expires_at < Utc::now() {
-            // Clean up expired token
-            let _ = self.refresh_repo.delete_by_hash(&token_hash).await;
             return Err(LoginError::InvalidState);
         }
-
-        // Single-use rotation: delete the old token
-        self.refresh_repo
-            .delete_by_hash(&token_hash)
-            .await
-            .map_err(|e| LoginError::InternalError(e.to_string()))?;
 
         // Look up user to populate JWT claims
         let user = self
@@ -427,9 +441,16 @@ mod tests {
                 .find(|t| t.token_hash == token_hash)
                 .cloned())
         }
-        async fn delete_by_hash(&self, token_hash: &str) -> Result<(), UserError> {
-            self.tokens.lock().await.retain(|t| t.token_hash != token_hash);
-            Ok(())
+        async fn take_by_hash(
+            &self,
+            token_hash: &str,
+        ) -> Result<Option<RefreshTokenEntity>, UserError> {
+            let mut tokens = self.tokens.lock().await;
+            if let Some(pos) = tokens.iter().position(|t| t.token_hash == token_hash) {
+                Ok(Some(tokens.remove(pos)))
+            } else {
+                Ok(None)
+            }
         }
         async fn delete_all_for_user(&self, user_id: Uuid) -> Result<(), UserError> {
             self.tokens.lock().await.retain(|t| t.user_id != user_id);

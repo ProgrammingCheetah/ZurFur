@@ -29,8 +29,12 @@ pub trait RefreshTokenRepository: Send + Sync {
         token_hash: &str,
     ) -> Result<Option<RefreshTokenEntity>, UserError>;
 
-    /// Delete a single token by hash (single-use rotation).
-    async fn delete_by_hash(&self, token_hash: &str) -> Result<(), UserError>;
+    /// Atomically delete and return a token by hash (single-use rotation).
+    /// Returns None if the token was already consumed by a concurrent request.
+    async fn take_by_hash(
+        &self,
+        token_hash: &str,
+    ) -> Result<Option<RefreshTokenEntity>, UserError>;
 
     /// Delete all refresh tokens for a user (logout from all devices).
     async fn delete_all_for_user(&self, user_id: Uuid) -> Result<(), UserError>;
