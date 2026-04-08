@@ -35,8 +35,11 @@ fn map_member(row: sqlx::postgres::PgRow) -> OrganizationMember {
     }
 }
 
-const SELECT_COLS: &str =
-    "id, org_id, user_id, role, title, is_owner, permissions, joined_at, updated_at";
+macro_rules! cols {
+    () => {
+        "id, org_id, user_id, role, title, is_owner, permissions, joined_at, updated_at"
+    };
+}
 
 #[async_trait::async_trait]
 impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
@@ -49,28 +52,27 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         is_owner: bool,
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
-        let sql = format!(
-            "INSERT INTO organization_members (org_id, user_id, role, title, is_owner, permissions) \
-             VALUES ($1, $2, $3, $4, $5, $6) \
-             RETURNING {SELECT_COLS}"
-        );
-        sqlx::query(&sql)
-            .bind(org_id)
-            .bind(user_id)
-            .bind(role)
-            .bind(title)
-            .bind(is_owner)
-            .bind(permissions.0 as i64)
-            .fetch_one(&self.pool)
-            .await
-            .map(map_member)
-            .map_err(|e| {
-                if is_unique_violation(&e) {
-                    OrganizationMemberError::AlreadyMember
-                } else {
-                    OrganizationMemberError::Database(e.to_string())
-                }
-            })
+        sqlx::query(concat!(
+            "INSERT INTO organization_members (org_id, user_id, role, title, is_owner, permissions) ",
+            "VALUES ($1, $2, $3, $4, $5, $6) ",
+            "RETURNING ", cols!()
+        ))
+        .bind(org_id)
+        .bind(user_id)
+        .bind(role)
+        .bind(title)
+        .bind(is_owner)
+        .bind(permissions.0 as i64)
+        .fetch_one(&self.pool)
+        .await
+        .map(map_member)
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                OrganizationMemberError::AlreadyMember
+            } else {
+                OrganizationMemberError::Database(e.to_string())
+            }
+        })
     }
 
     async fn find_by_org_and_user(
@@ -78,46 +80,43 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         org_id: Uuid,
         user_id: Uuid,
     ) -> Result<Option<OrganizationMember>, OrganizationMemberError> {
-        let sql = format!(
-            "SELECT {SELECT_COLS} FROM organization_members WHERE org_id = $1 AND user_id = $2"
-        );
-        sqlx::query(&sql)
-            .bind(org_id)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map(|opt| opt.map(map_member))
-            .map_err(|e| OrganizationMemberError::Database(e.to_string()))
+        sqlx::query(concat!(
+            "SELECT ", cols!(), " FROM organization_members WHERE org_id = $1 AND user_id = $2"
+        ))
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map(|opt| opt.map(map_member))
+        .map_err(|e| OrganizationMemberError::Database(e.to_string()))
     }
 
     async fn list_by_org(
         &self,
         org_id: Uuid,
     ) -> Result<Vec<OrganizationMember>, OrganizationMemberError> {
-        let sql = format!(
-            "SELECT {SELECT_COLS} FROM organization_members WHERE org_id = $1 ORDER BY joined_at"
-        );
-        sqlx::query(&sql)
-            .bind(org_id)
-            .fetch_all(&self.pool)
-            .await
-            .map(|rows| rows.into_iter().map(map_member).collect())
-            .map_err(|e| OrganizationMemberError::Database(e.to_string()))
+        sqlx::query(concat!(
+            "SELECT ", cols!(), " FROM organization_members WHERE org_id = $1 ORDER BY joined_at"
+        ))
+        .bind(org_id)
+        .fetch_all(&self.pool)
+        .await
+        .map(|rows| rows.into_iter().map(map_member).collect())
+        .map_err(|e| OrganizationMemberError::Database(e.to_string()))
     }
 
     async fn list_by_user(
         &self,
         user_id: Uuid,
     ) -> Result<Vec<OrganizationMember>, OrganizationMemberError> {
-        let sql = format!(
-            "SELECT {SELECT_COLS} FROM organization_members WHERE user_id = $1 ORDER BY joined_at"
-        );
-        sqlx::query(&sql)
-            .bind(user_id)
-            .fetch_all(&self.pool)
-            .await
-            .map(|rows| rows.into_iter().map(map_member).collect())
-            .map_err(|e| OrganizationMemberError::Database(e.to_string()))
+        sqlx::query(concat!(
+            "SELECT ", cols!(), " FROM organization_members WHERE user_id = $1 ORDER BY joined_at"
+        ))
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map(|rows| rows.into_iter().map(map_member).collect())
+        .map_err(|e| OrganizationMemberError::Database(e.to_string()))
     }
 
     async fn update_role_and_title(
@@ -127,21 +126,20 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         role: &str,
         title: Option<&str>,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
-        let sql = format!(
-            "UPDATE organization_members SET role = $1, title = $2 \
-             WHERE org_id = $3 AND user_id = $4 \
-             RETURNING {SELECT_COLS}"
-        );
-        sqlx::query(&sql)
-            .bind(role)
-            .bind(title)
-            .bind(org_id)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| OrganizationMemberError::Database(e.to_string()))?
-            .map(map_member)
-            .ok_or(OrganizationMemberError::NotFound)
+        sqlx::query(concat!(
+            "UPDATE organization_members SET role = $1, title = $2 ",
+            "WHERE org_id = $3 AND user_id = $4 ",
+            "RETURNING ", cols!()
+        ))
+        .bind(role)
+        .bind(title)
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| OrganizationMemberError::Database(e.to_string()))?
+        .map(map_member)
+        .ok_or(OrganizationMemberError::NotFound)
     }
 
     async fn update_permissions(
@@ -150,20 +148,19 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         user_id: Uuid,
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
-        let sql = format!(
-            "UPDATE organization_members SET permissions = $1 \
-             WHERE org_id = $2 AND user_id = $3 \
-             RETURNING {SELECT_COLS}"
-        );
-        sqlx::query(&sql)
-            .bind(permissions.0 as i64)
-            .bind(org_id)
-            .bind(user_id)
-            .fetch_optional(&self.pool)
-            .await
-            .map_err(|e| OrganizationMemberError::Database(e.to_string()))?
-            .map(map_member)
-            .ok_or(OrganizationMemberError::NotFound)
+        sqlx::query(concat!(
+            "UPDATE organization_members SET permissions = $1 ",
+            "WHERE org_id = $2 AND user_id = $3 ",
+            "RETURNING ", cols!()
+        ))
+        .bind(permissions.0 as i64)
+        .bind(org_id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| OrganizationMemberError::Database(e.to_string()))?
+        .map(map_member)
+        .ok_or(OrganizationMemberError::NotFound)
     }
 
     async fn remove(

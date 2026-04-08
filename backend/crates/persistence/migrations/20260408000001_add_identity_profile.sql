@@ -47,8 +47,8 @@ CREATE UNIQUE INDEX uq_organizations_slug
     ON organizations (slug)
     WHERE deleted_at IS NULL;
 
--- Fast lookup of a user's personal org.
-CREATE INDEX idx_organizations_personal
+-- Enforce at most one non-deleted personal org per user while keeping lookups fast.
+CREATE UNIQUE INDEX uq_organizations_personal
     ON organizations (created_by)
     WHERE is_personal = true AND deleted_at IS NULL;
 
