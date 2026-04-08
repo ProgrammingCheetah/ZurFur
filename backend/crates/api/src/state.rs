@@ -1,13 +1,10 @@
-use application::auth::login::LoginEmailHandler;
+use application::auth::service::AuthService;
+use atproto_oauth::storage_lru::LruOAuthRequestStorage;
 use std::sync::Arc;
 
-pub struct AuthService {
-    pub login: LoginEmailHandler,
-}
-
 pub struct AppState {
-    pub auth: AuthService,
+    pub auth: AuthService<LruOAuthRequestStorage>,
 }
 
-/// State type for Axum: shared across handlers via Arc (no Clone on AppState required).
+/// State type for Axum: shared across handlers via Arc.
 pub type SharedState = Arc<AppState>;

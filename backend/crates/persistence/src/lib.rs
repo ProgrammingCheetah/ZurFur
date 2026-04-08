@@ -1,11 +1,15 @@
 mod config;
+pub mod oauth_state_store_memory;
 mod pool;
 mod repositories;
 
 pub use config::{Config, ConfigError};
-pub use pool::{create, Pool};
+pub use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
+pub use domain::oauth_state_store::OAuthStateStore;
+pub use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
 pub use domain::user::{User, UserError, UserRepository};
-pub use repositories::SqlxUserRepository;
+pub use pool::{create, Pool};
+pub use repositories::{SqlxAtprotoSessionRepository, SqlxRefreshTokenRepository, SqlxUserRepository};
 
 /// Configures SQLx and returns a ready-to-use database pool.
 ///

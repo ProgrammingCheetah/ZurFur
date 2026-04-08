@@ -1,6 +1,8 @@
 pub mod middleware;
 mod routes;
 pub mod state;
+#[cfg(test)]
+mod tests;
 
 pub use state::{AppState, SharedState};
 
@@ -8,6 +10,7 @@ use axum::http::{HeaderValue, Method, header};
 use tower_http::cors::CorsLayer;
 
 pub fn router(state: AppState) -> axum::Router {
+    // Hardcoded for now; move to env-based config when multi-environment deployment is needed.
     let origins = [
         "http://localhost:5173".parse::<HeaderValue>().unwrap(),
         "https://auth.zurfur.app".parse::<HeaderValue>().unwrap(),

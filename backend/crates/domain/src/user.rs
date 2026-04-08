@@ -4,7 +4,9 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct User {
     pub id: Uuid,
-    pub email: String,
+    pub did: Option<String>,
+    pub handle: Option<String>,
+    pub email: Option<String>,
     pub username: String,
 }
 
@@ -22,4 +24,12 @@ pub enum UserError {
 pub trait UserRepository: Send + Sync {
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, UserError>;
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, UserError>;
+    async fn find_by_did(&self, did: &str) -> Result<Option<User>, UserError>;
+    async fn create_from_atproto(
+        &self,
+        did: &str,
+        handle: Option<&str>,
+        email: Option<&str>,
+    ) -> Result<User, UserError>;
+    async fn update_handle(&self, user_id: Uuid, handle: &str) -> Result<(), UserError>;
 }

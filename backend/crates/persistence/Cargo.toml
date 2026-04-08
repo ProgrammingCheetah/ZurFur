@@ -5,8 +5,10 @@ edition = "2024"
 
 [dependencies]
 async-trait = { workspace = true }
+chrono = { workspace = true }
 domain = { path = "../domain" }
 shared = { path = "../shared" }
 sqlx = { workspace = true }
 thiserror = { workspace = true }
+tokio = { workspace = true }
 uuid = { workspace = true }

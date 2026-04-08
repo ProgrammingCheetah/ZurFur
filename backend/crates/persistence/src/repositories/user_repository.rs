@@ -1,5 +1,6 @@
 use crate::pool::Pool;
 use domain::user::{User, UserError, UserRepository};
+use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -18,13 +19,77 @@ impl SqlxUserRepository {
     }
 }
 
+fn map_user(row: sqlx::postgres::PgRow) -> User {
+    User {
+        id: row.get("id"),
+        did: row.get("did"),
+        handle: row.get("handle"),
+        email: row.get("email"),
+        username: row.get("username"),
+    }
+}
+
 #[async_trait::async_trait]
 impl UserRepository for SqlxUserRepository {
-    async fn find_by_email(&self, _email: &str) -> Result<Option<User>, UserError> {
-        todo!()
+    async fn find_by_email(&self, email: &str) -> Result<Option<User>, UserError> {
+        sqlx::query("SELECT id, did, handle, email, username FROM users WHERE email = $1 AND deleted_at IS NULL")
+            .bind(email)
+            .fetch_optional(&self.pool)
+            .await
+            .map(|opt| opt.map(map_user))
+            .map_err(|e| UserError::Database(e.to_string()))
     }
 
-    async fn find_by_id(&self, _id: Uuid) -> Result<Option<User>, UserError> {
-        todo!()
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, UserError> {
+        sqlx::query("SELECT id, did, handle, email, username FROM users WHERE id = $1 AND deleted_at IS NULL")
+            .bind(id)
+            .fetch_optional(&self.pool)
+            .await
+            .map(|opt| opt.map(map_user))
+            .map_err(|e| UserError::Database(e.to_string()))
+    }
+
+    async fn find_by_did(&self, did: &str) -> Result<Option<User>, UserError> {
+        sqlx::query("SELECT id, did, handle, email, username FROM users WHERE did = $1 AND deleted_at IS NULL")
+            .bind(did)
+            .fetch_optional(&self.pool)
+            .await
+            .map(|opt| opt.map(map_user))
+            .map_err(|e| UserError::Database(e.to_string()))
+    }
+
+    async fn create_from_atproto(
+        &self,
+        did: &str,
+        handle: Option<&str>,
+        email: Option<&str>,
+    ) -> Result<User, UserError> {
+        let id = Uuid::new_v4();
+        let username = handle
+            .map(|h| h.strip_suffix(".bsky.social").unwrap_or(h).to_string())
+            .unwrap_or_else(|| did.to_string());
+
+        sqlx::query(
+            "INSERT INTO users (id, did, handle, email, username) VALUES ($1, $2, $3, $4, $5) RETURNING id, did, handle, email, username",
+        )
+        .bind(id)
+        .bind(did)
+        .bind(handle)
+        .bind(email)
+        .bind(&username)
+        .fetch_one(&self.pool)
+        .await
+        .map(map_user)
+        .map_err(|e| UserError::Database(e.to_string()))
+    }
+
+    async fn update_handle(&self, user_id: Uuid, handle: &str) -> Result<(), UserError> {
+        sqlx::query("UPDATE users SET handle = $1 WHERE id = $2 AND deleted_at IS NULL")
+            .bind(handle)
+            .bind(user_id)
+            .execute(&self.pool)
+            .await
+            .map(|_| ())
+            .map_err(|e| UserError::Database(e.to_string()))
     }
 }
