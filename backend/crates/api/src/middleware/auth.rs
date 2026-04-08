@@ -23,10 +23,10 @@ impl FromRequestParts<SharedState> for AuthUser {
             .get("authorization")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| {
-                let v = v.trim();
                 // RFC 6750: auth scheme is case-insensitive
-                if v.len() > 7 && v[..7].eq_ignore_ascii_case("bearer ") {
-                    Some(v[7..].trim_start())
+                let (scheme, token) = v.trim().split_once(' ')?;
+                if scheme.eq_ignore_ascii_case("bearer") {
+                    Some(token.trim_start())
                 } else {
                     None
                 }
