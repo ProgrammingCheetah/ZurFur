@@ -12,7 +12,7 @@ All commands use `just` (Justfile at repo root). The Justfile has `dotenv-load` 
 
 ```bash
 just dev                   # Start everything: Docker, DB migrations, backend + auth frontend
-just up                    # Start PostgreSQL + Nginx via Docker Compose
+just up                    # Start PostgreSQL via Docker Compose (Nginx proxy available via --profile proxy)
 just down                  # Stop containers
 just dev-back              # cargo watch -x run (from backend/)
 just dev-auth              # Vite dev server for frontend/auth
