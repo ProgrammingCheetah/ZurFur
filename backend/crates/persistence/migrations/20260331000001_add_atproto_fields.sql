@@ -1,20 +1,24 @@
--- Add AT Protocol identity fields to users table
+-- Add AT Protocol identity fields to users table.
+-- UNIQUE on did already creates an implicit index; no extra index needed.
 ALTER TABLE users
     ADD COLUMN did TEXT UNIQUE,
     ADD COLUMN handle TEXT,
     ALTER COLUMN email DROP NOT NULL;
 
-
 -- Store AT Protocol OAuth sessions (access/refresh tokens per user).
--- gen_random_uuid() is built-in since PostgreSQL 13 (no pgcrypto needed).
--- NOTE: access_token/refresh_token are stored as plaintext for now.
--- Production should use application-level encryption (envelope encryption / KMS).
+--
+-- ARCHITECTURE DECISIONS:
+--   gen_random_uuid(): built-in since PostgreSQL 13; no pgcrypto extension needed.
+--     This project targets PostgreSQL 16 (see docker-compose.yml).
+--   Plaintext tokens: access_token/refresh_token are stored as TEXT for now.
+--     Production MUST use application-level envelope encryption (KMS-backed).
+--     This is tracked as a pre-launch requirement, not addressed in this migration.
 CREATE TABLE IF NOT EXISTS atproto_sessions (
     id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     did TEXT NOT NULL,
-    access_token TEXT NOT NULL,
-    refresh_token TEXT,
+    access_token TEXT NOT NULL,  -- TODO: encrypt at rest before production
+    refresh_token TEXT,          -- TODO: encrypt at rest before production
     expires_at TIMESTAMPTZ NOT NULL,
     pds_url TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

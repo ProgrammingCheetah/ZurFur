@@ -154,6 +154,9 @@ async fn logout(
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/start", post(start_login))
+        // POST, not GET: the browser redirects to the *frontend* callback page,
+        // which extracts code/state from the URL and POSTs them here as JSON.
+        // This avoids exposing tokens in browser history, referrer headers, and caches.
         .route("/callback", post(callback))
         .route("/refresh", post(refresh))
         .route("/me", get(me))
@@ -161,6 +164,8 @@ pub fn router() -> Router<SharedState> {
 }
 
 // --- Error mapping -----------------------------------------------------------
+// Internal details are logged server-side and never exposed to clients.
+// Uses eprintln! for now; will migrate to `tracing` when structured logging is added.
 
 fn map_login_error(e: LoginError) -> (StatusCode, String) {
     match e {

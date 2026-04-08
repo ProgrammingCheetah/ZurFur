@@ -151,6 +151,7 @@ pub async fn start_oauth_login(
     let (pkce_verifier, code_challenge) = pkce::generate();
     let state = uuid::Uuid::new_v4().to_string();
     let nonce = uuid::Uuid::new_v4().to_string();
+    // Standard AT Protocol OAuth scope; matches the Bluesky authorization server expectations.
     let scope = "atproto transition:generic".to_string();
 
     let dpop_key =
