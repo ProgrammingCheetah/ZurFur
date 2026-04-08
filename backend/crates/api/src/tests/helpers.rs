@@ -7,7 +7,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
-use domain::oauth_state_store::{OAuthStateError, OAuthStateStore};
+use domain::oauth_state_store::{OAuthStateData, OAuthStateError, OAuthStateStore};
 use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
 use domain::user::{User, UserError, UserRepository};
 use tokio::sync::Mutex;
@@ -163,19 +163,16 @@ impl RefreshTokenRepository for MockRefreshRepo {
 
 #[derive(Default)]
 pub struct MockStateStore {
-    inner: Mutex<HashMap<String, String>>,
+    inner: Mutex<HashMap<String, OAuthStateData>>,
 }
 
 #[async_trait]
 impl OAuthStateStore for MockStateStore {
-    async fn store_did(&self, state: &str, did: &str) -> Result<(), OAuthStateError> {
-        self.inner
-            .lock()
-            .await
-            .insert(state.to_string(), did.to_string());
+    async fn store(&self, state: &str, data: OAuthStateData) -> Result<(), OAuthStateError> {
+        self.inner.lock().await.insert(state.to_string(), data);
         Ok(())
     }
-    async fn take_did(&self, state: &str) -> Result<Option<String>, OAuthStateError> {
+    async fn take(&self, state: &str) -> Result<Option<OAuthStateData>, OAuthStateError> {
         Ok(self.inner.lock().await.remove(state))
     }
 }

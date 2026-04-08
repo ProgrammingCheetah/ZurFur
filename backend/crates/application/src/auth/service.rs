@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use chrono::{Duration, Utc};
 use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
-use domain::oauth_state_store::OAuthStateStore;
+use domain::oauth_state_store::{OAuthStateData, OAuthStateStore};
 use domain::refresh_token::RefreshTokenRepository;
 use domain::user::UserRepository;
 use shared::JwtConfig;
@@ -102,19 +102,20 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         )
         .await?;
 
-        // Store DID and handle keyed by state so the callback can look them up securely.
-        // Only store handle if the input was actually a handle (not a DID).
+        // Store resolved identity keyed by state so the callback can look it up securely.
         let handle = if handle_or_did.starts_with("did:") {
             None
         } else {
-            Some(handle_or_did)
-        };
-        let state_value = match handle {
-            Some(h) => format!("{}\t{}", did, h),
-            None => did.to_string(),
+            Some(handle_or_did.to_string())
         };
         self.state_store
-            .store_did(&result.state, &state_value)
+            .store(
+                &result.state,
+                OAuthStateData {
+                    did: did.to_string(),
+                    handle,
+                },
+            )
             .await
             .map_err(|e| LoginError::InternalError(e.to_string()))?;
 
@@ -132,18 +133,15 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         state: &str,
     ) -> Result<CompleteLoginResponse, LoginError> {
         // Retrieve DID and handle from server-side storage (prevents client-side tampering)
-        let state_value = self
+        let state_data = self
             .state_store
-            .take_did(state)
+            .take(state)
             .await
             .map_err(|e| LoginError::InternalError(e.to_string()))?
             .ok_or(LoginError::InvalidState)?;
 
-        // Split "did\thandle" stored during start_login
-        let (did, handle) = state_value
-            .split_once('\t')
-            .map(|(d, h)| (d.to_string(), Some(h.to_string())))
-            .unwrap_or((state_value, None));
+        let did = state_data.did;
+        let handle = state_data.handle;
 
         // Exchange code for AT Protocol tokens
         let session = complete_oauth_login(
@@ -339,7 +337,7 @@ mod tests {
     use super::*;
     use chrono::{DateTime, Duration, Utc};
     use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
-    use domain::oauth_state_store::{OAuthStateError, OAuthStateStore};
+    use domain::oauth_state_store::{OAuthStateData, OAuthStateError, OAuthStateStore};
     use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
     use domain::user::{User, UserError, UserRepository};
     use std::collections::HashMap;
@@ -487,19 +485,16 @@ mod tests {
 
     #[derive(Default)]
     struct MockStateStore {
-        inner: Mutex<HashMap<String, String>>,
+        inner: Mutex<HashMap<String, OAuthStateData>>,
     }
 
     #[async_trait::async_trait]
     impl OAuthStateStore for MockStateStore {
-        async fn store_did(&self, state: &str, did: &str) -> Result<(), OAuthStateError> {
-            self.inner
-                .lock()
-                .await
-                .insert(state.to_string(), did.to_string());
+        async fn store(&self, state: &str, data: OAuthStateData) -> Result<(), OAuthStateError> {
+            self.inner.lock().await.insert(state.to_string(), data);
             Ok(())
         }
-        async fn take_did(&self, state: &str) -> Result<Option<String>, OAuthStateError> {
+        async fn take(&self, state: &str) -> Result<Option<OAuthStateData>, OAuthStateError> {
             Ok(self.inner.lock().await.remove(state))
         }
     }

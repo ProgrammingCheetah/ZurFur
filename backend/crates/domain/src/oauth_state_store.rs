@@ -1,15 +1,22 @@
-/// Pluggable storage for OAuth state-to-DID mapping.
+/// Data stored alongside OAuth state during the login flow.
+#[derive(Debug, Clone)]
+pub struct OAuthStateData {
+    pub did: String,
+    pub handle: Option<String>,
+}
+
+/// Pluggable storage for OAuth state data.
 ///
-/// During the OAuth flow, we need to store the resolved DID when `/auth/start` is called,
-/// then retrieve it when `/auth/callback` fires (Bluesky only sends code + state, not DID).
+/// During the OAuth flow, we store the resolved identity when `/auth/start` is called,
+/// then retrieve it when `/auth/callback` fires (Bluesky only sends code + state).
 /// This trait abstracts the storage so it can be backed by in-memory HashMap (dev)
 /// or Redis (production) without changing any other code.
 #[async_trait::async_trait]
 pub trait OAuthStateStore: Send + Sync {
-    async fn store_did(&self, state: &str, did: &str) -> Result<(), OAuthStateError>;
+    async fn store(&self, state: &str, data: OAuthStateData) -> Result<(), OAuthStateError>;
 
-    /// Retrieve and remove the DID for a given state (single-use).
-    async fn take_did(&self, state: &str) -> Result<Option<String>, OAuthStateError>;
+    /// Retrieve and remove the data for a given state (single-use).
+    async fn take(&self, state: &str) -> Result<Option<OAuthStateData>, OAuthStateError>;
 }
 
 #[derive(Debug, thiserror::Error)]

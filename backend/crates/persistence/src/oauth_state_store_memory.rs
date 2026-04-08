@@ -1,10 +1,10 @@
 use chrono::{DateTime, Duration, Utc};
-use domain::oauth_state_store::{OAuthStateError, OAuthStateStore};
+use domain::oauth_state_store::{OAuthStateData, OAuthStateError, OAuthStateStore};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 
 struct Entry {
-    value: String,
+    data: OAuthStateData,
     expires_at: DateTime<Utc>,
 }
 
@@ -33,7 +33,7 @@ impl Default for InMemoryOAuthStateStore {
 
 #[async_trait::async_trait]
 impl OAuthStateStore for InMemoryOAuthStateStore {
-    async fn store_did(&self, state: &str, did: &str) -> Result<(), OAuthStateError> {
+    async fn store(&self, state: &str, data: OAuthStateData) -> Result<(), OAuthStateError> {
         let mut map = self.inner.write().await;
 
         // Evict expired entries on write to bound memory growth
@@ -43,17 +43,17 @@ impl OAuthStateStore for InMemoryOAuthStateStore {
         map.insert(
             state.to_string(),
             Entry {
-                value: did.to_string(),
+                data,
                 expires_at: now + self.ttl,
             },
         );
         Ok(())
     }
 
-    async fn take_did(&self, state: &str) -> Result<Option<String>, OAuthStateError> {
+    async fn take(&self, state: &str) -> Result<Option<OAuthStateData>, OAuthStateError> {
         let mut map = self.inner.write().await;
         match map.remove(state) {
-            Some(entry) if entry.expires_at > Utc::now() => Ok(Some(entry.value)),
+            Some(entry) if entry.expires_at > Utc::now() => Ok(Some(entry.data)),
             _ => Ok(None),
         }
     }
@@ -63,54 +63,55 @@ impl OAuthStateStore for InMemoryOAuthStateStore {
 mod tests {
     use super::*;
 
-    #[tokio::test]
-    async fn store_and_take_returns_did() {
-        let store = InMemoryOAuthStateStore::new();
-        store.store_did("state-1", "did:plc:abc123").await.unwrap();
+    fn test_data(did: &str) -> OAuthStateData {
+        OAuthStateData {
+            did: did.to_string(),
+            handle: None,
+        }
+    }
 
-        let did = store.take_did("state-1").await.unwrap();
-        assert_eq!(did, Some("did:plc:abc123".to_string()));
+    #[tokio::test]
+    async fn store_and_take_returns_data() {
+        let store = InMemoryOAuthStateStore::new();
+        store.store("state-1", test_data("did:plc:abc123")).await.unwrap();
+
+        let data = store.take("state-1").await.unwrap().unwrap();
+        assert_eq!(data.did, "did:plc:abc123");
     }
 
     #[tokio::test]
     async fn take_is_single_use() {
         let store = InMemoryOAuthStateStore::new();
-        store.store_did("state-1", "did:plc:abc123").await.unwrap();
+        store.store("state-1", test_data("did:plc:abc123")).await.unwrap();
 
-        let first = store.take_did("state-1").await.unwrap();
-        assert!(first.is_some());
-
-        let second = store.take_did("state-1").await.unwrap();
-        assert!(second.is_none());
+        assert!(store.take("state-1").await.unwrap().is_some());
+        assert!(store.take("state-1").await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn take_unknown_state_returns_none() {
         let store = InMemoryOAuthStateStore::new();
-        let result = store.take_did("nonexistent").await.unwrap();
-        assert!(result.is_none());
+        assert!(store.take("nonexistent").await.unwrap().is_none());
     }
 
     #[tokio::test]
     async fn store_overwrites_existing_state() {
         let store = InMemoryOAuthStateStore::new();
-        store.store_did("state-1", "did:plc:first").await.unwrap();
-        store.store_did("state-1", "did:plc:second").await.unwrap();
+        store.store("state-1", test_data("did:plc:first")).await.unwrap();
+        store.store("state-1", test_data("did:plc:second")).await.unwrap();
 
-        let did = store.take_did("state-1").await.unwrap();
-        assert_eq!(did, Some("did:plc:second".to_string()));
+        let data = store.take("state-1").await.unwrap().unwrap();
+        assert_eq!(data.did, "did:plc:second");
     }
 
     #[tokio::test]
     async fn multiple_states_are_independent() {
         let store = InMemoryOAuthStateStore::new();
-        store.store_did("state-a", "did:plc:aaa").await.unwrap();
-        store.store_did("state-b", "did:plc:bbb").await.unwrap();
+        store.store("state-a", test_data("did:plc:aaa")).await.unwrap();
+        store.store("state-b", test_data("did:plc:bbb")).await.unwrap();
 
-        let a = store.take_did("state-a").await.unwrap();
-        let b = store.take_did("state-b").await.unwrap();
-        assert_eq!(a, Some("did:plc:aaa".to_string()));
-        assert_eq!(b, Some("did:plc:bbb".to_string()));
+        assert_eq!(store.take("state-a").await.unwrap().unwrap().did, "did:plc:aaa");
+        assert_eq!(store.take("state-b").await.unwrap().unwrap().did, "did:plc:bbb");
     }
 
     #[tokio::test]
@@ -119,10 +120,20 @@ mod tests {
             inner: RwLock::new(HashMap::new()),
             ttl: Duration::zero(),
         };
-        store.store_did("state-1", "did:plc:abc123").await.unwrap();
+        store.store("state-1", test_data("did:plc:abc123")).await.unwrap();
+        assert!(store.take("state-1").await.unwrap().is_none());
+    }
 
-        // Entry has already expired (zero TTL)
-        let result = store.take_did("state-1").await.unwrap();
-        assert!(result.is_none());
+    #[tokio::test]
+    async fn stores_handle_when_provided() {
+        let store = InMemoryOAuthStateStore::new();
+        let data = OAuthStateData {
+            did: "did:plc:abc123".to_string(),
+            handle: Some("test.bsky.social".to_string()),
+        };
+        store.store("state-1", data).await.unwrap();
+
+        let result = store.take("state-1").await.unwrap().unwrap();
+        assert_eq!(result.handle, Some("test.bsky.social".to_string()));
     }
 }
