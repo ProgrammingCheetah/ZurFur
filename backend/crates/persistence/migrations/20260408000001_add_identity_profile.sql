@@ -22,7 +22,8 @@
 --   permission checks, compact storage, extensible without migration by defining
 --   new bit positions. Owner gets ALL (all bits set = max u64).
 --
---   gen_random_uuid(): built-in since PostgreSQL 13. This project targets PG 16.
+--   gen_random_uuid(): built-in since PostgreSQL 13 — no pgcrypto extension
+--   needed. This project targets PG 16 (see docker-compose.yml).
 --
 --   update_updated_at_column(): trigger function defined in the first migration
 --   (20250227000001_create_users.sql) and reused here.

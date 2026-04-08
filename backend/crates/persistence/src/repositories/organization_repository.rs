@@ -1,4 +1,5 @@
 use crate::pool::Pool;
+use crate::sqlx_utils::{is_unique_violation, violated_constraint};
 use domain::organization::{Organization, OrganizationError, OrganizationRepository};
 use sqlx::Row;
 use std::sync::Arc;
@@ -53,7 +54,14 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         .map(map_organization)
         .map_err(|e| {
             if is_unique_violation(&e) {
-                OrganizationError::SlugTaken(slug.to_string())
+                // Distinguish slug uniqueness (uq_organizations_slug) from
+                // personal org uniqueness (uq_organizations_personal).
+                match violated_constraint(&e) {
+                    Some("uq_organizations_slug") => {
+                        OrganizationError::SlugTaken(slug.to_string())
+                    }
+                    _ => OrganizationError::Database(e.to_string()),
+                }
             } else {
                 OrganizationError::Database(e.to_string())
             }
@@ -136,10 +144,3 @@ impl OrganizationRepository for SqlxOrganizationRepository {
     }
 }
 
-fn is_unique_violation(e: &sqlx::Error) -> bool {
-    if let sqlx::Error::Database(db_err) = e {
-        db_err.code().as_deref() == Some("23505")
-    } else {
-        false
-    }
-}

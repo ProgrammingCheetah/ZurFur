@@ -1,4 +1,5 @@
 use crate::pool::Pool;
+use crate::sqlx_utils::is_unique_violation;
 use domain::organization_member::{
     OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
 };
@@ -184,10 +185,3 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
     }
 }
 
-fn is_unique_violation(e: &sqlx::Error) -> bool {
-    if let sqlx::Error::Database(db_err) = e {
-        db_err.code().as_deref() == Some("23505")
-    } else {
-        false
-    }
-}
