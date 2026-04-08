@@ -7,3 +7,6 @@ edition = "2024"
 jsonwebtoken = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
+
+[dev-dependencies]
+chrono = { workspace = true }
