@@ -4,8 +4,6 @@ ALTER TABLE users
     ADD COLUMN handle TEXT,
     ALTER COLUMN email DROP NOT NULL;
 
--- Index for DID lookups (primary auth identifier)
-CREATE INDEX idx_users_did ON users (did) WHERE did IS NOT NULL;
 
 -- Store AT Protocol OAuth sessions (access/refresh tokens per user).
 -- gen_random_uuid() is built-in since PostgreSQL 13 (no pgcrypto needed).
@@ -40,5 +38,5 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_refresh_tokens_token_hash ON refresh_tokens (token_hash);
+CREATE UNIQUE INDEX idx_refresh_tokens_token_hash ON refresh_tokens (token_hash);
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens (user_id);
