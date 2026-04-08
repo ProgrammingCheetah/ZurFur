@@ -292,3 +292,336 @@ fn hash_token(raw: &str) -> String {
     let hash = sha2::Sha256::digest(raw.as_bytes());
     format!("{:x}", hash)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Duration, Utc};
+    use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
+    use domain::oauth_state_store::{OAuthStateError, OAuthStateStore};
+    use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
+    use domain::user::{User, UserError, UserRepository};
+    use std::collections::HashMap;
+    use std::sync::Arc;
+    use tokio::sync::Mutex;
+
+    // --- Mock repositories -------------------------------------------------------
+
+    #[derive(Default)]
+    struct MockUserRepo {
+        users: Mutex<Vec<User>>,
+    }
+
+    #[async_trait::async_trait]
+    impl UserRepository for MockUserRepo {
+        async fn find_by_email(&self, _email: &str) -> Result<Option<User>, UserError> {
+            Ok(None)
+        }
+        async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, UserError> {
+            Ok(self.users.lock().await.iter().find(|u| u.id == id).cloned())
+        }
+        async fn find_by_did(&self, did: &str) -> Result<Option<User>, UserError> {
+            Ok(self
+                .users
+                .lock()
+                .await
+                .iter()
+                .find(|u| u.did.as_deref() == Some(did))
+                .cloned())
+        }
+        async fn create_from_atproto(
+            &self,
+            did: &str,
+            handle: Option<&str>,
+            email: Option<&str>,
+        ) -> Result<User, UserError> {
+            let user = User {
+                id: Uuid::new_v4(),
+                did: Some(did.to_string()),
+                handle: handle.map(String::from),
+                email: email.map(String::from),
+                username: handle.unwrap_or(did).to_string(),
+            };
+            self.users.lock().await.push(user.clone());
+            Ok(user)
+        }
+        async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockSessionRepo {
+        sessions: Mutex<Vec<AtprotoSessionEntity>>,
+    }
+
+    #[async_trait::async_trait]
+    impl AtprotoSessionRepository for MockSessionRepo {
+        async fn upsert(&self, session: &AtprotoSessionEntity) -> Result<(), UserError> {
+            let mut sessions = self.sessions.lock().await;
+            sessions.retain(|s| s.user_id != session.user_id);
+            sessions.push(session.clone());
+            Ok(())
+        }
+        async fn find_by_user_id(
+            &self,
+            user_id: Uuid,
+        ) -> Result<Option<AtprotoSessionEntity>, UserError> {
+            Ok(self
+                .sessions
+                .lock()
+                .await
+                .iter()
+                .find(|s| s.user_id == user_id)
+                .cloned())
+        }
+        async fn find_by_did(
+            &self,
+            did: &str,
+        ) -> Result<Option<AtprotoSessionEntity>, UserError> {
+            Ok(self
+                .sessions
+                .lock()
+                .await
+                .iter()
+                .find(|s| s.did == did)
+                .cloned())
+        }
+        async fn delete_by_user_id(&self, user_id: Uuid) -> Result<(), UserError> {
+            self.sessions.lock().await.retain(|s| s.user_id != user_id);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockRefreshRepo {
+        tokens: Mutex<Vec<RefreshTokenEntity>>,
+    }
+
+    #[async_trait::async_trait]
+    impl RefreshTokenRepository for MockRefreshRepo {
+        async fn create(
+            &self,
+            user_id: Uuid,
+            token_hash: &str,
+            expires_at: DateTime<Utc>,
+        ) -> Result<(), UserError> {
+            self.tokens.lock().await.push(RefreshTokenEntity {
+                id: Uuid::new_v4(),
+                user_id,
+                token_hash: token_hash.to_string(),
+                expires_at,
+                created_at: Utc::now(),
+            });
+            Ok(())
+        }
+        async fn find_by_hash(
+            &self,
+            token_hash: &str,
+        ) -> Result<Option<RefreshTokenEntity>, UserError> {
+            Ok(self
+                .tokens
+                .lock()
+                .await
+                .iter()
+                .find(|t| t.token_hash == token_hash)
+                .cloned())
+        }
+        async fn delete_by_hash(&self, token_hash: &str) -> Result<(), UserError> {
+            self.tokens.lock().await.retain(|t| t.token_hash != token_hash);
+            Ok(())
+        }
+        async fn delete_all_for_user(&self, user_id: Uuid) -> Result<(), UserError> {
+            self.tokens.lock().await.retain(|t| t.user_id != user_id);
+            Ok(())
+        }
+    }
+
+    #[derive(Default)]
+    struct MockStateStore {
+        inner: Mutex<HashMap<String, String>>,
+    }
+
+    #[async_trait::async_trait]
+    impl OAuthStateStore for MockStateStore {
+        async fn store_did(&self, state: &str, did: &str) -> Result<(), OAuthStateError> {
+            self.inner
+                .lock()
+                .await
+                .insert(state.to_string(), did.to_string());
+            Ok(())
+        }
+        async fn take_did(&self, state: &str) -> Result<Option<String>, OAuthStateError> {
+            Ok(self.inner.lock().await.remove(state))
+        }
+    }
+
+    // --- Helpers -----------------------------------------------------------------
+
+    fn test_jwt_config() -> JwtConfig {
+        JwtConfig {
+            secret: b"test-secret-for-unit-tests".to_vec(),
+            access_expiry_secs: 900,
+            refresh_expiry_secs: 2592000,
+        }
+    }
+
+    /// Build an AuthService with mock repos, seeding the user repo with one user.
+    /// Returns (service, user_id) for use in tests.
+    async fn service_with_user() -> (
+        AuthService<atproto_oauth::storage_lru::LruOAuthRequestStorage>,
+        Uuid,
+    ) {
+        let user_repo = Arc::new(MockUserRepo::default());
+        let user = user_repo
+            .create_from_atproto("did:plc:testuser", Some("test.bsky.social"), None)
+            .await
+            .unwrap();
+
+        let session_repo = Arc::new(MockSessionRepo::default());
+        let refresh_repo = Arc::new(MockRefreshRepo::default());
+        let state_store = Arc::new(MockStateStore::default());
+        let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(10).unwrap());
+
+        let oauth_config = OAuthConfig {
+            redirect_uri: "http://localhost:5173/callback".into(),
+            client_id: "https://zurfur.app".into(),
+            private_signing_key_data: atproto_identity::key::KeyData::new(
+                atproto_identity::key::KeyType::P256Private,
+                vec![0u8; 32],
+            ),
+        };
+
+        let service = AuthService::new(
+            oauth_config,
+            test_jwt_config(),
+            oauth_storage,
+            state_store,
+            user_repo,
+            session_repo,
+            refresh_repo,
+        );
+
+        (service, user.id)
+    }
+
+    // --- Tests -------------------------------------------------------------------
+
+    #[test]
+    fn hash_token_is_deterministic() {
+        let a = hash_token("my-refresh-token");
+        let b = hash_token("my-refresh-token");
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn hash_token_differs_for_different_inputs() {
+        let a = hash_token("token-a");
+        let b = hash_token("token-b");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn hash_token_is_hex_sha256() {
+        let hash = hash_token("hello");
+        // SHA-256 produces 64 hex characters
+        assert_eq!(hash.len(), 64);
+        assert!(hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[tokio::test]
+    async fn refresh_session_with_valid_token() {
+        let (service, user_id) = service_with_user().await;
+
+        // Manually create a refresh token
+        let raw_token = "test-refresh-token";
+        let token_hash = hash_token(raw_token);
+        let expires_at = Utc::now() + Duration::hours(24);
+        service
+            .refresh_repo
+            .create(user_id, &token_hash, expires_at)
+            .await
+            .unwrap();
+
+        let result = service.refresh_session(raw_token).await.unwrap();
+        assert!(!result.access_token.is_empty());
+        assert!(!result.refresh_token.is_empty());
+
+        // Old token should be consumed (single-use)
+        let second_attempt = service.refresh_session(raw_token).await;
+        assert!(second_attempt.is_err());
+    }
+
+    #[tokio::test]
+    async fn refresh_session_rejects_expired_token() {
+        let (service, user_id) = service_with_user().await;
+
+        let raw_token = "expired-token";
+        let token_hash = hash_token(raw_token);
+        let expires_at = Utc::now() - Duration::hours(1);
+        service
+            .refresh_repo
+            .create(user_id, &token_hash, expires_at)
+            .await
+            .unwrap();
+
+        let result = service.refresh_session(raw_token).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn refresh_session_rejects_unknown_token() {
+        let (service, _user_id) = service_with_user().await;
+        let result = service.refresh_session("nonexistent-token").await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn logout_clears_refresh_tokens_and_session() {
+        let (service, user_id) = service_with_user().await;
+
+        // Add a refresh token and AT Protocol session
+        let token_hash = hash_token("some-token");
+        service
+            .refresh_repo
+            .create(user_id, &token_hash, Utc::now() + Duration::hours(24))
+            .await
+            .unwrap();
+
+        let atproto_session = AtprotoSessionEntity {
+            id: Uuid::new_v4(),
+            user_id,
+            did: "did:plc:testuser".into(),
+            access_token: "at-token".into(),
+            refresh_token: Some("at-refresh".into()),
+            expires_at: Utc::now() + Duration::hours(1),
+            pds_url: None,
+        };
+        service.session_repo.upsert(&atproto_session).await.unwrap();
+
+        // Logout
+        service.logout(user_id).await.unwrap();
+
+        // Verify cleanup
+        let token = service.refresh_repo.find_by_hash(&token_hash).await.unwrap();
+        assert!(token.is_none());
+
+        let session = service.session_repo.find_by_user_id(user_id).await.unwrap();
+        assert!(session.is_none());
+    }
+
+    #[tokio::test]
+    async fn issued_jwt_is_verifiable() {
+        let (service, user_id) = service_with_user().await;
+
+        let token = service
+            .issue_access_jwt(&user_id, "did:plc:testuser", &Some("test.bsky.social".into()))
+            .unwrap();
+
+        let claims: ZurfurClaims =
+            shared::jwt::verify(&token, &service.jwt_config.secret).unwrap();
+        assert_eq!(claims.sub, user_id.to_string());
+        assert_eq!(claims.did, "did:plc:testuser");
+        assert_eq!(claims.handle, Some("test.bsky.social".into()));
+    }
+}
