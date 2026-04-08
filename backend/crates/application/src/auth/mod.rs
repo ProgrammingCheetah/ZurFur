@@ -1,2 +1,2 @@
 pub mod login;
-pub mod mediator;
+pub mod service;
