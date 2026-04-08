@@ -1,6 +1,8 @@
 pub mod middleware;
 mod routes;
 pub mod state;
+#[cfg(test)]
+mod tests;
 
 pub use state::{AppState, SharedState};
 
