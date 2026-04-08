@@ -1,8 +1,9 @@
-use application::auth::service::ZurfurClaims;
 use axum::{
     extract::FromRequestParts,
     http::{StatusCode, request::Parts},
 };
+
+use application::auth::service::ZurfurClaims;
 
 use crate::state::SharedState;
 
@@ -24,13 +25,12 @@ impl FromRequestParts<SharedState> for AuthUser {
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header".into()))?;
 
-        let claims: ZurfurClaims =
-            shared::jwt::verify(token, &state.auth.jwt_config.secret).map_err(|_| {
-                (
-                    StatusCode::UNAUTHORIZED,
-                    "Invalid or expired token".into(),
-                )
-            })?;
+        let claims = state.auth.verify_access_token(token).map_err(|_| {
+            (
+                StatusCode::UNAUTHORIZED,
+                "Invalid or expired token".into(),
+            )
+        })?;
 
         Ok(AuthUser(claims))
     }

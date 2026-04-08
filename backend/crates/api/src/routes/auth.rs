@@ -65,6 +65,10 @@ async fn start_login(
     State(state): State<SharedState>,
     Json(body): Json<StartLoginRequest>,
 ) -> Result<Json<StartLoginResponse>, (StatusCode, String)> {
+    if body.handle.trim().is_empty() {
+        return Err((StatusCode::BAD_REQUEST, "Handle is required".into()));
+    }
+
     let result = state
         .auth
         .start_login(&body.handle)
@@ -153,14 +157,24 @@ pub fn router() -> Router<SharedState> {
 // --- Error mapping -----------------------------------------------------------
 
 fn map_login_error(e: LoginError) -> (StatusCode, String) {
-    match &e {
-        LoginError::InvalidEmail => (StatusCode::BAD_REQUEST, e.to_string()),
-        LoginError::UserNotFound => (StatusCode::UNAUTHORIZED, e.to_string()),
-        LoginError::InternalError(_) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-        LoginError::IdentityResolverFailed => (StatusCode::BAD_GATEWAY, e.to_string()),
-        LoginError::PdsNotFound => (StatusCode::NOT_FOUND, e.to_string()),
-        LoginError::OAuth(_) => (StatusCode::BAD_GATEWAY, e.to_string()),
-        LoginError::InvalidState => (StatusCode::BAD_REQUEST, e.to_string()),
-        LoginError::DidMismatch => (StatusCode::UNAUTHORIZED, e.to_string()),
+    match e {
+        LoginError::InvalidEmail => (StatusCode::BAD_REQUEST, "Invalid email".into()),
+        LoginError::UserNotFound => (StatusCode::UNAUTHORIZED, "User not found".into()),
+        LoginError::InternalError(inner) => {
+            eprintln!("Internal login error: {inner}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+        }
+        LoginError::IdentityResolverFailed => {
+            (StatusCode::BAD_GATEWAY, "Failed to resolve identity".into())
+        }
+        LoginError::PdsNotFound => (StatusCode::NOT_FOUND, "No PDS found for account".into()),
+        LoginError::OAuth(inner) => {
+            eprintln!("OAuth error: {inner}");
+            (StatusCode::BAD_GATEWAY, "OAuth provider error".into())
+        }
+        LoginError::InvalidState => {
+            (StatusCode::BAD_REQUEST, "Invalid or expired session state".into())
+        }
+        LoginError::DidMismatch => (StatusCode::UNAUTHORIZED, "Identity mismatch".into()),
     }
 }

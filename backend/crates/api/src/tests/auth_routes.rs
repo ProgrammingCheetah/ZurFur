@@ -94,6 +94,6 @@ async fn start_login_with_empty_handle_returns_error() {
         .post("/auth/start")
         .json(&serde_json::json!({"handle": ""}))
         .await;
-    // Empty handle will fail identity resolution → 502
-    response.assert_status(StatusCode::BAD_GATEWAY);
+    // Empty handle is rejected early with 400
+    response.assert_status_bad_request();
 }

@@ -69,5 +69,12 @@ fn load_signing_key() -> atproto_identity::key::KeyData {
         .decode(&key_b64)
         .expect("OAUTH_PRIVATE_KEY is not valid base64");
 
+    assert_eq!(
+        bytes.len(),
+        32,
+        "OAUTH_PRIVATE_KEY must decode to exactly 32 bytes (P-256 private scalar), got {}",
+        bytes.len()
+    );
+
     atproto_identity::key::KeyData::new(atproto_identity::key::KeyType::P256Private, bytes)
 }

@@ -7,7 +7,10 @@ ALTER TABLE users
 -- Index for DID lookups (primary auth identifier)
 CREATE INDEX idx_users_did ON users (did) WHERE did IS NOT NULL;
 
--- Store AT Protocol OAuth sessions (access/refresh tokens per user)
+-- Store AT Protocol OAuth sessions (access/refresh tokens per user).
+-- gen_random_uuid() is built-in since PostgreSQL 13 (no pgcrypto needed).
+-- NOTE: access_token/refresh_token are stored as plaintext for now.
+-- Production should use application-level encryption (envelope encryption / KMS).
 CREATE TABLE IF NOT EXISTS atproto_sessions (
     id UUID PRIMARY KEY NOT NULL DEFAULT gen_random_uuid(),
     user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

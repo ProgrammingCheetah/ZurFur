@@ -55,8 +55,8 @@ pub struct RefreshResponse {
 /// The central authentication service. Holds all dependencies and orchestrates the OAuth flow,
 /// user creation, session storage, and JWT issuance.
 pub struct AuthService<S: OAuthRequestStorage> {
-    pub oauth_config: OAuthConfig,
-    pub jwt_config: JwtConfig,
+    oauth_config: OAuthConfig,
+    jwt_config: JwtConfig,
     oauth_storage: Arc<S>,
     state_store: Arc<dyn OAuthStateStore>,
     user_repo: Arc<dyn UserRepository>,
@@ -103,8 +103,16 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         .await?;
 
         // Store DID and handle keyed by state so the callback can look them up securely.
-        // Format: "did\thandle_or_did" so we can split on callback.
-        let state_value = format!("{}\t{}", did, handle_or_did);
+        // Only store handle if the input was actually a handle (not a DID).
+        let handle = if handle_or_did.starts_with("did:") {
+            None
+        } else {
+            Some(handle_or_did)
+        };
+        let state_value = match handle {
+            Some(h) => format!("{}\t{}", did, h),
+            None => did.to_string(),
+        };
         self.state_store
             .store_did(&result.state, &state_value)
             .await
@@ -155,7 +163,19 @@ impl<S: OAuthRequestStorage> AuthService<S> {
             .await
             .map_err(|e| LoginError::InternalError(e.to_string()))?
         {
-            Some(user) => (user, false),
+            Some(mut user) => {
+                // Update handle if it changed (handles can be reassigned on Bluesky)
+                if let Some(new_handle) = &session.handle {
+                    if user.handle.as_deref() != Some(new_handle) {
+                        self.user_repo
+                            .update_handle(user.id, new_handle)
+                            .await
+                            .map_err(|e| LoginError::InternalError(e.to_string()))?;
+                        user.handle = Some(new_handle.clone());
+                    }
+                }
+                (user, false)
+            }
             None => {
                 let user = self
                     .user_repo
@@ -257,6 +277,13 @@ impl<S: OAuthRequestStorage> AuthService<S> {
             .map_err(|e| LoginError::InternalError(e.to_string()))?;
 
         Ok(())
+    }
+
+    /// Verify an access token and return the decoded claims.
+    /// Use this instead of accessing jwt_config directly.
+    pub fn verify_access_token(&self, token: &str) -> Result<ZurfurClaims, LoginError> {
+        shared::jwt::verify(token, &self.jwt_config.secret)
+            .map_err(|e| LoginError::InternalError(e.to_string()))
     }
 
     // --- Private helpers --------------------------------------------------------

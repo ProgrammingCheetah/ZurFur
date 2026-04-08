@@ -236,8 +236,6 @@ pub async fn complete_oauth_login(
         .map_err(|e| LoginError::InternalError(e.to_string()))?
         .ok_or(LoginError::InvalidState)?;
 
-    storage.delete_oauth_request_by_state(state).await.ok();
-
     let auth_server = oauth_authorization_server(&http_client, &oauth_request.issuer)
         .await
         .map_err(|e| LoginError::OAuth(e.to_string()))?;
@@ -260,6 +258,9 @@ pub async fn complete_oauth_login(
     )
     .await
     .map_err(|e: OAuthClientError| LoginError::OAuth(e.to_string()))?;
+
+    // Delete OAuth request only after successful exchange (allows retry on transient failure)
+    storage.delete_oauth_request_by_state(state).await.ok();
 
     let sub = token_response
         .sub
