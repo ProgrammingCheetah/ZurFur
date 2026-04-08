@@ -22,7 +22,15 @@ impl FromRequestParts<SharedState> for AuthUser {
             .headers
             .get("authorization")
             .and_then(|v| v.to_str().ok())
-            .and_then(|v| v.strip_prefix("Bearer "))
+            .and_then(|v| {
+                let v = v.trim();
+                // RFC 6750: auth scheme is case-insensitive
+                if v.len() > 7 && v[..7].eq_ignore_ascii_case("bearer ") {
+                    Some(v[7..].trim_start())
+                } else {
+                    None
+                }
+            })
             .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header".into()))?;
 
         let claims = state.auth.verify_access_token(token).map_err(|_| {

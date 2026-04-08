@@ -50,24 +50,34 @@ mod tests {
     // Env vars are process-global, so serialize tests that mutate them.
     static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-    fn with_env_vars<F: FnOnce() -> R, R>(vars: &[(&str, Option<&str>)], f: F) -> R {
-        let _guard = ENV_LOCK.lock().unwrap();
-        let mut originals = Vec::new();
+    /// Guard that restores env vars on drop (including panics).
+    struct EnvGuard {
+        originals: Vec<(&'static str, Option<String>)>,
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            for (key, original) in &self.originals {
+                match original {
+                    Some(v) => unsafe { env::set_var(key, v) },
+                    None => unsafe { env::remove_var(key) },
+                }
+            }
+        }
+    }
+
+    fn with_env_vars<F: FnOnce() -> R, R>(vars: &[(&'static str, Option<&str>)], f: F) -> R {
+        let _lock = ENV_LOCK.lock().unwrap();
+        let mut guard = EnvGuard { originals: Vec::new() };
         for (key, val) in vars {
-            originals.push((*key, env::var(key).ok()));
+            guard.originals.push((key, env::var(key).ok()));
             match val {
                 Some(v) => unsafe { env::set_var(key, v) },
                 None => unsafe { env::remove_var(key) },
             }
         }
-        let result = f();
-        for (key, original) in originals {
-            match original {
-                Some(v) => unsafe { env::set_var(key, v) },
-                None => unsafe { env::remove_var(key) },
-            }
-        }
-        result
+        f()
+        // EnvGuard::drop restores originals, even on panic
     }
 
     #[test]
