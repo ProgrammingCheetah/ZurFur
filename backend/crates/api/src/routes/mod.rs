@@ -1,4 +1,5 @@
 mod auth;
+mod organizations;
 mod users;
 
 use axum::{Router, routing::get};
@@ -10,4 +11,5 @@ pub fn router() -> Router<SharedState> {
         .route("/", get(|| async { "Hello, World!" }))
         .nest("/users", users::router())
         .nest("/auth", auth::router())
+        .nest("/organizations", organizations::router())
 }

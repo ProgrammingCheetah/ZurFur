@@ -217,6 +217,18 @@ impl OrganizationService {
         Ok(org)
     }
 
+    /// Get an organization by ID with its members and profile.
+    pub async fn get_org_by_id(&self, org_id: Uuid) -> Result<OrgDetail, OrgServiceError> {
+        let org = self
+            .org_repo
+            .find_by_id(org_id)
+            .await
+            .map_err(|e| OrgServiceError::Internal(e.to_string()))?
+            .ok_or(OrgServiceError::NotFound)?;
+
+        self.load_org_detail(org).await
+    }
+
     /// Get an organization by slug with its members and profile.
     pub async fn get_org(&self, slug: &str) -> Result<OrgDetail, OrgServiceError> {
         let org = self
@@ -226,6 +238,13 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?
             .ok_or(OrgServiceError::NotFound)?;
 
+        self.load_org_detail(org).await
+    }
+
+    async fn load_org_detail(
+        &self,
+        org: Organization,
+    ) -> Result<OrgDetail, OrgServiceError> {
         let members = self
             .member_repo
             .list_by_org(org.id)

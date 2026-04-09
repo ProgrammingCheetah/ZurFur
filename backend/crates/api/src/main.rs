@@ -29,25 +29,47 @@ async fn main() {
     // Repositories
     let user_repo = persistence::SqlxUserRepository::from_pool(pool.clone());
     let session_repo = persistence::SqlxAtprotoSessionRepository::from_pool(pool.clone());
-    let refresh_repo = persistence::SqlxRefreshTokenRepository::from_pool(pool);
+    let refresh_repo = persistence::SqlxRefreshTokenRepository::from_pool(pool.clone());
+    let org_repo = persistence::SqlxOrganizationRepository::from_pool(pool.clone());
+    let member_repo = persistence::SqlxOrganizationMemberRepository::from_pool(pool.clone());
+    let org_profile_repo = persistence::SqlxOrganizationProfileRepository::from_pool(pool.clone());
+    let preferences_repo = persistence::SqlxUserPreferencesRepository::from_pool(pool);
 
     // Pluggable storage (swap these to Redis-backed implementations for production)
     let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(1000).unwrap());
     let state_store = Arc::new(InMemoryOAuthStateStore::new());
 
-    // Wire up
+    // Wire up services
     let auth_service = AuthService::new(
         oauth_config,
         jwt_config,
         oauth_storage,
         state_store,
-        user_repo,
+        user_repo.clone(),
         session_repo,
         refresh_repo,
+        org_repo.clone(),
+        member_repo.clone(),
+    );
+
+    let user_service = application::user::service::UserService::new(
+        user_repo,
+        org_repo.clone(),
+        org_profile_repo.clone(),
+        member_repo.clone(),
+        preferences_repo,
+    );
+
+    let org_service = application::organization::service::OrganizationService::new(
+        org_repo,
+        member_repo,
+        org_profile_repo,
     );
 
     let state = AppState {
         auth: auth_service,
+        user: user_service,
+        org: org_service,
     };
 
     let app = router(state);
