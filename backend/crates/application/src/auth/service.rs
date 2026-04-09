@@ -441,7 +441,7 @@ mod tests {
     use domain::oauth_state_store::{OAuthStateData, OAuthStateError, OAuthStateStore};
     use domain::organization::{Organization, OrganizationError, OrganizationRepository};
     use domain::organization_member::{
-        OrganizationMember, OrganizationMemberError, OrganizationMemberRepository,
+        OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
     };
     use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
     use domain::user::{User, UserError, UserRepository};

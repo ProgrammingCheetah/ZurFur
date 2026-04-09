@@ -94,25 +94,32 @@ async fn create_org(
     Ok((StatusCode::CREATED, Json(to_detail_response(detail))))
 }
 
-/// GET /organizations/:slug — org details + members + profile.
+/// GET /organizations/:id_or_slug — org details + members + profile.
+/// Accepts either a UUID (org id) or a slug string.
 async fn get_org(
     State(state): State<SharedState>,
-    Path(slug): Path<String>,
+    Path(id_or_slug): Path<String>,
     AuthUser(_claims): AuthUser,
 ) -> Result<Json<OrgDetailResponse>, (StatusCode, String)> {
-    let detail = state.org.get_org(&slug).await.map_err(map_org_error)?;
+    let detail = if let Ok(id) = id_or_slug.parse::<uuid::Uuid>() {
+        state.org.get_org_by_id(id).await
+    } else {
+        state.org.get_org(&id_or_slug).await
+    }
+    .map_err(map_org_error)?;
+
     Ok(Json(to_detail_response(detail)))
 }
 
-/// PUT /organizations/:id — update display_name (owner only).
+/// PUT /organizations/:id_or_slug — update display_name (owner only).
 async fn update_org(
     State(state): State<SharedState>,
-    Path(id): Path<String>,
+    Path(id_or_slug): Path<String>,
     AuthUser(claims): AuthUser,
     Json(body): Json<UpdateOrgRequest>,
 ) -> Result<Json<OrgResponse>, (StatusCode, String)> {
     let user_id = parse_user_id(&claims.sub)?;
-    let org_id = parse_uuid(&id)?;
+    let org_id = parse_uuid(&id_or_slug)?;
 
     let org = state
         .org
@@ -123,14 +130,14 @@ async fn update_org(
     Ok(Json(to_org_response(&org)))
 }
 
-/// DELETE /organizations/:id — soft-delete org (owner only, personal orgs rejected).
+/// DELETE /organizations/:id_or_slug — soft-delete org (owner only, personal orgs rejected).
 async fn delete_org(
     State(state): State<SharedState>,
-    Path(id): Path<String>,
+    Path(id_or_slug): Path<String>,
     AuthUser(claims): AuthUser,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let user_id = parse_user_id(&claims.sub)?;
-    let org_id = parse_uuid(&id)?;
+    let org_id = parse_uuid(&id_or_slug)?;
 
     state
         .org
@@ -270,10 +277,12 @@ async fn remove_member(
 // --- Router ------------------------------------------------------------------
 
 pub fn router() -> Router<SharedState> {
+    // All sub-resource routes use /{id}/... where id is a UUID.
+    // The GET by slug route shares the same /{param} pattern —
+    // the handler disambiguates by trying UUID parse first, then slug lookup.
     Router::new()
         .route("/", post(create_org))
-        .route("/{slug}", get(get_org))
-        .route("/{id}", put(update_org).delete(delete_org))
+        .route("/{id_or_slug}", get(get_org).put(update_org).delete(delete_org))
         .route("/{id}/profile", put(update_profile))
         .route("/{id}/members", get(list_members).post(add_member))
         .route(
