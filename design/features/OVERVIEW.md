@@ -72,8 +72,9 @@ graph TD
     F3 --> F7
     F3 --> F12
 
-    %% Financial enables disputes
+    %% Financial enables disputes + plugin marketplace
     F4 --> F12
+    F4 --> F6
 
     %% Notifications
     F9 --> F7
@@ -85,6 +86,7 @@ graph TD
     %% Plugin orgs are just orgs
     F2 -->|Orgs exist| F6
     F6 -.->|Plugins subscribe to feeds| F9
+    F6 -.->|Plugin orgs enable bridges| F5
 
     %% Soft dependencies
     F1 -.->|1.2 needs| F3

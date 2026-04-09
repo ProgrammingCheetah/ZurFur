@@ -108,6 +108,7 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 - Notification volume is manageable (< 1M notifications/day at launch scale)
 - Plugin orgs use feed subscriptions as their primary notification mechanism
 - Org-level notifications are distributed to members with relevant roles (not all members)
+- Notification data is private-tier (PostgreSQL only, never published to PDS)
 
 ## Shortcomings & Known Limitations
 

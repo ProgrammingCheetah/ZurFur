@@ -13,7 +13,7 @@ Manages user identity, org membership, profile customization, content rating con
 **What it is:** The User entity is minimal — it holds only authentication data (DID, handle, tokens). All public identity (display name, bio, avatar, roles, commission status) lives on the org. Every user automatically receives a personal org. Artist functionality is unlocked by assigning the "artist" role on an org, not by toggling a flag on the user.
 
 **Implementation approach:**
-- `users` table remains minimal: `id`, `did`, `handle`, `created_at`, `deleted_at`
+- `users` table remains minimal: `id`, `did`, `handle`, `email`, `username`, `created_at`, `deleted_at`
 - `orgs` table: `id`, `owner_id` (FK users), `slug`, `display_name`, `bio`, `avatar_url`, `is_personal` (bool), `created_at`, `deleted_at`
 - `org_members` table: `org_id`, `user_id`, `role` (enum: owner/artist/collaborator/member), `title` (free-text), `joined_at`
 - On user creation (first login), auto-create a personal org (`is_personal = true`) and add the user as owner
@@ -151,6 +151,7 @@ Manages user identity, org membership, profile customization, content rating con
 - Every user gets exactly one personal org; additional orgs (studios, groups) are created manually
 - Tags are reusable across entities — the same "wolf" species tag applies to any character
 - Onboarding role selection is a one-time convenience; the role can be changed later
+- Org profiles are public-tier data. Phase 1 uses PostgreSQL only; Phase 4 (AT Protocol Integration) will publish profiles to the user's PDS as AT Protocol records
 
 ## Shortcomings & Known Limitations
 

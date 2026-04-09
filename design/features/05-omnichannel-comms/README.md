@@ -83,6 +83,7 @@ Each Commission Card has a chat thread implemented as a feed attached to the com
 - Chat messages are feed items — they benefit from the same pagination and storage infrastructure as other feeds
 - The chat feed is separate from the commission event feed to keep audit trail clean
 - No separate `chat_bridges` or `card_messages` tables — everything is feed items and feed subscriptions
+- Chat messages are private-tier data (PostgreSQL only, never published to PDS)
 
 ## Shortcomings & Known Limitations
 

@@ -76,7 +76,7 @@ This section details the granular feature modules that make up the Zurfur platfo
 ### Feature 3: The Headless Commission Engine (The "Card") (v2 — Shell + Add-ons)
 
 - **3.1 Commission as Minimal Shell (v2):** The commission entity is minimal: `id`, `internal_status`, and a feed. Everything else — invoices, TOS acceptance, chat threads, file attachments, milestone tracking — attaches via add-on slots rather than being baked into the commission schema. This replaces the v1 monolithic card model.
-- **3.2 Internal State Only (v2):** Commissions have internal states (`blocked`, `in_progress`, `awaiting_payment`, `completed`, etc.) that represent actual workflow position. These are not displayed directly — visual presentation is handled by boards.
+- **3.2 Internal State Only (v2):** Commissions have internal states (`blocked`, `in_progress`, `awaiting_input`, `completed`, etc.) that represent actual workflow position. These are not displayed directly — visual presentation is handled by boards.
 - **3.3 Boards as Projections (v2):** Kanban boards and pipeline views are separate entities that map commissions to columns via configurable rules. The same commission can appear on multiple boards with different column placements. An artist's "Work Queue" board and a client's "My Commissions" board are both projections over the same underlying commission data.
 - **3.4 Event-Driven History:** Every action (comment, payment, file upload, state change) is an "Event" appended to the commission's feed, serving as an immutable history log and single source of truth for dispute resolution.
 - **3.5 Add-on Slots (v2):** Commission cards are shells with add-on slots. Server-side add-ons are feed participants that react to commission events and post items back. Client-side add-ons render in sandboxed iframes within the card UI. This is the mechanism for invoicing, TOS, chat, and file management — they are all add-ons, not core card features.
@@ -103,8 +103,8 @@ stateDiagram-v2
         Awaiting_Approval --> In_Progress: Revision
     }
 
-    Active_Workflow --> Awaiting_Payment: Milestone/Invoice (Add-on)
-    Awaiting_Payment --> Active_Workflow: Client Pays
+    Active_Workflow --> Awaiting_Input: Milestone/Invoice (Add-on)
+    Awaiting_Input --> Active_Workflow: Client Pays
 
     Active_Workflow --> Completed: Final Delivery
     Completed --> [*]
@@ -197,11 +197,11 @@ graph TD
 - **9.3 Email Digests:** Configurable email summaries (daily/weekly) aggregating commission activity, new followers, and marketplace updates.
 - **9.4 Webhook Notifications (v2):** A developer-facing API allowing plugins and external integrations to subscribe to specific event types programmatically. **(v2)** Since plugins are orgs with feed subscriptions, webhook delivery is a built-in capability of the feed system — no separate webhook API needed.
 
-### Feature 10: Artist Terms of Service (TOS) Management
+### Feature 10: Organization Terms of Service (TOS) Management
 
-- **10.1 TOS Builder:** A structured editor for artists to define their rules, boundaries, refund policy, usage rights, and communication expectations. **(v2)** TOS is managed at the org level (since the org is the artist profile).
+- **10.1 TOS Builder:** A structured editor for organizations to define their rules, boundaries, refund policy, usage rights, and communication expectations. **(v2)** TOS is managed at the org level (since the org is the artist profile).
 - **10.2 TOS Versioning:** Immutable snapshots of each TOS revision. The specific version a client agreed to at the time of commission submission is preserved and linked to the Card's audit trail.
-- **10.3 Mandatory Acknowledgment (v2):** Clients must explicitly accept the artist's current TOS before submitting a commission request. **(v2)** This acceptance is recorded as an event in the commission's feed via the TOS add-on.
+- **10.3 Mandatory Acknowledgment (v2):** Clients must explicitly accept the organization's current TOS before submitting a commission request. **(v2)** This acceptance is recorded as an event in the commission's feed via the TOS add-on.
 - **10.4 TOS Diff View:** A visual comparison tool showing what changed between TOS versions, so returning clients can quickly review updates before re-commissioning.
 
 ### Feature 11: Content Moderation & Trust/Safety
@@ -239,7 +239,7 @@ The entire Zurfur domain is built on five root aggregates. Every feature decompo
 |-----------|---------------|-------------------|
 | **User** | Atomic identity. `{id, did, handle, email, username}`. Nothing else. | Owns orgs via memberships. |
 | **Organization** | All public-facing state. Profiles, bios, roles, permissions, commission availability. Personal orgs = user profiles. Team orgs = studios/groups. Plugin orgs = installed plugins. | Has members (users), has feeds, has tags. |
-| **Feed** | Universal content container. Every piece of content flows through a feed. Galleries, portfolios, activity streams, notifications, commission histories. | Attached to entities via `entity_feeds` (polymorphic). Has feed items. Has subscribers. |
+| **Feed** | Universal content container. Every piece of content flows through a feed. Galleries, activity streams, notifications, commission histories. | Attached to entities via `entity_feeds` (polymorphic). Has feed items. Has subscribers. |
 | **Commission** | Minimal shell: `{id, internal_status, feed}`. All capabilities attach via add-ons. | Has a feed. Participants are orgs. Add-ons are feed participants. |
 | **Tag** | Reusable descriptive attribute. Species, art style, content rating, medium, body type. | Attached to any entity. No free-text columns for descriptive data — tags or bio only. |
 
@@ -288,7 +288,7 @@ Every user gets a **personal organization** on signup. This personal org IS the 
 - **Focus tags** (species, art style, medium) — tags on the org
 - **Content rating** — an org-level setting
 
-There is no special casing between personal orgs and team orgs. A solo artist and a fursuit-making studio use the exact same data model. The only distinction is that personal orgs have a `personal = true` flag (one per user, enforced by partial unique index) and resolve `display_name` from the owner's handle when NULL.
+There is no special casing between personal orgs and team orgs. A solo artist and a fursuit-making studio use the exact same data model. The only distinction is that personal orgs have a `is_personal = true` flag (one per user, enforced by partial unique index) and resolve `display_name` from the owner's handle when NULL.
 
 ```mermaid
 graph LR
@@ -299,7 +299,7 @@ graph LR
     subgraph "Personal Org (= Profile)"
         PO[bio, avatar, banner, content_rating]
         POM[Membership: Owner + Artist role]
-        POF[Feeds: updates, gallery, portfolio]
+        POF[Feeds: updates, gallery, activity]
         POT[Tags: species, art_style, medium]
     end
 
@@ -323,7 +323,7 @@ graph LR
 
 Feeds are a root domain concept and the primary content delivery mechanism. Any entity can have feeds via `entity_feeds` (polymorphic join):
 
-- **Org feeds:** updates, gallery, portfolio, commission availability
+- **Org feeds:** updates, gallery, activity, commissions
 - **Character feeds:** art, ref sheets, updates
 - **Commission feeds:** event history, chat (via add-on)
 - **System feeds:** "Open Now" aggregation, trending, moderation queue
@@ -337,7 +337,7 @@ Feed taxonomy:
 | Feed items | Individual entries in a feed. Typed, timestamped, authored. |
 | Subscribers | Orgs that subscribe to a feed. Subscription = follow/watch. |
 
-**Key insight: the frontend is a feed renderer.** Gallery views, portfolio pages, activity streams, notification centers, and commission histories are all the same component — a feed renderer with different filters and item templates.
+**Key insight: the frontend is a feed renderer.** Gallery views, activity streams, notification centers, and commission histories are all the same component — a feed renderer with different filters and item templates.
 
 ```mermaid
 graph TD
@@ -473,7 +473,7 @@ sequenceDiagram
     participant Client
     participant Platform (Rust Engine)
     participant Artist Org
-    participant Gateway (Stripe/PayPal)
+    participant Gateway (Stripe)
 
     Client->>Platform: Submit Commission via Artist Org's Intake Form
     Platform->>Artist Org: New item in commission inbox feed
@@ -542,8 +542,7 @@ Efficiency is paramount. The interface is engineered to be entirely navigable wi
 
 | View | Feed Source | Item Template | Filter |
 |------|-------------|---------------|--------|
-| Profile gallery | Org's gallery feed | Image grid | content_rating, tags |
-| Portfolio | Org's portfolio feed | Showcase layout | featured tag |
+| Gallery (profile + portfolio) | Org's gallery feed | Image grid / Showcase | content_rating, tags, featured |
 | Character page | Character's feed | Ref sheet + art grid | character_id |
 | Commission history | Commission's event feed | Timeline | event_type |
 | Notification center | User's notification feed | Alert list | unread, category |
@@ -669,7 +668,7 @@ graph TD
 - Org profiles (name, bio, avatar, banner)
 - Org memberships (who belongs to what org, with what role)
 - Character data (ref sheets, species info)
-- Gallery/portfolio posts
+- Gallery posts
 - Social graph (feed subscriptions = follows)
 - Commission availability status
 

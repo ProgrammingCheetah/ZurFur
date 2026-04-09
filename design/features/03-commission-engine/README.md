@@ -105,9 +105,12 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2.1](../02-identity-profile/README.md) — org model and org roles
 - [Feature 2.3](../02-identity-profile/README.md) — feeds infrastructure (commission feeds are feeds)
-- [Feature 2.7](../02-identity-profile/README.md) — character profiles (attached to commission requests)
+- [Feature 8.2](../08-search-discovery/README.md) — Tag infrastructure for commission descriptive attributes and content rating
 - [Feature 10](../10-artist-tos/README.md) — TOS acceptance required before commission submission
 - File storage (S3/MinIO) for attachments
+
+### Soft dependencies
+- [Feature 2.7](../02-identity-profile/README.md) — character profiles can be attached to commission requests, but a commission can exist without a character reference
 
 ### Enables (unlocked after this is built)
 - [Feature 4](../04-financial-gateway/README.md) — invoices are add-on slots on cards
@@ -159,6 +162,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - Pipeline templates cover 80% of artist workflows; custom slot configuration handles the rest
 - The `commissions` materialized state is kept in sync via application-level logic, not database triggers
 - Artist-side participants are always orgs; client-side participants are always users
+- Commission data is private-tier (PostgreSQL only). Completed commissions can be optionally published to PDS as portfolio records
 
 ## Shortcomings & Known Limitations
 

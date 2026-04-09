@@ -129,6 +129,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - Plugin marketplace follows standard app store approval model (manual initially)
 - Community will build plugins once the feed subscription API is stable and documented
 - Webhook delivery is async and best-effort with retries — plugins must handle eventual consistency
+- Plugin org profiles are public-tier data (PDS). Plugin configuration, webhook URLs, and subscription data are private-tier (PostgreSQL only)
 
 ## Shortcomings & Known Limitations
 
