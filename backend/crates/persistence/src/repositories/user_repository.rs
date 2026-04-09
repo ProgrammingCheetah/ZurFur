@@ -26,13 +26,14 @@ fn map_user(row: sqlx::postgres::PgRow) -> User {
         handle: row.get("handle"),
         email: row.get("email"),
         username: row.get("username"),
+        onboarding_completed_at: row.get("onboarding_completed_at"),
     }
 }
 
 #[async_trait::async_trait]
 impl UserRepository for SqlxUserRepository {
     async fn find_by_email(&self, email: &str) -> Result<Option<User>, UserError> {
-        sqlx::query("SELECT id, did, handle, email, username FROM users WHERE email = $1 AND deleted_at IS NULL")
+        sqlx::query("SELECT id, did, handle, email, username, onboarding_completed_at FROM users WHERE email = $1 AND deleted_at IS NULL")
             .bind(email)
             .fetch_optional(&self.pool)
             .await
@@ -41,7 +42,7 @@ impl UserRepository for SqlxUserRepository {
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<User>, UserError> {
-        sqlx::query("SELECT id, did, handle, email, username FROM users WHERE id = $1 AND deleted_at IS NULL")
+        sqlx::query("SELECT id, did, handle, email, username, onboarding_completed_at FROM users WHERE id = $1 AND deleted_at IS NULL")
             .bind(id)
             .fetch_optional(&self.pool)
             .await
@@ -50,7 +51,7 @@ impl UserRepository for SqlxUserRepository {
     }
 
     async fn find_by_did(&self, did: &str) -> Result<Option<User>, UserError> {
-        sqlx::query("SELECT id, did, handle, email, username FROM users WHERE did = $1 AND deleted_at IS NULL")
+        sqlx::query("SELECT id, did, handle, email, username, onboarding_completed_at FROM users WHERE did = $1 AND deleted_at IS NULL")
             .bind(did)
             .fetch_optional(&self.pool)
             .await
@@ -70,7 +71,7 @@ impl UserRepository for SqlxUserRepository {
             .unwrap_or_else(|| did.to_string());
 
         sqlx::query(
-            "INSERT INTO users (id, did, handle, email, username) VALUES ($1, $2, $3, $4, $5) RETURNING id, did, handle, email, username",
+            "INSERT INTO users (id, did, handle, email, username) VALUES ($1, $2, $3, $4, $5) RETURNING id, did, handle, email, username, onboarding_completed_at",
         )
         .bind(id)
         .bind(did)
@@ -91,5 +92,21 @@ impl UserRepository for SqlxUserRepository {
             .await
             .map(|_| ())
             .map_err(|e| UserError::Database(e.to_string()))
+    }
+
+    async fn mark_onboarding_completed(&self, user_id: Uuid) -> Result<(), UserError> {
+        let result = sqlx::query(
+            "UPDATE users SET onboarding_completed_at = now() \
+             WHERE id = $1 AND deleted_at IS NULL AND onboarding_completed_at IS NULL",
+        )
+        .bind(user_id)
+        .execute(&self.pool)
+        .await
+        .map_err(|e| UserError::Database(e.to_string()))?;
+
+        if result.rows_affected() == 0 {
+            return Err(UserError::NotFound);
+        }
+        Ok(())
     }
 }

@@ -166,6 +166,9 @@ mod tests {
         async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
             Ok(())
         }
+        async fn mark_onboarding_completed(&self, _user_id: Uuid) -> Result<(), UserError> {
+            Ok(())
+        }
     }
 
     #[derive(Default)]
@@ -367,6 +370,7 @@ mod tests {
             handle: Some("test.bsky.social".into()),
             email: None,
             username: "test".into(),
+            onboarding_completed_at: None,
         }
     }
 
