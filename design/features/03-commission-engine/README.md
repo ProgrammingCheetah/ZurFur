@@ -73,9 +73,9 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 
 **Implementation approach:**
 - Fields on `commissions`: `started_at`, `deadline`, `completed_at`
-- Background job (tokio interval task): query for commissions where `deadline < now() AND internal_state != 'completed'`. Emit `DeadlineMissed` event to the commission feed.
+- Background job (tokio interval task): query for commissions where `deadline < now() AND current_state NOT IN terminal_states`. Emit `DeadlineMissed` event to the commission feed.
 - Turnaround analytics derived from `started_at` to `completed_at` per commission
-- Stage-level timing: calculate time spent in each internal state from `StateChanged` event timestamps in the feed
+- Stage-level timing: calculate time spent in each state from `StateChanged` event timestamps in the feed
 
 ### 3.7 Multi-Party Collaboration
 
