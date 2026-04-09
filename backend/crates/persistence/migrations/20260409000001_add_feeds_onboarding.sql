@@ -111,5 +111,10 @@ CREATE TABLE feed_subscriptions (
 CREATE UNIQUE INDEX uq_feed_subscriptions_feed_org
     ON feed_subscriptions (feed_id, subscriber_org_id);
 
+-- Lookup by feed (list_by_feed queries)
+CREATE INDEX idx_feed_subscriptions_feed
+    ON feed_subscriptions (feed_id);
+
+-- Lookup by subscriber org (list_by_subscriber queries)
 CREATE INDEX idx_feed_subscriptions_subscriber
     ON feed_subscriptions (subscriber_org_id);

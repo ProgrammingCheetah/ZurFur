@@ -2,6 +2,14 @@
 //!
 //! A feed item is the container for one logical entry. It can have multiple
 //! elements (text + image + file attachment, etc.) via FeedElement.
+//!
+//! ARCHITECTURE DECISIONS:
+//!   Feed items are immutable once created — there is no `updated_at` field
+//!   and no `update` method on the repository. The item structure (author,
+//!   feed, timestamp) cannot change. Individual elements within an item CAN
+//!   be edited via FeedElementRepository::update_content, but the post itself
+//!   is append-only. This models a chronological event log where entries are
+//!   facts, not drafts.
 
 use chrono::{DateTime, Utc};
 use uuid::Uuid;

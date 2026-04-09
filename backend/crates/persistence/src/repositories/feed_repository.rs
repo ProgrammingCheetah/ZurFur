@@ -1,4 +1,5 @@
 use crate::pool::Pool;
+use crate::sqlx_utils::is_unique_violation;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use sqlx::Row;
 use std::sync::Arc;
@@ -56,7 +57,13 @@ impl FeedRepository for SqlxFeedRepository {
         .bind(feed_type.as_str())
         .fetch_one(&self.pool)
         .await
-        .map_err(|e| FeedError::Database(e.to_string()))?;
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                FeedError::SlugTaken(slug.to_string())
+            } else {
+                FeedError::Database(e.to_string())
+            }
+        })?;
 
         map_feed(row)
     }
@@ -100,33 +107,35 @@ impl FeedRepository for SqlxFeedRepository {
     }
 
     async fn soft_delete(&self, id: Uuid) -> Result<(), FeedError> {
-        // Check if the feed is a system feed before deleting
-        let feed_row = sqlx::query(
+        // Atomic check-and-update: only delete custom feeds, reject system feeds.
+        // Uses a single query to avoid TOCTOU race conditions.
+        let row = sqlx::query(
+            "UPDATE feeds SET deleted_at = now() \
+             WHERE id = $1 AND deleted_at IS NULL AND feed_type = 'custom' \
+             RETURNING feed_type",
+        )
+        .bind(id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        if row.is_some() {
+            return Ok(());
+        }
+
+        // Distinguish between "not found" and "is a system feed"
+        let exists = sqlx::query(
             "SELECT feed_type FROM feeds WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|e| FeedError::Database(e.to_string()))?
-        .ok_or(FeedError::NotFound)?;
-
-        let feed_type_str: String = feed_row.get("feed_type");
-        if feed_type_str == "system" {
-            return Err(FeedError::SystemFeedUndeletable);
-        }
-
-        let result = sqlx::query(
-            "UPDATE feeds SET deleted_at = now() WHERE id = $1 AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await
         .map_err(|e| FeedError::Database(e.to_string()))?;
 
-        if result.rows_affected() == 0 {
-            return Err(FeedError::NotFound);
+        match exists {
+            Some(_) => Err(FeedError::SystemFeedUndeletable),
+            None => Err(FeedError::NotFound),
         }
-        Ok(())
     }
 
     async fn list_by_ids(&self, ids: &[Uuid]) -> Result<Vec<Feed>, FeedError> {
