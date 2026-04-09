@@ -27,7 +27,7 @@ How users find orgs offering commissions. Without discovery, users can only find
 
 **Implementation approach:**
 - `tags` table: `id`, `name`, `category` (species/style/medium/content_type/custom), `parent_id` (hierarchical), `usage_count`, `is_approved`
-- `entity_tags` junction table: `entity_type` (org/commission/feed_post/character), `entity_id`, `tag_id` — universal tag assignment for any entity
+- `entity_tags` junction table: `entity_type` (org/commission/feed_item/character), `entity_id`, `tag_id` — universal tag assignment for any entity
 - `org_tags` convenience view over `entity_tags WHERE entity_type = 'org'`
 - Tag suggestions: auto-complete from existing approved tags
 - Community tag proposals: users suggest new tags → moderation queue
@@ -62,7 +62,9 @@ How users find orgs offering commissions. Without discovery, users can only find
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2](../02-identity-profile/README.md) — org profiles and character profiles to search
-- [Feature 7.3](../07-community-analytics/README.md) — metrics for ranking and price range filtering (soft dependency — search works without it but is better with it)
+
+### Soft dependencies (enhances but not required)
+- [Feature 7.3](../07-community-analytics/README.md) — metrics for ranking and price range filtering. Search works without metrics but ranking improves with them.
 
 ### Enables (unlocked after this is built)
 - Better user acquisition and org discovery — no direct feature dependency, but critical for platform growth

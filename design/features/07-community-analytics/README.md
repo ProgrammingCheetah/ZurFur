@@ -15,7 +15,7 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 **Implementation approach:**
 - Subscriptions are feed subscriptions via the `entity_feeds` system — subscribing to an org's commissions feed
 - When an org publishes an "open for commissions" post to their feed, all subscribers are notified
-- "Open Now" is a feed view: a projection that filters for orgs whose latest feed post indicates open status
+- "Open Now" is a feed view: a projection that filters for orgs whose latest feed item indicates open status
 - Emit notification events → delivered via Feature 9 (in-app, push, email)
 - API: `POST /orgs/:id/feeds/commissions/subscribe`, `DELETE /orgs/:id/feeds/commissions/subscribe`, `GET /me/feed-subscriptions`
 

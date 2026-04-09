@@ -76,7 +76,7 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 - [Feature 4](../04-financial-gateway/README.md) — escrowed funds to freeze/release/refund
 
 ### Enables (unlocked after this is built)
-- [Feature 7.3](../07-community-analytics/README.md) — dispute data feeds client/org risk scores
+- Dispute outcomes feed into [Feature 7.3](../07-community-analytics/README.md) risk scores (soft enhancement, not a hard dependency).
 - [Feature 13.3](../13-platform-admin/README.md) — complex disputes enter moderation queue
 
 ### Also references

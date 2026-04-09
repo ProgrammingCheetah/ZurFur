@@ -4,7 +4,7 @@
 
 ## Overview
 
-Manages user identity, org membership, profile customization, content rating controls, and character repositories. Identity follows an org-centric model: the **User** is atomic (authentication identity only). All roles, titles, bios, and public-facing profiles live on **orgs**. Every user gets a personal org on first login. There is no `is_artist` flag — "artist" is an org role. Characters belong to orgs, not users directly. Galleries and portfolios are feed views attached to orgs and characters.
+Manages user identity, org membership, profile customization, content rating controls, and character repositories. Identity follows an org-centric model: the **User** is atomic (authentication identity only). All roles, titles, bios, and public-facing profiles live on **orgs**. Every user gets a personal org on first login. There is no `is_artist` flag — "artist" is an org role. Characters belong to orgs, not users directly. Galleries are feed views attached to orgs and characters (the gallery feed serves as the portfolio).
 
 ## Sub-features
 
@@ -14,7 +14,7 @@ Manages user identity, org membership, profile customization, content rating con
 
 **Implementation approach:**
 - `users` table remains minimal: `id`, `did`, `handle`, `email`, `username`, `created_at`, `deleted_at`
-- `orgs` table: `id`, `owner_id` (FK users), `slug`, `display_name`, `bio`, `avatar_url`, `is_personal` (bool), `created_at`, `deleted_at`
+- `orgs` table: `id`, `owner_id` (FK users), `slug`, `display_name`, `bio`, `avatar_url`, `is_personal` (bool), `created_at`, `deleted_at`. Note: `owner_id` is a denormalized convenience for personal org lookup. The authoritative ownership relationship is in `org_members` where `role = 'owner'`. Both must stay in sync.
 - `org_members` table: `org_id`, `user_id`, `role` (enum: owner/artist/collaborator/member), `title` (free-text), `joined_at`
 - On user creation (first login), auto-create a personal org (`is_personal = true`) and add the user as owner
 - `commission_status` (open/closed/waitlist) lives on the org, not a separate artist profile
@@ -33,6 +33,7 @@ Manages user identity, org membership, profile customization, content rating con
 - `users` table gets `onboarding_completed_at` (nullable timestamp) — null means onboarding pending
 - Role can be changed later via org settings; onboarding just sets the initial value
 - If role is `artist` or `crafter_maker`, the personal org gets a `commissions` default feed created (see 2.6)
+- Onboarding role maps to org_members role: `artist` and `crafter_maker` -> `artist` role, `commissioner_client` and `coder_developer` -> `member` role. The onboarding selection determines default feed creation (artists get `commissions` feed) but does not restrict capabilities.
 
 ### 2.3 Default Feeds per Org
 
@@ -40,13 +41,14 @@ Manages user identity, org membership, profile customization, content rating con
 
 **Implementation approach:**
 - `feeds` table: `id`, `slug`, `display_name`, `feed_type` (enum: system/custom), `created_at`
-- `entity_feeds` table (polymorphic join): `feed_id`, `entity_type` (enum: org/character/commission), `entity_id`
+- `entity_feeds` table (polymorphic join): `feed_id`, `entity_type` (enum: org/character/commission/user), `entity_id`
 - On org creation, auto-create system feeds attached via `entity_feeds`:
   - `updates` (always) — general announcements
-  - `gallery` (always) — artwork and portfolio items
+  - `gallery` (always) — artwork and gallery items (the gallery feed serves as the portfolio)
   - `activity` (always) — auto-generated activity log
   - `commissions` (only if org has artist/crafter role) — commission openings and status
 - System feeds (`feed_type = 'system'`) cannot be deleted or renamed
+- `feed_items` table: `id`, `feed_id` (FK feeds), `author_type` (user/org/system), `author_id`, `item_type` (event/post/image/file), `content_json`, `created_at`
 - Custom feeds: `POST /orgs/:id/feeds` — user-created, deletable
 - Following an org = subscribing to its feeds (no separate follows table)
 
@@ -73,7 +75,7 @@ Manages user identity, org membership, profile customization, content rating con
 
 ### 2.6 SFW/NSFW Viewer Control
 
-**What it is:** Viewer-controlled toggle (default SFW) filtering galleries, portfolios, and active commissions.
+**What it is:** Viewer-controlled toggle (default SFW) filtering galleries and active commissions.
 
 **Implementation approach:**
 - `content_rating` enum on all displayable content: `sfw`, `questionable`, `nsfw`
@@ -89,8 +91,7 @@ Manages user identity, org membership, profile customization, content rating con
 **Implementation approach:**
 - `characters` table: `id`, `org_id` (FK orgs), `name`, `description`, `content_rating`, `is_public`, `created_at`
 - Species, hex codes, art style, and other structured data stored as **tags** (not columns). Only `description` is free-text.
-- `tags` table: `id`, `namespace` (species/color/art_style/ref_sheet/etc.), `value`, `created_at`
-- `entity_tags` table (polymorphic): `tag_id`, `entity_type` (character/feed_item/org), `entity_id`
+- Tags use the shared Tag infrastructure defined in [Feature 8.2](../08-search-discovery/README.md). Characters and orgs are tagged via the `entity_tags` junction table with `entity_type` values including `character`, `org`, `commission`, and `feed_item`.
 - On character creation, auto-create a `gallery` feed and a `ref_sheets` feed attached via `entity_feeds`
 - Reference sheets are feed items in the character's `ref_sheets` feed, tagged with `ref_sheet` namespace
 - Gallery items are feed items in the character's `gallery` feed

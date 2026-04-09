@@ -10,7 +10,7 @@ Five root aggregates underpin the platform: **User**, **Organization**, **Feed**
 
 Key architectural decisions reflected in this plan:
 - **Org-centric identity:** User is atomic. All roles/capabilities via org membership. Every user gets a personal org. Artist is an org role.
-- **Feeds as universal content container:** Any entity can have feeds via `entity_feeds`. Gallery, portfolio, activity = feed views. Following = feed subscription.
+- **Feeds as universal content container:** Any entity can have feeds via `entity_feeds`. Gallery, activity = feed views (the gallery feed serves as the portfolio). Following = feed subscription.
 - **Tags over columns:** Descriptive attributes are tags. The tag system is Tier 1 foundational infrastructure.
 - **Headless commissions:** Internal state only. Boards are projections. Commission card is a shell with add-on slots.
 - **Plugins are orgs:** Subscribe/react/post to feeds. No separate plugin API.
@@ -54,6 +54,8 @@ graph TD
 
     %% Foundation
     F1 --> F2
+    F1 --> F3
+    F1 --> F9
     F2 --> F8
     F2 --> F10
 
@@ -75,6 +77,7 @@ graph TD
     %% Financial enables disputes + plugin marketplace
     F4 --> F12
     F4 --> F6
+    F4 --> F7
 
     %% Notifications
     F9 --> F7

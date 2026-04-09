@@ -114,5 +114,5 @@ Zurfur acts as the merchant of record — clients pay the platform, the platform
 - **No multi-currency support** initially
 - **Refunds for installment plans** are complex — partial completion, partial payment, partial refund calculations
 - **Payout timing:** Stripe standard payouts take 2-7 business days. Orgs may want instant payouts (Stripe Instant Payouts, additional cost).
-- **No PayPal integration** initially despite design doc mentioning it — Stripe Connect covers most use cases
+- **No PayPal integration** initially — Stripe Connect is the sole payment processor for MVP
 - **Org payment account ownership transfer** not addressed — what happens if org ownership changes mid-commission

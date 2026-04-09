@@ -4,7 +4,7 @@
 
 ## Overview
 
-Internal tooling for the team running Zurfur. Admin roles live on users (not orgs) — admins are platform operators, not org members. Supports separate user suspensions and org suspensions, plugin org moderation (disable feed subscriptions, delist from search), AT Protocol admin operations (PDS takedowns, record labeling), financial auditing, a centralized moderation queue (including feed posts as actionable content), and system health monitoring. Required before public launch but not before private beta.
+Internal tooling for the team running Zurfur. Admin roles live on users (not orgs) — admins are platform operators, not org members. Supports separate user suspensions and org suspensions, plugin org moderation (disable feed subscriptions, delist from search), AT Protocol admin operations (PDS takedowns, record labeling), financial auditing, a centralized moderation queue (including feed items as actionable content), and system health monitoring. Required before public launch but not before private beta.
 
 ## Sub-features
 
@@ -17,8 +17,8 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 - **User suspensions:** `user_suspensions` table: `id`, `user_id`, `reason`, `suspended_by`, `suspended_at`, `expires_at` (null = permanent)
 - **Org suspensions:** `org_suspensions` table: `id`, `org_id`, `reason`, `suspended_by`, `suspended_at`, `expires_at` (null = permanent)
 - User suspension effects: blocked from login, content hidden from public, active commissions flagged
-- Org suspension effects: org profile hidden, commission queue closed, feed posts hidden, members notified, active commissions flagged for review
-- `admin_audit_log` table: `id`, `admin_id`, `action`, `target_type` (user/org/plugin_org/feed_post/pds_record), `target_id`, `details_json`, `created_at` — tracks all admin actions for accountability
+- Org suspension effects: org profile hidden, commission queue closed, feed items hidden, members notified, active commissions flagged for review
+- `admin_audit_log` table: `id`, `admin_id`, `action`, `target_type` (user/org/plugin_org/feed_item/pds_record), `target_id`, `details_json`, `created_at` — tracks all admin actions for accountability
 - Admin API (role-gated):
   - Users: `GET /admin/users`, `POST /admin/users/:id/suspend`, `POST /admin/users/:id/unsuspend`, `GET /admin/users/:id/activity`
   - Orgs: `GET /admin/orgs`, `POST /admin/orgs/:id/suspend`, `POST /admin/orgs/:id/unsuspend`, `GET /admin/orgs/:id/activity`
@@ -38,11 +38,11 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 
 ### 13.3 Moderation Queue
 
-**What it is:** Centralized queue for reviewing reports (Feature 11), disputes (Feature 12), content flags, and feed posts. Feed posts are actionable content in the moderation queue.
+**What it is:** Centralized queue for reviewing reports (Feature 11), disputes (Feature 12), content flags, and feed items. Feed posts are actionable content in the moderation queue.
 
 **Implementation approach:**
 - Unified view joining: `reports`, `disputes`, `takedown_requests`, `content_flags`
-- **Actionable content types:** user profiles, org profiles, commission cards, feed posts, plugin orgs
+- **Actionable content types:** user profiles, org profiles, commission cards, feed items, plugin orgs
 - Priority sorting: DMCA/takedowns > safety reports > content flags > quality disputes
 - Assignment: moderators claim items from the queue
 - `moderation_assignments` table: `moderation_item_type`, `moderation_item_id`, `moderator_id`, `claimed_at`, `resolved_at`
@@ -93,7 +93,7 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
   - WebSocket: active connections, messages/sec
   - Database: pool utilization, query latency, connection count
   - PDS: sync lag, record count, takedown queue depth
-  - Business: active commissions, daily signups, payment volume, feed post volume
+  - Business: active commissions, daily signups, payment volume, feed item volume
 - Middleware: Axum layer that records request duration and status
 - Infrastructure: PostgreSQL pg_stat, connection pool metrics from SQLx
 - Visualization: Grafana dashboards (external, not built into Zurfur)
@@ -107,7 +107,7 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 - [Feature 4](../04-financial-gateway/README.md) — transaction data to audit (for 13.2)
 - [Feature 11](../11-content-moderation/README.md) — reports and flags to review (for 13.3)
 - [Feature 12](../12-dispute-resolution/README.md) — disputes to arbitrate (for 13.3)
-- Feed infrastructure — feed posts are actionable content in moderation queue
+- Feed infrastructure — feed items are actionable content in moderation queue
 
 ### Enables (unlocked after this is built)
 - Operational capability — **required before public launch**
@@ -121,12 +121,12 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 - Role-based middleware (reject non-admin requests to /admin/* routes)
 - `user_suspensions` table + suspend/unsuspend API
 - `org_suspensions` table + suspend/unsuspend API
-- `admin_audit_log` table — log every admin action with target_type support for users, orgs, feed posts, PDS records
+- `admin_audit_log` table — log every admin action with target_type support for users, orgs, feed items, PDS records
 - Basic user and org listing and activity views
 - Crates: domain (role enum, suspension entities), persistence, application (admin use cases), api (admin routes + role middleware)
 
 ### Phase 2: Moderation Queue, Plugin Moderation & Financial Dashboard
-- Moderation queue: unified view including feed posts as actionable content, claim/resolve workflow
+- Moderation queue: unified view including feed items as actionable content, claim/resolve workflow
 - `moderation_assignments` table
 - Priority sorting logic
 - Plugin org moderation actions (delist, disable subscriptions, suspend, revoke)

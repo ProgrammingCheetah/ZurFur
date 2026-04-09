@@ -26,7 +26,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 
 **Implementation approach:**
 - Commission gets a system feed auto-created on commission creation, attached via `entity_feeds` (`entity_type = 'commission'`)
-- `commission_events` are feed items in this feed, each with an `event_type` enum: `Created`, `StateChanged`, `CommentAdded`, `FileUploaded`, `InvoiceAttached`, `PaymentReceived`, `DeadlineSet`, `DeadlineMissed`, `ParticipantAdded`, `Completed`, `Cancelled`, `DisputeOpened`
+- `commission_events` are feed items in this feed, each with an `event_type` enum: `Created`, `StateChanged`, `CommentAdded`, `FileUploaded`, `InvoiceAttached`, `PaymentReceived`, `DeadlineSet`, `DeadlineMissed`, `ParticipantAdded`, `Completed`, `Cancelled`, `DisputeOpened`. Note: `Cancelled` is a terminal event, not an internal state. A cancelled commission transitions to `Completed` with a `Cancelled` event in its feed. The `Completed` state encompasses both successful delivery and cancellation -- the event history distinguishes them.
 - Feed items carry structured `payload_json` for event-specific data
 - Current state in `commissions` table is a materialized cache derived from events
 - Plugin orgs can subscribe to the commission feed to react to events (see Feature 6)
@@ -162,7 +162,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - Pipeline templates cover 80% of artist workflows; custom slot configuration handles the rest
 - The `commissions` materialized state is kept in sync via application-level logic, not database triggers
 - Artist-side participants are always orgs; client-side participants are always users
-- Commission data is private-tier (PostgreSQL only). Completed commissions can be optionally published to PDS as portfolio records
+- Commission data is private-tier (PostgreSQL only). Completed commissions can be optionally published to PDS as gallery records (the gallery feed serves as the portfolio)
 
 ## Shortcomings & Known Limitations
 

@@ -16,8 +16,8 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 - Notifications are posts in the user's private notification feed via `entity_feeds`
 - Each notification post has: `type` (commission_update/payment/social/system/message), `title`, `body`, `data_json` (structured payload for deep linking), `read_at`
 - API: `GET /me/feeds/notifications` (paginated, filterable by type), `PATCH /notifications/:id/read`, `POST /notifications/read-all`
-- Real-time delivery: WebSocket connection per authenticated user, push new feed posts as they're created
-- Unread count: count of notification feed posts where `read_at IS NULL`
+- Real-time delivery: WebSocket connection per authenticated user, push new feed items as they're created
+- Unread count: count of notification feed items where `read_at IS NULL`
 - Org-level notifications: when an event targets an org (e.g., new commission request), distribute to relevant org members based on their roles
 
 ### 9.2 Push Notifications
@@ -38,14 +38,14 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 **Implementation approach:**
 - `notification_preferences` table: `user_id`, `org_id` (nullable — null for personal prefs, org_id for org-specific prefs), `channel` (push/email/in_app), `category`, `frequency` (immediate/daily/weekly/off)
 - Users can configure notification preferences per org membership (e.g., mute notifications for one org but not another)
-- Background job: daily/weekly, aggregate unread notification feed posts per user per preference, send email
+- Background job: daily/weekly, aggregate unread notification feed items per user per preference, send email
 - Email provider: SendGrid, Postmark, or AWS SES
 - Email templates: HTML templates with platform branding
 - Unsubscribe link in every email (CAN-SPAM compliance)
 
 ### 9.4 Webhook Notifications (Legacy Path)
 
-**What it is:** Developer-facing API for external integrations to receive platform events. Largely superseded by feed subscriptions for plugin orgs — plugin orgs subscribe to feeds directly and react to feed posts. Webhooks remain for external systems that cannot be modeled as orgs.
+**What it is:** Developer-facing API for external integrations to receive platform events. Largely superseded by feed subscriptions for plugin orgs — plugin orgs subscribe to feeds directly and react to feed items. Webhooks remain for external systems that cannot be modeled as orgs.
 
 **Implementation approach:**
 - `webhook_subscriptions` table: `user_id`, `url`, `event_types` (array), `secret` (for HMAC signing), `is_active`, `created_at`

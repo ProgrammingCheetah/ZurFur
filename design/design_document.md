@@ -29,7 +29,7 @@
 
 ### 1.2 Elevator Pitch
 
-Zurfur is a decentralized art commission platform specifically tailored for the furry community. Built on the AT Protocol, it acts as a secure, feature-rich bridge between artists and clients while ensuring true data sovereignty. Unlike traditional walled-garden platforms, Zurfur guarantees that users own their portfolios, commission histories, and reputations.
+Zurfur is a decentralized art commission platform specifically tailored for the furry community. Built on the AT Protocol, it acts as a secure, feature-rich bridge between artists and clients while ensuring true data sovereignty. Unlike traditional walled-garden platforms, Zurfur guarantees that users own their galleries (the gallery feed serves as the portfolio), commission histories, and reputations.
 
 ### 1.3 Core Concept
 
@@ -47,7 +47,7 @@ The primary goal of Zurfur is to facilitate the art commission process without l
 - **Data-Driven Strategy:** By surfacing transparent, month-to-month statistics, Zurfur empowers both artists and clients to make safe, strategic decisions based on historical data rather than guesswork.
 - **Data Sovereignty First:** Users retain absolute control over their information. The platform serves the user, not the other way around. **(v2)** Public identity and social data live on the user's AT Protocol PDS; private transaction data stays in Zurfur's database. Users can leave and take their identity with them.
 - **Protocol-Based Architecture:** By leveraging the AT Protocol (the technology powering Bluesky), Zurfur prioritizes interoperability, portability, and resilience.
-- **(v2) Feed-Centric Content Model:** All content flows through feeds. Galleries, portfolios, activity streams, and notifications are all feed views. The frontend is fundamentally a feed renderer with specialized filters. This unifies content delivery and simplifies the plugin model.
+- **(v2) Feed-Centric Content Model:** All content flows through feeds. Galleries, activity streams, and notifications are all feed views. The frontend is fundamentally a feed renderer with specialized filters. This unifies content delivery and simplifies the plugin model.
 - **(v2) Organization-Centric Identity:** Every capability — roles, titles, bios, permissions, public profiles — is expressed through organization membership. The user entity is atomic identity only. This eliminates special-casing between solo creators and studios.
 
 ---
@@ -70,7 +70,7 @@ This section details the granular feature modules that make up the Zurfur platfo
 - **2.3 Organization Membership & Roles (v2):** Users can own and belong to many organizations. Roles (Artist, Moderator, Manager), titles ("Lead Character Designer"), and permissions are per-membership, not per-user. "Artist" is an org role, not a user flag. Solo creators and multi-member studios use the exact same org model with no special casing.
 - **2.4 Profile Customization (The Toyhouse Model):** Users have deep control over their org profile and character pages (colors, CSS, layout). Customization is stored at the org level, since the org is the profile.
 - **2.5 The "Universal Layout" Safety Fallback:** A mandatory, highly visible toggle that instantly strips all custom user code from a profile, reverting it to the platform's clean, safe, and accessible default theme.
-- **2.6 SFW/NSFW Viewer Control:** A strict, viewer-controlled toggle (defaulting to SFW) that filters character galleries, portfolios, and active commissions. Content rating is a tag on feeds and feed items.
+- **2.6 SFW/NSFW Viewer Control:** A strict, viewer-controlled toggle (defaulting to SFW) that filters character galleries and active commissions. Content rating is a tag on feeds and feed items.
 - **2.7 Character Repositories:** Dedicated entities for original characters, storing reference sheets, hex codes, species info, and linked galleries. **(v2)** Each character has its own feed. "Character gallery" is a feed view filtered by that character's feed. Ref sheets, art, and updates all flow through the character's feed.
 
 ### Feature 3: The Headless Commission Engine (The "Card") (v2 — Shell + Add-ons)
@@ -82,6 +82,8 @@ This section details the granular feature modules that make up the Zurfur platfo
 - **3.5 Add-on Slots (v2):** Commission cards are shells with add-on slots. Server-side add-ons are feed participants that react to commission events and post items back. Client-side add-ons render in sandboxed iframes within the card UI. This is the mechanism for invoicing, TOS, chat, and file management — they are all add-ons, not core card features.
 - **3.6 Deadline & Time Tracking:** Automated triggers that flag cards as "Late" or measure turnaround analytics based on start and end timestamps. Implemented as a system add-on.
 - **3.7 Multi-Party Collaboration:** Cards support many-to-many relationships via org memberships, allowing multiple artists (org members) to collaborate on a piece, or multiple users to co-commission a group piece, with shared visibility for all involved.
+
+> **Note:** This diagram illustrates the conceptual user-visible workflow as rendered by a board projection. The commission's internal state has only four values: `Blocked`, `InProgress`, `AwaitingInput`, `Completed`. Board columns (Inbox, Sketching, etc.) are projection-level concepts, not internal states. See [Feature 3](features/03-commission-engine/README.md) for the canonical state model.
 
 ```mermaid
 stateDiagram-v2
@@ -223,7 +225,9 @@ graph TD
 - **13.1 User Management Dashboard:** Internal tooling to view, suspend, or ban accounts, audit user activity, and manage role escalations. **(v2)** Operates on both Users and Organizations, since all public-facing state lives on orgs.
 - **13.2 Financial Auditing:** Transaction logs, payout tracking, fee reconciliation, and fraud detection dashboards for the operations team.
 - **13.3 Moderation Queue:** A centralized queue for reviewing reported content, active disputes, flagged accounts, and DMCA claims. Supports priority sorting and assignment to moderators.
-- **13.4 System Health & Metrics:** API performance monitoring, error rate tracking, active user counts, and infrastructure health dashboards.
+- **13.4 Plugin Org Moderation (v2):** Tools to review, disable, or delist plugin orgs. Revoke feed subscriptions and write permissions for abusive plugins.
+- **13.5 AT Protocol Admin Operations (v2):** PDS takedown requests, record labeling, and AT Protocol network moderation tooling.
+- **13.6 System Health & Metrics:** API performance monitoring, error rate tracking, active user counts, and infrastructure health dashboards.
 
 ---
 
@@ -399,7 +403,7 @@ Data lives in two tiers, separated by privacy:
 
 | Tier | Storage | Data | Examples |
 |------|---------|------|----------|
-| **Public** | AT Protocol PDS (user's own data server) | Identity, social graph, public profiles, org memberships, portfolios | Org profiles, character ref sheets, gallery posts, follow relationships |
+| **Public** | AT Protocol PDS (user's own data server) | Identity, social graph, public profiles, org memberships, galleries | Org profiles, character ref sheets, gallery posts, follow relationships |
 | **Private** | Zurfur PostgreSQL | Transactions, financial data, private communications, disputes | Commission internals, invoices, payments, chat messages, dispute evidence |
 
 The repository trait abstraction in the domain layer enables this split cleanly:
@@ -460,7 +464,7 @@ Users skip standard registration. They log in via existing Bluesky credentials (
 1. A User entity is created (atomic identity: DID + handle).
 2. A personal Organization is created automatically (the user's public profile).
 3. The user is added as Owner of their personal org.
-4. System feeds are created on the personal org (updates, gallery).
+4. System feeds are created on the personal org (updates, gallery, activity).
 5. The user lands on their org profile, ready to set bio, tags, and availability.
 
 ### 3.2 The Critical Route (MVP Core Sequence)
@@ -542,7 +546,7 @@ Efficiency is paramount. The interface is engineered to be entirely navigable wi
 
 | View | Feed Source | Item Template | Filter |
 |------|-------------|---------------|--------|
-| Gallery (profile + portfolio) | Org's gallery feed | Image grid / Showcase | content_rating, tags, featured |
+| Gallery (profile) | Org's gallery feed | Image grid / Showcase | content_rating, tags, featured |
 | Character page | Character's feed | Ref sheet + art grid | character_id |
 | Commission history | Commission's event feed | Timeline | event_type |
 | Notification center | User's notification feed | Alert list | unread, category |
@@ -562,7 +566,7 @@ The frontend is developed with a **mobile-first** approach, ensuring the UI is d
 
 - **Installable Experience:** Users can add Zurfur to their home screen on any device without app store distribution — bypassing platform gatekeeping that often restricts NSFW-capable applications.
 - **Push Notifications:** Service worker-powered push notifications for commission updates, payments, and messages (directly supporting Feature 9).
-- **Offline Resilience:** Cached assets and read-only offline access to portfolios, character sheets, and commission history via service worker strategies.
+- **Offline Resilience:** Cached assets and read-only offline access to galleries, character sheets, and commission history via service worker strategies.
 - **Responsive Layouts:** Touch-first interaction patterns (swipe to move cards, pull-to-refresh) that gracefully enhance to keyboard-first power-user controls on desktop.
 
 > **Note:** The Rust backend is fully headless and API-first. It is entirely agnostic to the client consuming it. The PWA frontend is simply one client — third-party apps, plugin UIs (sandboxed iframes), and native mobile apps can all consume the same API.

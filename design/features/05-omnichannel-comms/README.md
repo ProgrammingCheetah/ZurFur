@@ -43,8 +43,7 @@ Each Commission Card has a chat thread implemented as a feed attached to the com
 - [Feature 3.3](../03-commission-engine/README.md) — add-on slot mechanism for chat rendering
 
 ### Enables (unlocked after this is built)
-- [Feature 6](../06-plugin-ecosystem/README.md) — bridge plugins are plugin orgs subscribing to chat feeds
-- [Feature 9](../09-notification-system/README.md) — new message notifications
+- Plugin orgs from [Feature 6](../06-plugin-ecosystem/README.md) provide bridge implementations for 5.2.
 
 ## Implementation Phases
 
