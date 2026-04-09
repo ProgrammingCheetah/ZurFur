@@ -190,8 +190,7 @@ fn map_login_error(e: LoginError) -> (StatusCode, String) {
         LoginError::PdsNotFound => (StatusCode::NOT_FOUND, "No PDS found for account".into()),
         LoginError::OAuth(inner) => {
             eprintln!("OAuth error: {inner}");
-            // TODO: hide details in production. Exposed in dev for debugging.
-            (StatusCode::BAD_GATEWAY, format!("OAuth error: {inner}"))
+            (StatusCode::BAD_GATEWAY, "OAuth provider error".into())
         }
         LoginError::InvalidState => {
             (StatusCode::BAD_REQUEST, "Invalid or expired session state".into())

@@ -196,9 +196,16 @@ impl OrganizationService {
         user_id: Uuid,
         slug: &str,
     ) -> Result<Organization, OrgServiceError> {
+        // Validate the derived slug; fall back to a UUID-based slug if it's
+        // invalid or reserved (e.g., handles like "admin.bsky.social").
+        let effective_slug = match Self::validate_slug(slug) {
+            Ok(()) => slug.to_owned(),
+            Err(_) => format!("user-{}", &Uuid::new_v4().to_string()[..8]),
+        };
+
         let org = self
             .org_repo
-            .create(slug, None, true, user_id)
+            .create(&effective_slug, None, true, user_id)
             .await
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
 

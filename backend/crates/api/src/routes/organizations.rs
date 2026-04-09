@@ -119,7 +119,7 @@ async fn update_org(
     Json(body): Json<UpdateOrgRequest>,
 ) -> Result<Json<OrgResponse>, (StatusCode, String)> {
     let user_id = parse_user_id(&claims.sub)?;
-    let org_id = parse_uuid(&id_or_slug)?;
+    let org_id = resolve_org_id(&state, &id_or_slug).await?;
 
     let org = state
         .org
@@ -137,7 +137,7 @@ async fn delete_org(
     AuthUser(claims): AuthUser,
 ) -> Result<StatusCode, (StatusCode, String)> {
     let user_id = parse_user_id(&claims.sub)?;
-    let org_id = parse_uuid(&id_or_slug)?;
+    let org_id = resolve_org_id(&state, &id_or_slug).await?;
 
     state
         .org
@@ -366,4 +366,22 @@ fn parse_user_id(sub: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
 fn parse_uuid(s: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
     s.parse()
         .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid UUID: {s}")))
+}
+
+/// Resolve an org ID from either a UUID string or a slug.
+/// Tries UUID parse first; falls back to slug lookup.
+async fn resolve_org_id(
+    state: &SharedState,
+    id_or_slug: &str,
+) -> Result<uuid::Uuid, (StatusCode, String)> {
+    if let Ok(id) = id_or_slug.parse::<uuid::Uuid>() {
+        Ok(id)
+    } else {
+        let detail = state
+            .org
+            .get_org(id_or_slug)
+            .await
+            .map_err(map_org_error)?;
+        Ok(detail.org.id)
+    }
 }
