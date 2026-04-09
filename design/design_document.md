@@ -75,15 +75,15 @@ This section details the granular feature modules that make up the Zurfur platfo
 
 ### Feature 3: The Headless Commission Engine (The "Card") (v2 — Shell + Add-ons)
 
-- **3.1 Commission as Minimal Shell (v2):** The commission entity is minimal: `id`, `internal_status`, and a feed. Everything else — invoices, TOS acceptance, chat threads, file attachments, milestone tracking — attaches via add-on slots rather than being baked into the commission schema. This replaces the v1 monolithic card model.
-- **3.2 Internal State Only (v2):** Commissions have internal states (`blocked`, `in_progress`, `awaiting_input`, `completed`, etc.) that represent actual workflow position. These are not displayed directly — visual presentation is handled by boards.
+- **3.1 Commission as Minimal Shell (v2):** The commission entity is minimal: `id`, `current_state (artist-defined via pipeline template)`, and a feed. Everything else — invoices, TOS acceptance, chat threads, file attachments, milestone tracking — attaches via add-on slots rather than being baked into the commission schema. This replaces the v1 monolithic card model.
+- **3.2 Artist-Defined States (v2):** Commissions have artist-defined states (e.g., 'sketching', 'coloring', 'review', 'delivered') configured per pipeline template. The system only distinguishes active vs terminal states. These are not displayed directly — visual presentation is handled by boards.
 - **3.3 Boards as Projections (v2):** Kanban boards and pipeline views are separate entities that map commissions to columns via configurable rules. The same commission can appear on multiple boards with different column placements. An artist's "Work Queue" board and a client's "My Commissions" board are both projections over the same underlying commission data.
 - **3.4 Event-Driven History:** Every action (comment, payment, file upload, state change) is an "Event" appended to the commission's feed, serving as an immutable history log and single source of truth for dispute resolution.
 - **3.5 Add-on Slots (v2):** Commission cards are shells with add-on slots. Server-side add-ons are feed participants that react to commission events and post items back. Client-side add-ons render in sandboxed iframes within the card UI. This is the mechanism for invoicing, TOS, chat, and file management — they are all add-ons, not core card features.
 - **3.6 Deadline & Time Tracking:** Automated triggers that flag cards as "Late" or measure turnaround analytics based on start and end timestamps. Implemented as a system add-on.
 - **3.7 Multi-Party Collaboration:** Cards support many-to-many relationships via org memberships, allowing multiple artists (org members) to collaborate on a piece, or multiple users to co-commission a group piece, with shared visibility for all involved.
 
-> **Note:** This diagram illustrates the conceptual user-visible workflow as rendered by a board projection. The commission's internal state has only four values: `Blocked`, `InProgress`, `AwaitingInput`, `Completed`. Board columns (Inbox, Sketching, etc.) are projection-level concepts, not internal states. See [Feature 3](features/03-commission-engine/README.md) for the canonical state model.
+> **Note:** This diagram illustrates a conceptual workflow as one artist might configure it. Commission states are **artist-defined per pipeline template**, not system constants. The system only tracks whether a commission is active or terminal. See [Feature 3](features/03-commission-engine/README.md) for the canonical model.
 
 ```mermaid
 stateDiagram-v2
@@ -243,8 +243,8 @@ The entire Zurfur domain is built on five root aggregates. Every feature decompo
 |-----------|---------------|-------------------|
 | **User** | Atomic identity. `{id, did, handle, email, username}`. Nothing else. | Owns orgs via memberships. |
 | **Organization** | All public-facing state. Profiles, bios, roles, permissions, commission availability. Personal orgs = user profiles. Team orgs = studios/groups. Plugin orgs = installed plugins. | Has members (users), has feeds, has tags. |
-| **Feed** | Universal content container. Every piece of content flows through a feed. Galleries, activity streams, notifications, commission histories. | Attached to entities via `entity_feeds` (polymorphic). Has feed items. Has subscribers. |
-| **Commission** | Minimal shell: `{id, internal_status, feed}`. All capabilities attach via add-ons. | Has a feed. Participants are orgs. Add-ons are feed participants. |
+| **Feed** | Universal content container. Feed items contain feed elements (text, images, files, events, embeds). Galleries, activity streams, notifications, commission histories. | Attached to entities via `entity_feeds` (polymorphic). Has feed items. Has subscribers. |
+| **Commission** | Minimal shell: `{id, pipeline_template_id, current_state}`. States are artist-defined per pipeline template, not a system enum. Add-ons attach via slots. | Has a feed. Participants are orgs. Add-ons are feed participants. |
 | **Tag** | Reusable descriptive attribute. Species, art style, content rating, medium, body type. | Attached to any entity. No free-text columns for descriptive data — tags or bio only. |
 
 ```mermaid
@@ -288,7 +288,7 @@ Every user gets a **personal organization** on signup. This personal org IS the 
 
 - **Bio, avatar, banner** — stored on the personal org's profile
 - **"Artist" status** — an org role, not a user flag. A user is an "artist" when their personal org (or any org they belong to) has the Artist role on their membership.
-- **Commission availability** — an org-level setting
+- **Commission availability** — expressed through tags on the org (e.g., `status:open`)
 - **Focus tags** (species, art style, medium) — tags on the org
 - **Content rating** — an org-level setting
 
@@ -338,7 +338,8 @@ Feed taxonomy:
 |----------|-------------|
 | `feed_type` | `system` or `custom`. Determines deletion protection only — system feeds cannot be deleted. |
 | `entity_feeds` | Polymorphic join: `(entity_type, entity_id, feed_id)`. Any entity can have multiple feeds. |
-| Feed items | Individual entries in a feed. Typed, timestamped, authored. |
+| Feed items | Container for feed elements. Timestamped, authored. Each item has one or more elements. |
+| Feed elements | Individual content pieces within a feed item. Typed (text/image/file/event/embed). A single feed item can have multiple elements. |
 | Subscribers | Orgs that subscribe to a feed. Subscription = follow/watch. |
 
 **Key insight: the frontend is a feed renderer.** Gallery views, activity streams, notification centers, and commission histories are all the same component — a feed renderer with different filters and item templates.
@@ -453,6 +454,8 @@ Descriptive attributes are tags, not database columns:
 
 This keeps the schema stable as new descriptive dimensions are added — no migrations needed for "we want to filter by fur pattern now."
 
+Commission availability (open/closed/waitlist) is also a tag on the org — not a dedicated column.
+
 ---
 
 ## Part 3: User Journey & Workflow
@@ -546,7 +549,7 @@ Efficiency is paramount. The interface is engineered to be entirely navigable wi
 
 | View | Feed Source | Item Template | Filter |
 |------|-------------|---------------|--------|
-| Gallery (profile) | Org's gallery feed | Image grid / Showcase | content_rating, tags, featured |
+| Gallery (profile + character) | Org's/character's gallery feed | Image grid (renders feed elements) | content_rating, tags |
 | Character page | Character's feed | Ref sheet + art grid | character_id |
 | Commission history | Commission's event feed | Timeline | event_type |
 | Notification center | User's notification feed | Alert list | unread, category |

@@ -10,14 +10,15 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 
 ### 3.1 Headless Commission State
 
-**What it is:** Each commission has internal state only. The state is not tied to any visual representation. States are simple and universal: `blocked`, `in_progress`, `awaiting_input`, `completed`. Custom pipeline stages from the old model are replaced by this minimal state set — visual workflow stages live in board projections (3.4).
+**What it is:** Each commission has internal state only. The state is not tied to any visual representation. States are artist-defined per pipeline template (free-text, e.g., 'inbox', 'sketching', 'lineart', 'coloring', 'review', 'delivered'). The system does not enforce a fixed set of states.
 
 **Implementation approach:**
 - **Domain model:** `Commission` aggregate root
-- **Internal state enum:** `Blocked`, `InProgress`, `AwaitingInput`, `Completed`
-- **Tables:** `commissions` (id, org_id, title, description, internal_state, created_at, completed_at, deleted_at)
-- State transitions are validated: e.g., `Completed` cannot transition back to `InProgress` without a compensating event
+- **Tables:** `commissions` table: `id`, `org_id`, `pipeline_template_id` (FK pipeline_templates), `current_state` (TEXT — validated against template), `title`, `description`, `created_at`, `completed_at`, `deleted_at`
+- Pipeline templates define: `valid_states` (array of strings), `transitions` (map of from→to), `terminal_states` (subset of valid_states). The system only distinguishes active vs terminal for payment release, deadline tracking, and dispute eligibility.
+- State transitions are validated against the pipeline template's `transitions` map
 - All state mutations emit events to the commission's feed (see 3.2)
+- The commission entity has no feed field. Feeds are attached via `entity_feeds` (entity_type='commission') — same decoupled pattern as all other entities.
 - The commission itself knows nothing about boards, columns, or visual layout
 
 ### 3.2 Commission Feed (Event History)
@@ -26,7 +27,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 
 **Implementation approach:**
 - Commission gets a system feed auto-created on commission creation, attached via `entity_feeds` (`entity_type = 'commission'`)
-- `commission_events` are feed items in this feed, each with an `event_type` enum: `Created`, `StateChanged`, `CommentAdded`, `FileUploaded`, `InvoiceAttached`, `PaymentReceived`, `DeadlineSet`, `DeadlineMissed`, `ParticipantAdded`, `Completed`, `Cancelled`, `DisputeOpened`. Note: `Cancelled` is a terminal event, not an internal state. A cancelled commission transitions to `Completed` with a `Cancelled` event in its feed. The `Completed` state encompasses both successful delivery and cancellation -- the event history distinguishes them.
+- `commission_events` are feed items in this feed, each with an `event_type` enum: `Created`, `StateChanged`, `CommentAdded`, `FileUploaded`, `InvoiceAttached`, `PaymentReceived`, `DeadlineSet`, `DeadlineMissed`, `ParticipantAdded`, `Completed`, `Cancelled`, `DisputeOpened`. Cancellation is a terminal state defined in the pipeline template, not a special system event. An artist who wants cancellation adds 'cancelled' to their template's `terminal_states`.
 - Feed items carry structured `payload_json` for event-specific data
 - Current state in `commissions` table is a materialized cache derived from events
 - Plugin orgs can subscribe to the commission feed to react to events (see Feature 6)
@@ -94,7 +95,8 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 **What it is:** Reusable templates that define default slots, board column mappings, and intake form structure for new commissions. Templates belong to orgs (not users).
 
 **Implementation approach:**
-- `pipeline_templates` table: `id`, `org_id`, `name`, `default_slots_json`, `default_board_columns_json`, `intake_form_json`, `is_default`, `created_at`
+- `pipeline_templates` table: `id`, `org_id`, `name`, `valid_states_json` (array of state names), `transitions_json` (map: state → allowed next states), `terminal_states_json` (array — subset of valid_states), `default_slots_json`, `default_board_columns_json`, `intake_form_json`, `is_default`, `created_at`
+- When a commission is created from a template, `current_state` is set to the first state in `valid_states_json`. State transitions are validated against `transitions_json`.
 - When a commission is created from a template, it auto-creates the configured slots and adds the card to the org's default board with the appropriate column mapping
 - Default template provided for new orgs with artist role
 - API: `POST /orgs/:id/pipeline-templates`, `GET /orgs/:id/pipeline-templates`
@@ -155,7 +157,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 
 ## Assumptions
 
-- Four internal states (`blocked`, `in_progress`, `awaiting_input`, `completed`) cover the core lifecycle; visual workflow granularity lives in board projections
+- Artist-defined states via pipeline templates cover all workflow variations. The system only needs to know active vs terminal.
 - Boards are lightweight projections — losing a board does not lose commission data
 - Add-on slots use the same feed subscription mechanism as plugin orgs
 - File storage infrastructure (S3) exists when Phase 2 begins

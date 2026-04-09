@@ -14,8 +14,8 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 
 **Implementation approach:**
 - Subscriptions are feed subscriptions via the `entity_feeds` system — subscribing to an org's commissions feed
-- When an org publishes an "open for commissions" post to their feed, all subscribers are notified
-- "Open Now" is a feed view: a projection that filters for orgs whose latest feed item indicates open status
+- When an org updates their availability tags (e.g., adds `status:open` tag) and publishes an availability post to their commissions feed, all subscribers are notified
+- "Open Now" is a feed view: a projection that filters for orgs with the `status:open` tag. Commission availability is a tag on the org, not a database column.
 - Emit notification events → delivered via Feature 9 (in-app, push, email)
 - API: `POST /orgs/:id/feeds/commissions/subscribe`, `DELETE /orgs/:id/feeds/commissions/subscribe`, `GET /me/feed-subscriptions`
 
@@ -67,8 +67,8 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 
 ### Phase 1: Feed Subscriptions & XP
 - Feed subscription mechanism via `entity_feeds` infrastructure
-- "Open Now" as a feed view (projection over org commission feeds)
-- Notification emission on org feed status posts (depends on Feature 9)
+- "Open Now" as a feed view (filters for orgs with `status:open` tag)
+- Notification emission on org availability tag changes and feed status posts (depends on Feature 9)
 - `user_xp`, `org_xp`, `xp_events` tables
 - XP award logic triggered by commission lifecycle events, accruing to both user and org
 - Level calculation (XP thresholds per level)

@@ -66,10 +66,8 @@ The foundational authentication and social layer of Zurfur. Users authenticate e
 
 ### Enables (unlocked after this is built)
 - [Feature 2](../02-identity-profile/README.md) — profiles require authenticated users
-- [Feature 3](../03-commission-engine/README.md) — commissions require authenticated users
-- [Feature 8](../08-search-discovery/README.md) — search requires users to exist
-- [Feature 9](../09-notification-system/README.md) — notifications require knowing who to notify
-- Essentially every other feature depends on 1.1
+
+> **Note:** All other features depend on authentication transitively through Feature 2. Feature 1.1 is the root of the entire dependency tree.
 
 ## Implementation Phases
 

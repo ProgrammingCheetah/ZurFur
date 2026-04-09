@@ -14,11 +14,13 @@ Manages user identity, org membership, profile customization, content rating con
 
 **Implementation approach:**
 - `users` table remains minimal: `id`, `did`, `handle`, `email`, `username`, `created_at`, `deleted_at`
-- `orgs` table: `id`, `owner_id` (FK users), `slug`, `display_name`, `bio`, `avatar_url`, `is_personal` (bool), `created_at`, `deleted_at`. Note: `owner_id` is a denormalized convenience for personal org lookup. The authoritative ownership relationship is in `org_members` where `role = 'owner'`. Both must stay in sync.
-- `org_members` table: `org_id`, `user_id`, `role` (enum: owner/artist/collaborator/member), `title` (free-text), `joined_at`
+- `orgs` table: `id`, `slug`, `display_name` (nullable — NULL for personal orgs, resolved from owner's handle), `bio`, `avatar_url`, `is_personal` (bool), `created_at`, `updated_at`, `deleted_at`. Ownership is determined by `org_members` role, not a dedicated `owner_id` column.
+- `org_members` table: `id`, `org_id`, `user_id`, `role` (TEXT — free-form, but system recognizes owner/admin/mod/member for permission defaults), `title` (free-text display), `is_owner` (bool — convenience flag, stays in sync with role), `permissions` (BIGINT bitfield: MANAGE_PROFILE, MANAGE_MEMBERS, MANAGE_COMMISSIONS, CHAT, MANAGE_TOS, MANAGE_PAYMENTS; ALL = u64::MAX for owners), `joined_at`, `updated_at`
+- `default_roles` table: `id`, `name` (owner/admin/mod/member), `default_permissions` (BIGINT), `hierarchy_level` (INT — owner=0 highest, member=3 lowest). System roles set initial permissions on assignment; roles can be customized per-member. Custom role names ("Lead Colorist") are just display strings.
 - On user creation (first login), auto-create a personal org (`is_personal = true`) and add the user as owner
-- `commission_status` (open/closed/waitlist) lives on the org, not a separate artist profile
+- Commission availability is expressed through tags on the org (e.g., `status:open`), not a dedicated column.
 - No `is_artist` column. No `artist_profiles` table. Artist is a role on `org_members`.
+- Permission hierarchy: owners can modify anyone, admins can modify mods and members, mods can modify members. Roles from `default_roles` set initial permissions; individual member permissions can be overridden.
 - Endpoint: `POST /orgs/:id/members/:user_id/role` — assign/change role
 - Personal org slug defaults to the user's AT Protocol handle
 
@@ -30,25 +32,27 @@ Manages user identity, org membership, profile customization, content rating con
 - `onboarding_role` enum: `artist`, `crafter_maker`, `commissioner_client`, `coder_developer`
 - On first login, if the user has no completed onboarding, redirect to onboarding screen
 - `POST /onboarding` — accepts `{ role, title? }`, sets `org_members.role` on personal org, optionally sets `org_members.title`
-- `users` table gets `onboarding_completed_at` (nullable timestamp) — null means onboarding pending
+- `users` table gets `onboarding_completed_at` (nullable timestamp) — null means onboarding pending. This is a platform lifecycle field, not a feature flag.
 - Role can be changed later via org settings; onboarding just sets the initial value
 - If role is `artist` or `crafter_maker`, the personal org gets a `commissions` default feed created (see 2.6)
-- Onboarding role maps to org_members role: `artist` and `crafter_maker` -> `artist` role, `commissioner_client` and `coder_developer` -> `member` role. The onboarding selection determines default feed creation (artists get `commissions` feed) but does not restrict capabilities.
+- Onboarding role selection sets the `org_members.role` from the `default_roles` table: `artist` and `crafter_maker` → `artist` default role, `commissioner_client` and `coder_developer` → `member` default role. Custom roles can be set later. The onboarding selection determines default feed creation (artist role gets `commissions` feed) but does not restrict capabilities.
 
 ### 2.3 Default Feeds per Org
 
 **What it is:** Every org gets system feeds auto-created on setup. System feeds are undeletable. Additional feeds can be created by users.
 
 **Implementation approach:**
-- `feeds` table: `id`, `slug`, `display_name`, `feed_type` (enum: system/custom), `created_at`
+- `feeds` table: `id`, `slug`, `display_name`, `description`, `feed_type` (enum: system/custom — determines deletion protection only), `created_at`, `updated_at`, `deleted_at` (soft-delete). No owner column — ownership is via `entity_feeds` relationship. Permissions flow through the owning entity.
 - `entity_feeds` table (polymorphic join): `feed_id`, `entity_type` (enum: org/character/commission/user), `entity_id`
 - On org creation, auto-create system feeds attached via `entity_feeds`:
   - `updates` (always) — general announcements
   - `gallery` (always) — artwork and gallery items (the gallery feed serves as the portfolio)
   - `activity` (always) — auto-generated activity log
-  - `commissions` (only if org has artist/crafter role) — commission openings and status
+  - `commissions` (only if org has artist/crafter role) — commission openings and updates (created only if org has artist/crafter role based on `default_roles`)
 - System feeds (`feed_type = 'system'`) cannot be deleted or renamed
-- `feed_items` table: `id`, `feed_id` (FK feeds), `author_type` (user/org/system), `author_id`, `item_type` (event/post/image/file), `content_json`, `created_at`
+- `feed_items` table: `id`, `feed_id` (FK feeds), `author_type` (user/org/system), `author_id`, `created_at`
+- `feed_elements` table: `id`, `feed_item_id` (FK feed_items), `element_type` (text/image/file/event/embed/...), `content_json`, `position` (ordering within item). A single feed item can have multiple elements — e.g., a post with text + image + file attachment.
+- `feed_subscriptions` table: `id`, `feed_id`, `subscriber_org_id`, `permissions` (enum: read/read_write/admin), `granted_at`, `granted_by_user_id`. Following an org = creating a read subscription to its feeds. Plugin installation = creating a read_write subscription.
 - Custom feeds: `POST /orgs/:id/feeds` — user-created, deletable
 - Following an org = subscribing to its feeds (no separate follows table)
 

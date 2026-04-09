@@ -4,22 +4,22 @@
 
 ## Overview
 
-Each Commission Card has a chat thread implemented as a feed attached to the commission. Chat is an **add-on slot** on the commission card. Messages are feed items in the commission's chat feed, separate from the formal event feed (keeping the audit trail clean). Omnichannel bridging is handled by **plugin orgs** that subscribe to the chat feed and bridge messages to external services — no separate `chat_bridges` table.
+Chat is a **built-in first-party plugin add-on**, not an intrinsic commission feature. When the chat add-on is activated on a Commission Card, it creates and manages a chat feed attached to the commission. Messages are feed items in the commission's chat feed, separate from the formal event feed (keeping the audit trail clean). Commissions without the chat add-on have no chat feed. Omnichannel bridging is handled by **plugin orgs** that subscribe to the chat feed and bridge messages to external services — no separate `chat_bridges` table.
 
 ## Sub-features
 
 ### 5.1 Commission Chat Feed
 
-**What it is:** A private messaging feed bound to a specific Commission Card. Messages are feed items stored in a dedicated chat feed, separate from the commission's event feed. Chat is rendered as a built-in add-on slot on the commission card.
+**What it is:** A private messaging feed bound to a specific Commission Card, created and managed by the chat add-on (a built-in first-party plugin). Messages are feed items stored in a dedicated chat feed, separate from the commission's event feed. The chat feed only exists when the chat add-on is active on the commission card.
 
 **Implementation approach:**
-- On commission creation, auto-create a `chat` feed attached via `entity_feeds` (`entity_type = 'commission'`), in addition to the commission's event feed
+- The chat add-on (a built-in first-party plugin) creates a `chat` feed attached via `entity_feeds` (`entity_type = 'commission'`) when the chat slot is activated on a commission card — no chat feed is auto-created on commission creation
 - Chat messages are feed items in this chat feed: `id`, `feed_id`, `sender_id`, `content`, `attachments_json`, `created_at`
-- WebSocket endpoint (`/ws/commissions/:id/chat`) for real-time messaging — subscribes to the chat feed
-- REST fallback: `POST /commissions/:id/chat`, `GET /commissions/:id/chat` (paginated feed items)
+- WebSocket endpoint (`/ws/commissions/:id/chat`) for real-time messaging — subscribes to the chat feed (returns 404 if chat add-on is not active)
+- REST fallback: `POST /commissions/:id/chat`, `GET /commissions/:id/chat` (paginated feed items; returns 404 if chat add-on is not active)
 - Only commission participants (org members with appropriate role + client users) can access the chat feed
 - File attachments: same S3 flow as commission attachments, linked via `attachments_json`
-- Chat is a built-in add-on slot — it uses the same `commission_slots` mechanism as plugins but is auto-configured
+- Chat uses the same `commission_slots` mechanism as other plugins — it is a built-in plugin, not a special case
 
 ### 5.2 Omnichannel Bridge via Plugin Orgs
 
@@ -47,13 +47,13 @@ Each Commission Card has a chat thread implemented as a feed attached to the com
 
 ## Implementation Phases
 
-### Phase 1: Chat Feed & Add-On Slot
-- Chat feed auto-creation on commission creation (via `entity_feeds`)
+### Phase 1: Chat Add-On Plugin & Feed
+- Chat add-on plugin: creates chat feed via `entity_feeds` when activated on a commission card
 - Chat messages as feed items in the chat feed
-- REST API: send/list messages per commission chat feed
+- REST API: send/list messages per commission chat feed (404 when chat add-on inactive)
 - WebSocket endpoint for real-time delivery
 - Participant-only access control (org members + client users)
-- Chat rendered as built-in add-on slot on commission card
+- Chat rendered as built-in add-on slot on commission card (only present when activated)
 - File attachment support (reuse S3 infrastructure)
 - Crates: domain (feed item types for chat), persistence (repository), application (send/list use cases), api (REST + WebSocket routes)
 
@@ -83,6 +83,7 @@ Each Commission Card has a chat thread implemented as a feed attached to the com
 - The chat feed is separate from the commission event feed to keep audit trail clean
 - No separate `chat_bridges` or `card_messages` tables — everything is feed items and feed subscriptions
 - Chat messages are private-tier data (PostgreSQL only, never published to PDS)
+- Chat is a built-in plugin add-on, not an intrinsic commission feature. Commissions without the chat add-on have no chat feed.
 
 ## Shortcomings & Known Limitations
 

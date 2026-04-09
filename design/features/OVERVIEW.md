@@ -54,8 +54,6 @@ graph TD
 
     %% Foundation
     F1 --> F2
-    F1 --> F3
-    F1 --> F9
     F2 --> F8
     F2 --> F10
 
@@ -104,6 +102,8 @@ graph TD
 ```
 
 **Legend:** Green = done/in-progress, Dark blue = foundational infrastructure, Red = critical path, Yellow = next up, Dashed = soft dependency
+
+> **Note:** All features require authentication (Feature 1.1) transitively through Feature 2. Direct edges from F1 are only shown to F2 to keep the graph clean.
 
 ## Recommended Implementation Order
 

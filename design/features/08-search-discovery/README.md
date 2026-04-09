@@ -17,16 +17,17 @@ How users find orgs offering commissions. Without discovery, users can only find
 - **Upgrade path:** Meilisearch or Elasticsearch for complex faceted search
 - Search index: built from PDS records (public data tier) combined with tag associations
 - All search facets are driven by tags — no separate columns for species, style, medium, etc.
-- Faceted filters: all tag-based (species, art style, medium, content rating), plus commission status and price range
+- Faceted filters: all tag-based (species, art style, medium, content rating, status), plus price range. Commission availability status is a tag on the org (e.g., `status:open`). The "Open Now" feed view filters for orgs with the `status:open` tag.
 - Plugin orgs appear in search results alongside artist orgs
-- API: `GET /search/orgs?q=&tags=&price_min=&price_max=&status=open&type=artist,plugin`
+- API: `GET /search/orgs?q=&tags=status:open,species:wolf&price_min=&price_max=&type=artist,plugin`
 
 ### 8.2 Tag Taxonomy (Tier 1 Infrastructure)
 
 **What it is:** Structured, community-curated tag system. Tier 1 foundational infrastructure — the tag system underpins search, content classification, moderation, and discovery across the platform. Tags is one of the five root aggregates.
 
 **Implementation approach:**
-- `tags` table: `id`, `name`, `category` (species/style/medium/content_type/custom), `parent_id` (hierarchical), `usage_count`, `is_approved`
+- `tags` table: `id`, `name`, `category` (species/style/medium/content_type/status/custom), `parent_id` (hierarchical), `usage_count`, `is_approved`
+- Status category tags: `status:open`, `status:closed`, `status:waitlist` — commission availability is expressed as tags on the org, not as a database column
 - `entity_tags` junction table: `entity_type` (org/commission/feed_item/character), `entity_id`, `tag_id` — universal tag assignment for any entity
 - `org_tags` convenience view over `entity_tags WHERE entity_type = 'org'`
 - Tag suggestions: auto-complete from existing approved tags
@@ -51,7 +52,7 @@ How users find orgs offering commissions. Without discovery, users can only find
 **What it is:** A feed view projecting orgs currently accepting commissions. Not a direct DB query — it is a projection over org commission feeds.
 
 **Implementation approach:**
-- Feed view: filters the global commissions feed for orgs whose latest status post indicates "open"
+- Feed view: filters for orgs with the `status:open` tag
 - Filterable by tags, price range, content rating — all tag-driven
 - Real-time updates via SSE or polling (WebSocket is overkill for a list)
 - API: `GET /feeds/open-now?tags=&price_max=`

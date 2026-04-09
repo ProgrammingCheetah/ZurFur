@@ -19,7 +19,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - HMAC-signed payloads for webhook security
 - Plugin orgs can post feed items back to feeds they have write access to
 - Feed subscription permissions are scoped: read-only, read+write, or read+write+admin
-- `feed_subscriptions` table: `feed_id`, `subscriber_org_id`, `permissions` (enum: read/read_write/admin), `granted_at`, `granted_by_user_id`
+- Feed subscriptions are defined in [Feature 2.3](../02-identity-profile/README.md). Plugin orgs use the same `feed_subscriptions` table as any other subscriber.
 - Retry with exponential backoff for failed webhook deliveries
 
 ### 6.2 Client-Side Plugins (UI Iframes)
@@ -43,8 +43,8 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 **What it is:** Installing a plugin = granting a plugin org feed subscription + write permissions on specific feeds. No `plugin_installations` table — installation is represented by feed subscriptions.
 
 **Implementation approach:**
-- Install flow: user selects a plugin org from the marketplace -> chooses which feeds to grant access to (e.g., a specific commission's feeds, all commissions on an org) -> creates `feed_subscriptions` rows
-- Uninstall flow: revoke all `feed_subscriptions` for the plugin org on the target feeds, remove any `commission_slots` referencing the plugin org
+- Install flow: user selects a plugin org from the marketplace -> chooses which feeds to grant access to (e.g., a specific commission's feeds, all commissions on an org) -> creates feed subscription rows (see [Feature 2.3](../02-identity-profile/README.md) for the canonical `feed_subscriptions` definition)
+- Uninstall flow: revoke all feed subscriptions for the plugin org on the target feeds, remove any `commission_slots` referencing the plugin org
 - Permission scoping: plugin orgs can only access feeds they've been explicitly granted access to
 - Org-level installation: grant a plugin org subscription to all current and future feeds on an org (stored as `org_plugin_grants` table: `org_id`, `plugin_org_id`, `default_permissions`, `granted_at`)
 - Commission-level installation: grant access to a specific commission's feeds only (via `commission_slots`)
@@ -60,7 +60,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - Approval process: manual review before listing is visible (moderation queue)
 - Ratings/reviews: `plugin_reviews` table: `id`, `plugin_org_id`, `reviewer_user_id`, `rating` (1-5), `review_text`, `created_at`
 - Paid plugins: purchase via Feature 4 payment infrastructure, unlocks `org_plugin_grants`
-- Installation counts derived from `feed_subscriptions` count per plugin org
+- Installation counts derived from feed subscriptions count per plugin org (see [Feature 2.3](../02-identity-profile/README.md))
 
 ### 6.5 Native Analytical Plugins
 
