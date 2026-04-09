@@ -6,10 +6,36 @@ use std::sync::Arc;
 use chrono::{Duration, Utc};
 use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
 use domain::oauth_state_store::{OAuthStateData, OAuthStateStore};
+use domain::organization::OrganizationRepository;
+use domain::organization_member::OrganizationMemberRepository;
 use domain::refresh_token::RefreshTokenRepository;
 use domain::user::UserRepository;
 use shared::JwtConfig;
 use uuid::Uuid;
+
+use crate::organization::service::OrganizationService;
+
+/// No-op implementation of OrganizationProfileRepository used when only
+/// org + member repos are needed (e.g., personal org creation in auth flow).
+struct NoOpProfileRepo;
+
+#[async_trait::async_trait]
+impl domain::organization_profile::OrganizationProfileRepository for NoOpProfileRepo {
+    async fn upsert(
+        &self,
+        _org_id: Uuid,
+        _bio: Option<&str>,
+        _status: domain::organization_profile::CommissionStatus,
+    ) -> Result<domain::organization_profile::OrganizationProfile, domain::organization_profile::OrganizationProfileError> {
+        unimplemented!("NoOpProfileRepo::upsert should not be called during personal org creation")
+    }
+    async fn find_by_org_id(
+        &self,
+        _org_id: Uuid,
+    ) -> Result<Option<domain::organization_profile::OrganizationProfile>, domain::organization_profile::OrganizationProfileError> {
+        Ok(None)
+    }
+}
 
 use super::login::{
     LoginError, OAuthConfig, complete_oauth_login, default_oauth_storage,
@@ -62,6 +88,8 @@ pub struct AuthService<S: OAuthRequestStorage> {
     user_repo: Arc<dyn UserRepository>,
     session_repo: Arc<dyn AtprotoSessionRepository>,
     refresh_repo: Arc<dyn RefreshTokenRepository>,
+    org_repo: Arc<dyn OrganizationRepository>,
+    member_repo: Arc<dyn OrganizationMemberRepository>,
 }
 
 impl<S: OAuthRequestStorage> AuthService<S> {
@@ -73,6 +101,8 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         user_repo: Arc<dyn UserRepository>,
         session_repo: Arc<dyn AtprotoSessionRepository>,
         refresh_repo: Arc<dyn RefreshTokenRepository>,
+        org_repo: Arc<dyn OrganizationRepository>,
+        member_repo: Arc<dyn OrganizationMemberRepository>,
     ) -> Self {
         Self {
             oauth_config,
@@ -82,6 +112,8 @@ impl<S: OAuthRequestStorage> AuthService<S> {
             user_repo,
             session_repo,
             refresh_repo,
+            org_repo,
+            member_repo,
         }
     }
 
@@ -172,6 +204,39 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                         user.handle = Some(new_handle.clone());
                     }
                 }
+
+                // Self-healing: ensure personal org exists for returning users
+                // (covers users created before the org model was introduced).
+                let has_personal_org = self
+                    .org_repo
+                    .find_personal_org(user.id)
+                    .await
+                    .map_err(|e| LoginError::InternalError(e.to_string()))?
+                    .is_some();
+
+                if !has_personal_org {
+                    let slug = user
+                        .handle
+                        .as_deref()
+                        .map(OrganizationService::slug_from_handle)
+                        .unwrap_or_else(|| {
+                            OrganizationService::slug_from_handle(
+                                user.did.as_deref().unwrap_or("user"),
+                            )
+                        });
+                    let org_service = OrganizationService::new(
+                        self.org_repo.clone(),
+                        self.member_repo.clone(),
+                        Arc::new(NoOpProfileRepo),
+                    );
+                    if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
+                        eprintln!(
+                            "Failed to create personal org for returning user {}: {e}",
+                            user.id
+                        );
+                    }
+                }
+
                 (user, false)
             }
             None => {
@@ -184,6 +249,40 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                     )
                     .await
                     .map_err(|e| LoginError::InternalError(e.to_string()))?;
+
+                // Create personal org for the new user.
+                //
+                // ARCHITECTURE DECISIONS:
+                //   Personal org auto-creation happens here during signup, not as
+                //   a separate onboarding step. The personal org IS the user's
+                //   public profile — bio, title, display name all live here.
+                //   display_name is NULL (resolved from owner's handle at API layer).
+                let slug = session
+                    .handle
+                    .as_deref()
+                    .map(OrganizationService::slug_from_handle)
+                    .unwrap_or_else(|| {
+                        OrganizationService::slug_from_handle(&session.did)
+                    });
+
+                let org_service = OrganizationService::new(
+                    self.org_repo.clone(),
+                    self.member_repo.clone(),
+                    // Profile repo not needed for personal org creation — pass a
+                    // no-op. OrganizationService::create_personal_org only touches
+                    // org_repo and member_repo.
+                    Arc::new(NoOpProfileRepo),
+                );
+                if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
+                    eprintln!(
+                        "Failed to create personal org for user {}: {e}",
+                        user.id
+                    );
+                    // Non-fatal: user exists but personal org creation failed.
+                    // The user can still authenticate; the org will be created
+                    // on next login or via a self-healing check. TODO: retry logic.
+                }
+
                 (user, true)
             }
         };
@@ -340,6 +439,10 @@ mod tests {
     use chrono::{DateTime, Duration, Utc};
     use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
     use domain::oauth_state_store::{OAuthStateData, OAuthStateError, OAuthStateStore};
+    use domain::organization::{Organization, OrganizationError, OrganizationRepository};
+    use domain::organization_member::{
+        OrganizationMember, OrganizationMemberError, OrganizationMemberRepository,
+    };
     use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
     use domain::user::{User, UserError, UserRepository};
     use std::collections::HashMap;
@@ -501,6 +604,143 @@ mod tests {
         }
     }
 
+    #[derive(Default)]
+    struct MockOrgRepo {
+        orgs: Mutex<Vec<Organization>>,
+    }
+
+    #[async_trait::async_trait]
+    impl OrganizationRepository for MockOrgRepo {
+        async fn create(
+            &self,
+            slug: &str,
+            display_name: Option<&str>,
+            is_personal: bool,
+            created_by: Uuid,
+        ) -> Result<Organization, OrganizationError> {
+            let org = Organization {
+                id: Uuid::new_v4(),
+                slug: slug.into(),
+                display_name: display_name.map(String::from),
+                is_personal,
+                created_by,
+                created_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+            self.orgs.lock().await.push(org.clone());
+            Ok(org)
+        }
+        async fn find_by_id(
+            &self,
+            id: Uuid,
+        ) -> Result<Option<Organization>, OrganizationError> {
+            Ok(self.orgs.lock().await.iter().find(|o| o.id == id).cloned())
+        }
+        async fn find_by_slug(
+            &self,
+            _slug: &str,
+        ) -> Result<Option<Organization>, OrganizationError> {
+            Ok(None)
+        }
+        async fn find_personal_org(
+            &self,
+            user_id: Uuid,
+        ) -> Result<Option<Organization>, OrganizationError> {
+            Ok(self
+                .orgs
+                .lock()
+                .await
+                .iter()
+                .find(|o| o.created_by == user_id && o.is_personal)
+                .cloned())
+        }
+        async fn update_display_name(
+            &self,
+            _id: Uuid,
+            _display_name: Option<&str>,
+        ) -> Result<Organization, OrganizationError> {
+            unimplemented!()
+        }
+        async fn soft_delete(&self, _id: Uuid) -> Result<(), OrganizationError> {
+            unimplemented!()
+        }
+    }
+
+    #[derive(Default)]
+    struct MockMemberRepo {
+        members: Mutex<Vec<OrganizationMember>>,
+    }
+
+    #[async_trait::async_trait]
+    impl OrganizationMemberRepository for MockMemberRepo {
+        async fn add(
+            &self,
+            org_id: Uuid,
+            user_id: Uuid,
+            role: &str,
+            title: Option<&str>,
+            is_owner: bool,
+            permissions: Permissions,
+        ) -> Result<OrganizationMember, OrganizationMemberError> {
+            let member = OrganizationMember {
+                id: Uuid::new_v4(),
+                org_id,
+                user_id,
+                role: role.into(),
+                title: title.map(String::from),
+                is_owner,
+                permissions,
+                joined_at: Utc::now(),
+                updated_at: Utc::now(),
+            };
+            self.members.lock().await.push(member.clone());
+            Ok(member)
+        }
+        async fn find_by_org_and_user(
+            &self,
+            _org_id: Uuid,
+            _user_id: Uuid,
+        ) -> Result<Option<OrganizationMember>, OrganizationMemberError> {
+            Ok(None)
+        }
+        async fn list_by_org(
+            &self,
+            _org_id: Uuid,
+        ) -> Result<Vec<OrganizationMember>, OrganizationMemberError> {
+            Ok(vec![])
+        }
+        async fn list_by_user(
+            &self,
+            _user_id: Uuid,
+        ) -> Result<Vec<OrganizationMember>, OrganizationMemberError> {
+            Ok(vec![])
+        }
+        async fn update_role_and_title(
+            &self,
+            _org_id: Uuid,
+            _user_id: Uuid,
+            _role: &str,
+            _title: Option<&str>,
+        ) -> Result<OrganizationMember, OrganizationMemberError> {
+            unimplemented!()
+        }
+        async fn update_permissions(
+            &self,
+            _org_id: Uuid,
+            _user_id: Uuid,
+            _permissions: Permissions,
+        ) -> Result<OrganizationMember, OrganizationMemberError> {
+            unimplemented!()
+        }
+        async fn remove(
+            &self,
+            _org_id: Uuid,
+            _user_id: Uuid,
+        ) -> Result<(), OrganizationMemberError> {
+            unimplemented!()
+        }
+    }
+
     // --- Helpers -----------------------------------------------------------------
 
     fn test_jwt_config() -> JwtConfig {
@@ -537,6 +777,9 @@ mod tests {
             ),
         };
 
+        let org_repo = Arc::new(MockOrgRepo::default());
+        let member_repo = Arc::new(MockMemberRepo::default());
+
         let service = AuthService::new(
             oauth_config,
             test_jwt_config(),
@@ -545,6 +788,8 @@ mod tests {
             user_repo,
             session_repo,
             refresh_repo,
+            org_repo,
+            member_repo,
         );
 
         (service, user.id)
