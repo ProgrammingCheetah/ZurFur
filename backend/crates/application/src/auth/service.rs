@@ -117,6 +117,40 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         }
     }
 
+    /// Derive the public JWK from the private signing key. Used by the
+    /// /client-metadata.json endpoint so Bluesky can verify our client assertions.
+    ///
+    /// Uses `elliptic_curve::JwkEcKey` for correct JWK serialization — this matches
+    /// what the atproto-oauth crate uses internally for JWT header construction.
+    pub fn public_jwk(&self) -> serde_json::Value {
+        use atproto_identity::key::to_public;
+
+        let public_key = to_public(&self.oauth_config.private_signing_key_data)
+            .expect("Failed to derive public key");
+        // The atproto-oauth crate uses `public_key.to_string()` (did:key:...) as the JWT `kid`
+        let kid = public_key.to_string();
+        let jwk: elliptic_curve::JwkEcKey = (&public_key)
+            .try_into()
+            .expect("Failed to convert public key to JWK");
+        let mut jwk_value = serde_json::to_value(&jwk).expect("Failed to serialize JWK");
+        if let Some(obj) = jwk_value.as_object_mut() {
+            obj.insert("use".into(), serde_json::json!("sig"));
+            obj.insert("kid".into(), serde_json::json!(kid));
+            obj.insert("alg".into(), serde_json::json!("ES256"));
+        }
+        jwk_value
+    }
+
+    /// Get the OAuth client_id (URL to client-metadata.json).
+    pub fn client_id(&self) -> &str {
+        &self.oauth_config.client_id
+    }
+
+    /// Get the OAuth redirect_uri.
+    pub fn redirect_uri(&self) -> &str {
+        &self.oauth_config.redirect_uri
+    }
+
     /// Step 1: Start the OAuth login flow. Returns a redirect URL for the user's browser.
     pub async fn start_login(
         &self,

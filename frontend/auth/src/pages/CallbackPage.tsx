@@ -33,7 +33,9 @@ export default function CallbackPage() {
           handle: result.handle,
         });
 
-        window.location.href = getAppUrl();
+        // TODO: redirect to main app once it exists
+        // window.location.href = getAppUrl();
+        setError(JSON.stringify(result, null, 2));
       } catch (err) {
         if (err instanceof ApiError) {
           if (err.status === 400) {
