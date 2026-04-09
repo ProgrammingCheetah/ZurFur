@@ -73,6 +73,9 @@ pub struct OAuthConfig {
     /// Private key for client assertions (confidential client). Generate once with
     /// `atproto_identity::key::{generate_key, KeyType::P256Private}`.
     pub private_signing_key_data: atproto_identity::key::KeyData,
+    /// PLC directory hostname for DID resolution (e.g., "plc.directory").
+    /// The crate prepends "https://" internally — do NOT include the scheme.
+    pub plc_hostname: String,
 }
 
 // --- Identity resolver (reqwest 0.12 for atproto crates) ---------------------
@@ -88,7 +91,7 @@ async fn build_http_client() -> Result<reqwest::Client, LoginError> {
         .map_err(|e| LoginError::InternalError(e.to_string()))
 }
 
-async fn get_identity_resolver() -> Result<SharedIdentityResolver, LoginError> {
+async fn get_identity_resolver(plc_hostname: &str) -> Result<SharedIdentityResolver, LoginError> {
     let http_client = build_http_client().await?;
     // Explicit nameservers: systemd-resolved (127.0.0.53) fails with HickoryDns.
     // Use public resolvers directly.
@@ -99,15 +102,14 @@ async fn get_identity_resolver() -> Result<SharedIdentityResolver, LoginError> {
     let inner = InnerIdentityResolver {
         dns_resolver,
         http_client,
-        // The crate prepends "https://" internally — do NOT include the scheme here.
-        plc_hostname: "plc.directory".into(),
+        plc_hostname: plc_hostname.into(),
     };
     Ok(SharedIdentityResolver(Arc::new(inner)))
 }
 
-async fn resolve_identity(handle_or_did: &str) -> Result<Document, LoginError> {
+async fn resolve_identity(handle_or_did: &str, plc_hostname: &str) -> Result<Document, LoginError> {
     eprintln!("[auth] Resolving identity for: {handle_or_did}");
-    let resolver = get_identity_resolver().await?;
+    let resolver = get_identity_resolver(plc_hostname).await?;
     match resolver.resolve(handle_or_did).await {
         Ok(doc) => {
             eprintln!("[auth] Identity resolved: did={}", doc.id);
@@ -330,8 +332,8 @@ pub async fn complete_oauth_login(
 
 /// Resolve handle or DID to the full identity document. Returns the DID document
 /// which can be passed to `start_oauth_login` to avoid redundant resolution.
-pub async fn resolve_identity_document(handle_or_did: &str) -> Result<Document, LoginError> {
-    resolve_identity(handle_or_did).await
+pub async fn resolve_identity_document(handle_or_did: &str, plc_hostname: &str) -> Result<Document, LoginError> {
+    resolve_identity(handle_or_did, plc_hostname).await
 }
 
 // --- LRU storage constructor --------------------------------------------------

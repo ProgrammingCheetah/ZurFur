@@ -36,6 +36,7 @@ pub fn test_app_state() -> AppState {
             atproto_identity::key::KeyType::P256Private,
             vec![0u8; 32],
         ),
+        plc_hostname: "plc.directory".into(),
     };
 
     let user_repo: Arc<dyn UserRepository> = Arc::new(MockUserRepo::default());

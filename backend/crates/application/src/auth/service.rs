@@ -158,7 +158,7 @@ impl<S: OAuthRequestStorage> AuthService<S> {
         handle_or_did: &str,
     ) -> Result<StartLoginResponse, LoginError> {
         // Resolve identity once — the document is reused for OAuth init
-        let document = resolve_identity_document(handle_or_did).await?;
+        let document = resolve_identity_document(handle_or_did, &self.oauth_config.plc_hostname).await?;
         let did = &document.id;
 
         let result = start_oauth_login(
@@ -810,6 +810,7 @@ mod tests {
                 atproto_identity::key::KeyType::P256Private,
                 vec![0u8; 32],
             ),
+            plc_hostname: "plc.directory".into(),
         };
 
         let org_repo = Arc::new(MockOrgRepo::default());

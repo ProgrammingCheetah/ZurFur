@@ -19,6 +19,8 @@ pub fn router(state: AppState) -> axum::Router {
         "https://zurfur.app".parse().unwrap(),
     ];
 
+    // OAUTH_CLIENT_ID is validated on startup in main.rs (panics if missing).
+    // This is a best-effort CORS origin addition — in tests it's simply absent.
     if let Ok(client_id) = std::env::var("OAUTH_CLIENT_ID") {
         // Extract origin (scheme + host) from URL like "https://host.com/path"
         if let Some(rest) = client_id.strip_prefix("https://") {

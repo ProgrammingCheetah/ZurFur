@@ -24,6 +24,7 @@ async fn main() {
         client_id: std::env::var("OAUTH_CLIENT_ID").expect("OAUTH_CLIENT_ID must be set"),
         redirect_uri: std::env::var("OAUTH_REDIRECT_URI").expect("OAUTH_REDIRECT_URI must be set"),
         private_signing_key_data: load_signing_key(),
+        plc_hostname: std::env::var("PLC_HOSTNAME").unwrap_or_else(|_| "plc.directory".into()),
     };
 
     // Repositories
