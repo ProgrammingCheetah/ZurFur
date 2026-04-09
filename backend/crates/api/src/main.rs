@@ -67,9 +67,9 @@ async fn main() {
     );
 
     let state = AppState {
-        auth: auth_service,
-        user: user_service,
-        org: org_service,
+        auth_service,
+        user_service,
+        org_service,
     };
 
     let app = router(state);

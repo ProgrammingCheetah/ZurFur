@@ -77,7 +77,7 @@ async fn start_login(
 
     eprintln!("[api] POST /auth/start handle={handle}");
     let result = state
-        .auth
+        .auth_service
         .start_login(handle)
         .await
         .map_err(|e| {
@@ -97,7 +97,7 @@ async fn callback(
 ) -> Result<Json<CallbackResponse>, (StatusCode, String)> {
     eprintln!("[api] POST /auth/callback state={}", params.state);
     let result = state
-        .auth
+        .auth_service
         .complete_login(&params.code, &params.state)
         .await
         .map_err(|e| {
@@ -121,7 +121,7 @@ async fn refresh(
     Json(body): Json<RefreshRequest>,
 ) -> Result<Json<RefreshResponse>, (StatusCode, String)> {
     let result = state
-        .auth
+        .auth_service
         .refresh_session(&body.refresh_token)
         .await
         .map_err(map_login_error)?;
@@ -150,7 +150,7 @@ async fn logout(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
 
     state
-        .auth
+        .auth_service
         .logout(user_id)
         .await
         .map_err(map_login_error)?;

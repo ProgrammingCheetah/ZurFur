@@ -2,7 +2,7 @@ use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum_test::TestServer;
 use uuid::Uuid;
 
-use super::helpers::{issue_test_jwt, test_app_state};
+use super::test_state::{issue_test_jwt, test_app_state};
 use crate::router;
 
 fn test_server() -> TestServer {

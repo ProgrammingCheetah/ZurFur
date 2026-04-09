@@ -9,9 +9,9 @@ use std::sync::Arc;
 ///   Arc<dyn Trait>). They are not swappable at the AppState level — if
 ///   testing needs different behavior, mock the repos, not the services.
 pub struct AppState {
-    pub auth: AuthService<LruOAuthRequestStorage>,
-    pub user: UserService,
-    pub org: OrganizationService,
+    pub auth_service: AuthService<LruOAuthRequestStorage>,
+    pub user_service: UserService,
+    pub org_service: OrganizationService,
 }
 
 /// State type for Axum: shared across handlers via Arc.

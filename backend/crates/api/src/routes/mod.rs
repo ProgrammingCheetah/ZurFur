@@ -21,7 +21,7 @@ pub fn router() -> Router<SharedState> {
 async fn client_metadata(
     axum::extract::State(state): axum::extract::State<SharedState>,
 ) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, String)> {
-    let jwk = state.auth.public_jwk().map_err(|e| {
+    let jwk = state.auth_service.public_jwk().map_err(|e| {
         eprintln!("Failed to derive public JWK: {e}");
         (
             axum::http::StatusCode::INTERNAL_SERVER_ERROR,
@@ -30,12 +30,12 @@ async fn client_metadata(
     })?;
 
     Ok(axum::Json(serde_json::json!({
-        "client_id": state.auth.client_id(),
+        "client_id": state.auth_service.client_id(),
         "client_name": "Zurfur",
         "application_type": "web",
         "dpop_bound_access_tokens": true,
         "grant_types": ["authorization_code", "refresh_token"],
-        "redirect_uris": [state.auth.redirect_uri()],
+        "redirect_uris": [state.auth_service.redirect_uri()],
         "response_types": ["code"],
         "scope": "atproto transition:generic",
         "token_endpoint_auth_method": "private_key_jwt",

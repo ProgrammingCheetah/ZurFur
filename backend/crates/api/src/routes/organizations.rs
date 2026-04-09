@@ -86,7 +86,7 @@ async fn create_org(
     let user_id = parse_user_id(&claims.sub)?;
 
     let detail = state
-        .org
+        .org_service
         .create_org(user_id, &body.slug, &body.display_name)
         .await
         .map_err(map_org_error)?;
@@ -102,9 +102,9 @@ async fn get_org(
     AuthUser(_claims): AuthUser,
 ) -> Result<Json<OrgDetailResponse>, (StatusCode, String)> {
     let detail = if let Ok(id) = id_or_slug.parse::<uuid::Uuid>() {
-        state.org.get_org_by_id(id).await
+        state.org_service.get_org_by_id(id).await
     } else {
-        state.org.get_org(&id_or_slug).await
+        state.org_service.get_org(&id_or_slug).await
     }
     .map_err(map_org_error)?;
 
@@ -122,7 +122,7 @@ async fn update_org(
     let org_id = resolve_org_id(&state, &id_or_slug).await?;
 
     let org = state
-        .org
+        .org_service
         .update_org(org_id, user_id, body.display_name.as_deref())
         .await
         .map_err(map_org_error)?;
@@ -140,7 +140,7 @@ async fn delete_org(
     let org_id = resolve_org_id(&state, &id_or_slug).await?;
 
     state
-        .org
+        .org_service
         .delete_org(org_id, user_id)
         .await
         .map_err(map_org_error)?;
@@ -169,7 +169,7 @@ async fn update_profile(
     })?;
 
     let profile = state
-        .org
+        .org_service
         .update_profile(org_id, user_id, body.bio.as_deref(), status)
         .await
         .map_err(map_org_error)?;
@@ -190,7 +190,7 @@ async fn list_members(
 
     // Verify org exists by fetching it
     let detail = state
-        .org
+        .org_service
         .get_org_by_id(org_id)
         .await
         .map_err(map_org_error)?;
@@ -216,7 +216,7 @@ async fn add_member(
     let target_user_id = parse_uuid(&body.user_id)?;
 
     let member = state
-        .org
+        .org_service
         .add_member(org_id, user_id, target_user_id, &body.role, body.title.as_deref())
         .await
         .map_err(map_org_error)?;
@@ -240,7 +240,7 @@ async fn update_member(
         .map(domain::organization_member::Permissions::new);
 
     let member = state
-        .org
+        .org_service
         .update_member(
             org_id,
             user_id,
@@ -266,7 +266,7 @@ async fn remove_member(
     let target_user_id = parse_uuid(&target_user_id_str)?;
 
     state
-        .org
+        .org_service
         .remove_member(org_id, user_id, target_user_id)
         .await
         .map_err(map_org_error)?;
@@ -378,7 +378,7 @@ async fn resolve_org_id(
         Ok(id)
     } else {
         let detail = state
-            .org
+            .org_service
             .get_org(id_or_slug)
             .await
             .map_err(map_org_error)?;

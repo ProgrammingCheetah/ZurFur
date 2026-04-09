@@ -68,7 +68,7 @@ async fn get_me(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
 
     let profile = state
-        .user
+        .user_service
         .get_my_profile(user_id)
         .await
         .map_err(map_user_error)?;
@@ -123,7 +123,7 @@ async fn get_preferences(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
 
     let prefs = state
-        .user
+        .user_service
         .get_preferences(user_id)
         .await
         .map_err(map_user_error)?;
@@ -155,7 +155,7 @@ async fn update_preferences(
     })?;
 
     let prefs = state
-        .user
+        .user_service
         .set_max_content_rating(user_id, rating)
         .await
         .map_err(map_user_error)?;
