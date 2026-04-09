@@ -109,6 +109,7 @@ async fn start_login_with_invalid_handle_format_returns_400() {
 }
 
 #[tokio::test]
+#[ignore] // Requires network access (hits plc.directory for identity resolution)
 async fn start_login_accepts_did_format() {
     let server = test_server();
     // DID format bypasses handle validation but will fail on identity resolution
