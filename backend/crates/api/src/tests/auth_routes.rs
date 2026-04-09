@@ -4,7 +4,7 @@ use uuid::Uuid;
 
 use crate::router;
 
-use super::helpers::{issue_test_jwt, test_app_state};
+use super::test_state::{issue_test_jwt, test_app_state};
 
 fn test_server() -> TestServer {
     let state = test_app_state();

@@ -33,7 +33,7 @@ impl FromRequestParts<SharedState> for AuthUser {
             })
             .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header".into()))?;
 
-        let claims = state.auth.verify_access_token(token).map_err(|_| {
+        let claims = state.auth_service.verify_access_token(token).map_err(|_| {
             (
                 StatusCode::UNAUTHORIZED,
                 "Invalid or expired token".into(),

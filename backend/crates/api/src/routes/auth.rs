@@ -75,11 +75,15 @@ async fn start_login(
         return Err((StatusCode::BAD_REQUEST, "Invalid handle format".into()));
     }
 
+    eprintln!("[api] POST /auth/start handle={handle}");
     let result = state
-        .auth
+        .auth_service
         .start_login(handle)
         .await
-        .map_err(map_login_error)?;
+        .map_err(|e| {
+            eprintln!("[api] POST /auth/start FAILED: {e}");
+            map_login_error(e)
+        })?;
 
     Ok(Json(StartLoginResponse {
         redirect_url: result.redirect_url,
@@ -91,11 +95,16 @@ async fn callback(
     State(state): State<SharedState>,
     Json(params): Json<CallbackQuery>,
 ) -> Result<Json<CallbackResponse>, (StatusCode, String)> {
+    eprintln!("[api] POST /auth/callback state={}", params.state);
     let result = state
-        .auth
+        .auth_service
         .complete_login(&params.code, &params.state)
         .await
-        .map_err(map_login_error)?;
+        .map_err(|e| {
+            eprintln!("[api] POST /auth/callback FAILED: {e}");
+            map_login_error(e)
+        })?;
+    eprintln!("[api] POST /auth/callback succeeded, user_id={}, is_new={}", result.user_id, result.is_new_user);
 
     Ok(Json(CallbackResponse {
         access_token: result.access_token,
@@ -112,7 +121,7 @@ async fn refresh(
     Json(body): Json<RefreshRequest>,
 ) -> Result<Json<RefreshResponse>, (StatusCode, String)> {
     let result = state
-        .auth
+        .auth_service
         .refresh_session(&body.refresh_token)
         .await
         .map_err(map_login_error)?;
@@ -141,7 +150,7 @@ async fn logout(
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
 
     state
-        .auth
+        .auth_service
         .logout(user_id)
         .await
         .map_err(map_login_error)?;

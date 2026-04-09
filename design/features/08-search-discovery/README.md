@@ -1,106 +1,122 @@
+> **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
+
 # Feature 8: Search & Discovery
 
 ## Overview
 
-How users find artists. Without discovery, users can only find artists they already know. This feature provides full-text artist search with faceted filtering, a structured tag taxonomy, personalized recommendations, and a real-time "Open Now" feed.
+How users find orgs offering commissions. Without discovery, users can only find orgs they already know. This feature provides full-text search across orgs (artist studios, plugin orgs, personal orgs) with faceted filtering driven entirely by the tag system. Tags are Tier 1 foundational infrastructure — other features depend on them. Search indexes from PDS records (public data tier). The "Open Now" feed is a feed view, not a DB query.
 
 ## Sub-features
 
-### 8.1 Artist Search
+### 8.1 Org Search
 
-**What it is:** Find artists by tag, art style, species specialty, price range, and availability status. Supports full-text and faceted filtering.
+**What it is:** Find orgs by tags, art style, species specialty, price range, and availability status. Supports full-text and faceted filtering. Plugin orgs are also searchable.
 
 **Implementation approach:**
-- **MVP:** PostgreSQL `tsvector` full-text search on artist profile fields (bio, display_name, tags)
+- **MVP:** PostgreSQL `tsvector` full-text search on org profile fields (bio, display_name, tags)
 - **Upgrade path:** Meilisearch or Elasticsearch for complex faceted search
-- Search index: materialized view or table combining artist profile data + tags + metrics (price range from Feature 7.3)
-- Faceted filters: species tags, art style, medium, content rating, commission status, price range
-- API: `GET /search/artists?q=&tags=&style=&price_min=&price_max=&status=open`
+- Search index: built from PDS records (public data tier) combined with tag associations
+- All search facets are driven by tags — no separate columns for species, style, medium, etc.
+- Faceted filters: all tag-based (species, art style, medium, content rating, status), plus price range. Commission availability status is a tag on the org (e.g., `status:open`). The "Open Now" feed view filters for orgs with the `status:open` tag.
+- Plugin orgs appear in search results alongside artist orgs
+- API: `GET /search/orgs?q=&tags=status:open,species:wolf&price_min=&price_max=&type=artist,plugin`
 
-### 8.2 Tag Taxonomy
+### 8.2 Tag Taxonomy (Tier 1 Infrastructure)
 
-**What it is:** Structured, community-curated tag system for species, art style, medium, and content rating.
+**What it is:** Structured, community-curated tag system. Tier 1 foundational infrastructure — the tag system underpins search, content classification, moderation, and discovery across the platform. Tags is one of the five root aggregates.
 
 **Implementation approach:**
-- `tags` table: `id`, `name`, `category` (species/style/medium/content_type), `parent_id` (hierarchical), `usage_count`, `is_approved`
-- `artist_tags` junction table: `artist_id`, `tag_id`
-- `character_tags` junction table: `character_id`, `tag_id`
+- `tags` table: `id`, `name`, `category` (species/style/medium/content_type/status/custom), `parent_id` (hierarchical), `usage_count`, `is_approved`
+- Status category tags: `status:open`, `status:closed`, `status:waitlist` — commission availability is expressed as tags on the org, not as a database column
+- `entity_tags` junction table: `entity_type` (org/commission/feed_item/character), `entity_id`, `tag_id` — universal tag assignment for any entity
+- `org_tags` convenience view over `entity_tags WHERE entity_type = 'org'`
 - Tag suggestions: auto-complete from existing approved tags
 - Community tag proposals: users suggest new tags → moderation queue
 - Tag synonyms/aliases for search (e.g., "wolf" matches "canine")
+- Tags interact with content moderation: "untagged NSFW" detection relies on tag presence (Feature 11)
 
 ### 8.3 Recommendation Engine
 
-**What it is:** Personalized artist suggestions based on commission history, follows, and character species.
+**What it is:** Personalized org suggestions based on commission history, feed subscriptions, and character species tags.
 
 **Implementation approach:**
-- **Heuristic v1:** "Artists similar to ones you've commissioned" — find artists with overlapping tags
-- **Collaborative filtering v2:** "Users who commissioned Artist A also commissioned Artist B"
-- Input signals: commission history, followed artists, character species tags, viewed profiles
-- Output: ranked list of recommended artists
-- API: `GET /recommendations/artists`
+- **Heuristic v1:** "Orgs similar to ones you've commissioned" — find orgs with overlapping tags
+- **Collaborative filtering v2:** "Users who commissioned Org A also commissioned Org B"
+- Input signals: commission history, feed subscriptions (replaces "followed artists"), character species tags, viewed profiles
+- Output: ranked list of recommended orgs
+- API: `GET /recommendations/orgs`
 - Start simple (tag overlap), upgrade to ML models with sufficient data
 
-### 8.4 "Open Now" Feed
+### 8.4 "Open Now" Feed View
 
-**What it is:** Real-time filterable feed of artists currently accepting commissions.
+**What it is:** A feed view projecting orgs currently accepting commissions. Not a direct DB query — it is a projection over org commission feeds.
 
 **Implementation approach:**
-- Query: `SELECT FROM artist_profiles WHERE commission_status = 'open' ORDER BY status_changed_at DESC`
-- `status_changed_at` field on `artist_profiles` (set when artist toggles status)
-- Filterable by tags, price range, content rating
+- Feed view: filters for orgs with the `status:open` tag
+- Filterable by tags, price range, content rating — all tag-driven
 - Real-time updates via SSE or polling (WebSocket is overkill for a list)
-- API: `GET /feed/open-artists?tags=&price_max=`
+- API: `GET /feeds/open-now?tags=&price_max=`
+- Backed by the `entity_feeds` infrastructure — "Open Now" is just one of many possible feed views
 
 ## Dependencies
 
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
-- [Feature 2](../02-identity-profile/README.md) — artist profiles and character profiles to search
-- [Feature 7.3](../07-community-analytics/README.md) — metrics for ranking and price range filtering (soft dependency — search works without it but is better with it)
+- [Feature 2](../02-identity-profile/README.md) — org profiles and character profiles to search
+
+### Soft dependencies (enhances but not required)
+- [Feature 7.3](../07-community-analytics/README.md) — metrics for ranking and price range filtering. Search works without metrics but ranking improves with them.
 
 ### Enables (unlocked after this is built)
-- Better user acquisition and artist discovery — no direct feature dependency, but critical for platform growth
+- Better user acquisition and org discovery — no direct feature dependency, but critical for platform growth
+- Tag infrastructure is consumed by Features 7, 9, 10, 11 (tag-based filtering, content classification, NSFW detection)
 
 ## Implementation Phases
 
-### Phase 1: Tags & Basic Search
+### Phase 1: Tag Infrastructure & Basic Search
 - `tags` table with seed data (common species, styles, mediums)
-- `artist_tags` and `character_tags` junction tables
-- Tag management API: suggest, approve, assign
-- PostgreSQL tsvector search on artist profiles
-- Basic search endpoint: `GET /search/artists`
-- "Open Now" feed endpoint
-- Crates: domain (Tag entity), persistence (search queries), application (search use case), api (search routes)
+- `entity_tags` universal junction table
+- `org_tags` convenience view
+- Tag management API: suggest, approve, assign to any entity
+- PostgreSQL tsvector search on org profiles
+- Basic search endpoint: `GET /search/orgs`
+- "Open Now" feed view endpoint
+- Crates: domain (Tag root aggregate), persistence (tag repository, search queries), application (search use case), api (search routes)
 
 ### Phase 2: Faceted Search & Recommendations
-- Faceted filtering (price range, tags, status, content rating)
-- Search index optimization (materialized view or dedicated search table)
+- All faceted filtering driven by tags (no separate columns)
+- Search index built from PDS records (public data tier)
 - Heuristic recommendation engine (tag overlap)
 - Auto-complete for tag search
 - Tag synonyms/aliases
+- Plugin org search support
 
 ### Phase 3: Post-implementation
 - Evaluate Meilisearch migration if PostgreSQL search becomes a bottleneck
 - Collaborative filtering recommendation model (requires commission volume data)
 - Search analytics: track query patterns, zero-result queries, click-through rates
-- SEO: public artist profiles should be search-engine indexable
-- NSFW filtering rigor: ensure content rating filters are applied correctly in all search results
+- SEO: public org profiles should be search-engine indexable
+- NSFW filtering rigor: ensure content rating tags are applied correctly in all search results
 - Tag taxonomy curation process and community guidelines
+- PDS index freshness monitoring (ensure search data stays in sync with PDS records)
 
 ## Assumptions
 
-- PostgreSQL full-text search is sufficient for MVP (thousands of artists, not millions)
+- PostgreSQL full-text search is sufficient for MVP (thousands of orgs, not millions)
 - Tag taxonomy is manually seeded, community-curated later
+- Tags are the sole mechanism for descriptive attributes — no separate columns for species, style, etc.
 - Recommendation engine starts as heuristics — ML is a future upgrade
-- "Open Now" feed doesn't need sub-second latency — 30s polling is acceptable
+- "Open Now" feed view doesn't need sub-second latency — 30s polling is acceptable
+- Search indexes primarily from PDS records for public data
 
 ## Shortcomings & Known Limitations
 
 - **PostgreSQL tsvector limitations:** No fuzzy matching, limited faceted search performance, no typo tolerance
 - **Tag taxonomy requires ongoing curation** — tag pollution (duplicates, irrelevant tags) is inevitable
+- **Tags-only approach** means losing structured validation — e.g., can't enforce "exactly one species" without tag rules
 - **Recommendation engine with few users** gives poor results — cold start problem
 - **No geographic/timezone-based search** — relevant for physical commissions (fursuits)
 - **NSFW filtering in search** must be rigorous — legal liability if NSFW content leaks to SFW results
 - **Search result ranking is opaque** — could be perceived as unfair without transparency
-- **No saved searches or alerts** ("notify me when a wolf artist opens commissions")
+- **No saved searches or alerts** ("notify me when a wolf org opens commissions") — but feed subscriptions partially cover this
+- **PDS index lag:** Search results may be stale if PDS sync is delayed

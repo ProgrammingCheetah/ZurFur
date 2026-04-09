@@ -45,6 +45,8 @@ The foundational authentication and social layer of Zurfur. Users authenticate e
 - Trigger: on first login (onboarding) or manually via API
 - Periodic background sync to catch new follows
 
+> **Architecture note:** The `social_connections` table serves as a staging table for the initial import. In Phase 2+, imported follows should be mapped to feed subscriptions on the corresponding personal org's default feed. The long-term social graph model is feed subscriptions (see Feature 2.3), not a separate connections table.
+
 ### 1.4 Native Social Integration
 
 **What it is:** Bluesky feeds and DMs rendered natively within the Zurfur UI, making it function as a full social client alongside the commission tools.
@@ -64,10 +66,8 @@ The foundational authentication and social layer of Zurfur. Users authenticate e
 
 ### Enables (unlocked after this is built)
 - [Feature 2](../02-identity-profile/README.md) — profiles require authenticated users
-- [Feature 3](../03-commission-engine/README.md) — commissions require authenticated users
-- [Feature 8](../08-search-discovery/README.md) — search requires users to exist
-- [Feature 9](../09-notification-system/README.md) — notifications require knowing who to notify
-- Essentially every other feature depends on 1.1
+
+> **Note:** All other features depend on authentication transitively through Feature 2. Feature 1.1 is the root of the entire dependency tree.
 
 ## Implementation Phases
 
@@ -76,8 +76,9 @@ The foundational authentication and social layer of Zurfur. Users authenticate e
 - JWT middleware (AuthUser extractor)
 - Refresh token rotation with SHA-256 hashing
 - Pluggable OAuthStateStore trait + InMemoryOAuthStateStore
-- User entity with did/handle fields
-- Database: users (did, handle columns), atproto_sessions, refresh_tokens tables
+- User entity with did, handle, email, and username fields
+- Database: users (did, handle, email, username columns), atproto_sessions, refresh_tokens tables
+- After user creation during OAuth callback, a personal organization is automatically created for the user (implemented in Feature 2 Phase 1)
 
 ### Phase 2: Bluesky Client & Sync
 - BlueskyClient trait in domain layer

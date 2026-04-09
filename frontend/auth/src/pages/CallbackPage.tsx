@@ -6,6 +6,7 @@ import { storeSession, getAppUrl } from "../lib/auth";
 export default function CallbackPage() {
   const [searchParams] = useSearchParams();
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
   const exchangedRef = useRef(false);
 
   useEffect(() => {
@@ -33,7 +34,9 @@ export default function CallbackPage() {
           handle: result.handle,
         });
 
-        window.location.href = getAppUrl();
+        // TODO: redirect to main app once it exists
+        // window.location.href = getAppUrl();
+        setSuccess(true);
       } catch (err) {
         if (err instanceof ApiError) {
           if (err.status === 400) {
@@ -49,6 +52,19 @@ export default function CallbackPage() {
 
     exchange();
   }, [searchParams]);
+
+  if (success) {
+    return (
+      <div className="login-container">
+        <div className="login-card">
+          <div className="callback-status">
+            <h1>Login Successful</h1>
+            <p>You are now logged in.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (error) {
     return (

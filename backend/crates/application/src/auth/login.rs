@@ -73,6 +73,9 @@ pub struct OAuthConfig {
     /// Private key for client assertions (confidential client). Generate once with
     /// `atproto_identity::key::{generate_key, KeyType::P256Private}`.
     pub private_signing_key_data: atproto_identity::key::KeyData,
+    /// PLC directory hostname for DID resolution (e.g., "plc.directory").
+    /// The crate prepends "https://" internally — do NOT include the scheme.
+    pub plc_hostname: String,
 }
 
 // --- Identity resolver (reqwest 0.12 for atproto crates) ---------------------
@@ -88,23 +91,35 @@ async fn build_http_client() -> Result<reqwest::Client, LoginError> {
         .map_err(|e| LoginError::InternalError(e.to_string()))
 }
 
-async fn get_identity_resolver() -> Result<SharedIdentityResolver, LoginError> {
+async fn get_identity_resolver(plc_hostname: &str) -> Result<SharedIdentityResolver, LoginError> {
     let http_client = build_http_client().await?;
-    let dns_resolver = Arc::new(HickoryDnsResolver::create_resolver(&[]));
+    // Explicit nameservers: systemd-resolved (127.0.0.53) fails with HickoryDns.
+    // Use public resolvers directly.
+    let dns_resolver = Arc::new(HickoryDnsResolver::create_resolver(&[
+        "1.1.1.1".parse().unwrap(),
+        "8.8.8.8".parse().unwrap(),
+    ]));
     let inner = InnerIdentityResolver {
         dns_resolver,
         http_client,
-        plc_hostname: "https://plc.directory".into(),
+        plc_hostname: plc_hostname.into(),
     };
     Ok(SharedIdentityResolver(Arc::new(inner)))
 }
 
-async fn resolve_identity(handle_or_did: &str) -> Result<Document, LoginError> {
-    let resolver = get_identity_resolver().await?;
-    resolver
-        .resolve(handle_or_did)
-        .await
-        .map_err(|_| LoginError::IdentityResolverFailed)
+async fn resolve_identity(handle_or_did: &str, plc_hostname: &str) -> Result<Document, LoginError> {
+    eprintln!("[auth] Resolving identity for: {handle_or_did}");
+    let resolver = get_identity_resolver(plc_hostname).await?;
+    match resolver.resolve(handle_or_did).await {
+        Ok(doc) => {
+            eprintln!("[auth] Identity resolved: did={}", doc.id);
+            Ok(doc)
+        }
+        Err(e) => {
+            eprintln!("[auth] Identity resolution FAILED for {handle_or_did}: {e:?}");
+            Err(LoginError::IdentityResolverFailed)
+        }
+    }
 }
 
 fn pds_from_document(doc: &Document) -> Result<&str, LoginError> {
@@ -142,11 +157,17 @@ pub async fn start_oauth_login(
     config: &OAuthConfig,
     storage: &impl OAuthRequestStorage,
 ) -> Result<OAuthStartResult, LoginError> {
+    eprintln!("[auth] Starting OAuth login for: {handle_or_did}");
     let http_client = build_http_client().await?;
     let pds = pds_from_document(document)?;
+    eprintln!("[auth] PDS endpoint: {pds}");
     let (_resource, auth_server) = pds_resources(&http_client, pds)
         .await
-        .map_err(|e| LoginError::OAuth(e.to_string()))?;
+        .map_err(|e| {
+            eprintln!("[auth] PDS resource discovery FAILED: {e}");
+            LoginError::OAuth(e.to_string())
+        })?;
+    eprintln!("[auth] Auth server issuer: {}", auth_server.issuer);
 
     let (pkce_verifier, code_challenge) = pkce::generate();
     let state = uuid::Uuid::new_v4().to_string();
@@ -171,6 +192,7 @@ pub async fn start_oauth_login(
     };
 
     let login_hint = Some(handle_or_did);
+    eprintln!("[auth] Sending PAR request to auth server...");
     let par_response: ParResponse = oauth_init(
         &http_client,
         &oauth_client,
@@ -180,7 +202,11 @@ pub async fn start_oauth_login(
         &oauth_request_state,
     )
     .await
-    .map_err(|e: OAuthClientError| LoginError::OAuth(e.to_string()))?;
+    .map_err(|e: OAuthClientError| {
+        eprintln!("[auth] PAR request FAILED: {e}");
+        LoginError::OAuth(e.to_string())
+    })?;
+    eprintln!("[auth] PAR succeeded, state={state}");
 
     let now = Utc::now();
     let expires_at = now + Duration::minutes(10);
@@ -229,17 +255,28 @@ pub async fn complete_oauth_login(
     config: &OAuthConfig,
     storage: &impl OAuthRequestStorage,
 ) -> Result<AtprotoSession, LoginError> {
+    eprintln!("[auth] Completing OAuth login: state={state}, expected_did={expected_did}");
     let http_client = build_http_client().await?;
 
     let oauth_request = storage
         .get_oauth_request_by_state(state)
         .await
-        .map_err(|e| LoginError::InternalError(e.to_string()))?
-        .ok_or(LoginError::InvalidState)?;
+        .map_err(|e| {
+            eprintln!("[auth] Failed to get OAuth request by state: {e}");
+            LoginError::InternalError(e.to_string())
+        })?
+        .ok_or_else(|| {
+            eprintln!("[auth] OAuth state not found (expired or already used)");
+            LoginError::InvalidState
+        })?;
 
+    eprintln!("[auth] Found stored OAuth request, issuer={}", oauth_request.issuer);
     let auth_server = oauth_authorization_server(&http_client, &oauth_request.issuer)
         .await
-        .map_err(|e| LoginError::OAuth(e.to_string()))?;
+        .map_err(|e| {
+            eprintln!("[auth] Auth server discovery FAILED: {e}");
+            LoginError::OAuth(e.to_string())
+        })?;
 
     let dpop_key = deserialize_dpop_key(&oauth_request.dpop_private_key)?;
 
@@ -249,6 +286,7 @@ pub async fn complete_oauth_login(
         private_signing_key_data: config.private_signing_key_data.clone(),
     };
 
+    eprintln!("[auth] Exchanging code for tokens...");
     let token_response = oauth_complete(
         &http_client,
         &oauth_client,
@@ -258,7 +296,11 @@ pub async fn complete_oauth_login(
         &auth_server,
     )
     .await
-    .map_err(|e: OAuthClientError| LoginError::OAuth(e.to_string()))?;
+    .map_err(|e: OAuthClientError| {
+        eprintln!("[auth] Token exchange FAILED: {e}");
+        LoginError::OAuth(e.to_string())
+    })?;
+    eprintln!("[auth] Token exchange succeeded, sub={:?}", token_response.sub);
 
     // Delete OAuth request only after successful exchange (allows retry on transient failure)
     if let Err(e) = storage.delete_oauth_request_by_state(state).await {
@@ -290,8 +332,8 @@ pub async fn complete_oauth_login(
 
 /// Resolve handle or DID to the full identity document. Returns the DID document
 /// which can be passed to `start_oauth_login` to avoid redundant resolution.
-pub async fn resolve_identity_document(handle_or_did: &str) -> Result<Document, LoginError> {
-    resolve_identity(handle_or_did).await
+pub async fn resolve_identity_document(handle_or_did: &str, plc_hostname: &str) -> Result<Document, LoginError> {
+    resolve_identity(handle_or_did, plc_hostname).await
 }
 
 // --- LRU storage constructor --------------------------------------------------
