@@ -63,7 +63,7 @@ pub struct EntityFeed {
 pub enum EntityFeedError {
     #[error("Entity feed not found")]
     NotFound,
-    #[error("Feed already attached to this entity")]
+    #[error("Feed is already attached to an entity")]
     AlreadyAttached,
     #[error("Database error: {0}")]
     Database(String),

@@ -1,7 +1,8 @@
 //! DefaultRole — system-defined role templates with preset permissions.
 //!
 //! ARCHITECTURE DECISIONS:
-//!   Default roles are seeded in the migration (owner/admin/artist/mod/member).
+//!   Default roles are seeded in the migration with 5 system roles:
+//!   owner, admin, artist, mod, and member.
 //!   When assigning a role to a member, the application layer looks up the
 //!   default role to get initial permissions. Per-member permissions can then
 //!   be overridden individually without affecting the default role definition.

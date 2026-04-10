@@ -95,6 +95,8 @@ impl UserRepository for SqlxUserRepository {
     }
 
     async fn mark_onboarding_completed(&self, user_id: Uuid) -> Result<(), UserError> {
+        // Idempotent: if already completed, treat as success.
+        // Only return NotFound if the user truly doesn't exist.
         let result = sqlx::query(
             "UPDATE users SET onboarding_completed_at = now() \
              WHERE id = $1 AND deleted_at IS NULL AND onboarding_completed_at IS NULL",
@@ -105,7 +107,18 @@ impl UserRepository for SqlxUserRepository {
         .map_err(|e| UserError::Database(e.to_string()))?;
 
         if result.rows_affected() == 0 {
-            return Err(UserError::NotFound);
+            // Check if user exists (may already be onboarded)
+            let exists = sqlx::query(
+                "SELECT id FROM users WHERE id = $1 AND deleted_at IS NULL",
+            )
+            .bind(user_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|e| UserError::Database(e.to_string()))?;
+
+            if exists.is_none() {
+                return Err(UserError::NotFound);
+            }
         }
         Ok(())
     }

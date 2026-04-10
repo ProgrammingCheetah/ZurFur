@@ -107,34 +107,33 @@ impl FeedRepository for SqlxFeedRepository {
     }
 
     async fn soft_delete(&self, id: Uuid) -> Result<(), FeedError> {
-        // Atomic check-and-update: only delete custom feeds, reject system feeds.
-        // Uses a single query to avoid TOCTOU race conditions.
+        // Single CTE query: atomically checks existence, feed type, and deletes.
+        // No TOCTOU race — all in one statement.
         let row = sqlx::query(
-            "UPDATE feeds SET deleted_at = now() \
-             WHERE id = $1 AND deleted_at IS NULL AND feed_type = 'custom' \
-             RETURNING feed_type",
+            "WITH target AS ( \
+                 SELECT feed_type FROM feeds WHERE id = $1 AND deleted_at IS NULL \
+             ), deleted AS ( \
+                 UPDATE feeds SET deleted_at = now() \
+                 WHERE id = $1 AND deleted_at IS NULL AND feed_type = 'custom' \
+                 RETURNING 1 \
+             ) \
+             SELECT CASE \
+                 WHEN EXISTS (SELECT 1 FROM deleted) THEN 'deleted' \
+                 WHEN EXISTS (SELECT 1 FROM target) THEN 'system' \
+                 ELSE 'not_found' \
+             END AS outcome",
         )
         .bind(id)
-        .fetch_optional(&self.pool)
+        .fetch_one(&self.pool)
         .await
         .map_err(|e| FeedError::Database(e.to_string()))?;
 
-        if row.is_some() {
-            return Ok(());
-        }
-
-        // Distinguish between "not found" and "is a system feed"
-        let exists = sqlx::query(
-            "SELECT feed_type FROM feeds WHERE id = $1 AND deleted_at IS NULL",
-        )
-        .bind(id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|e| FeedError::Database(e.to_string()))?;
-
-        match exists {
-            Some(_) => Err(FeedError::SystemFeedUndeletable),
-            None => Err(FeedError::NotFound),
+        let outcome: String = row.get("outcome");
+        match outcome.as_str() {
+            "deleted" => Ok(()),
+            "system" => Err(FeedError::SystemFeedUndeletable),
+            "not_found" => Err(FeedError::NotFound),
+            other => Err(FeedError::Database(format!("Unexpected soft_delete outcome: {other}"))),
         }
     }
 

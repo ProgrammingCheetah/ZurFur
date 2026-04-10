@@ -14,7 +14,7 @@
 --   treats it as an opaque string. Validation happens at the application
 --   layer before persistence.
 --
---   default_roles: seeded with 4 system rows. Permissions use the same
+--   default_roles: seeded with 5 system rows. Permissions use the same
 --   BIGINT bitfield as organization_members. Owner gets -1 (all bits set
 --   via i64 wrapping to u64::MAX in Rust).
 --

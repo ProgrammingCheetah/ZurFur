@@ -68,7 +68,7 @@ pub enum FeedError {
     NotFound,
     #[error("System feeds cannot be deleted")]
     SystemFeedUndeletable,
-    #[error("Slug already taken for this entity: {0}")]
+    #[error("Feed slug already taken: {0}")]
     SlugTaken(String),
     #[error("Database error: {0}")]
     Database(String),
