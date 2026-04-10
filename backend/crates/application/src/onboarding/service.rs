@@ -13,8 +13,6 @@ pub enum OnboardingError {
     UserNotFound,
     #[error("Personal organization not found for user")]
     PersonalOrgNotFound,
-    #[error("Invalid onboarding role: {0}")]
-    InvalidRole(String),
     #[error("Internal error: {0}")]
     Internal(String),
 }

@@ -174,9 +174,10 @@ async fn list_feed_items(
 ) -> Result<Json<Vec<FeedItemResponse>>, (StatusCode, String)> {
     let feed_id = parse_uuid(&id)?;
 
+    let limit = pagination.limit.clamp(1, 100);
     let items = state
         .feed_service
-        .list_feed_items(feed_id, pagination.limit, pagination.offset)
+        .list_feed_items(feed_id, limit, pagination.offset)
         .await
         .map_err(map_feed_error)?;
 
@@ -255,7 +256,7 @@ pub fn feed_router() -> Router<SharedState> {
 
 // --- Response mapping --------------------------------------------------------
 
-fn to_feed_response(f: &domain::feed::Feed) -> FeedResponse {
+pub(super) fn to_feed_response(f: &domain::feed::Feed) -> FeedResponse {
     FeedResponse {
         id: f.id.to_string(),
         slug: f.slug.clone(),
@@ -308,14 +309,5 @@ fn map_feed_error(e: FeedServiceError) -> (StatusCode, String) {
     }
 }
 
-// --- Helpers -----------------------------------------------------------------
-
-fn parse_user_id(sub: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
-    sub.parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))
-}
-
-fn parse_uuid(s: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
-    s.parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid UUID: {s}")))
-}
+// Reuse shared helpers from organizations module.
+use super::organizations::{parse_user_id, parse_uuid};

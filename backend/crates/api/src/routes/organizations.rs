@@ -374,12 +374,12 @@ fn map_org_error(e: OrgServiceError) -> (StatusCode, String) {
 
 // --- Helpers -----------------------------------------------------------------
 
-fn parse_user_id(sub: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
+pub(super) fn parse_user_id(sub: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
     sub.parse()
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))
 }
 
-fn parse_uuid(s: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
+pub(super) fn parse_uuid(s: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
     s.parse()
         .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid UUID: {s}")))
 }

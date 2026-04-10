@@ -3,20 +3,14 @@ use axum::{Json, Router, extract::State, http::StatusCode, routing::post};
 use domain::onboarding_role::OnboardingRole;
 use serde::{Deserialize, Serialize};
 
+use super::feeds::{FeedResponse, to_feed_response};
+use super::organizations::parse_user_id;
 use crate::middleware::AuthUser;
 use crate::state::SharedState;
 
 #[derive(Deserialize)]
 struct CompleteOnboardingRequest {
     role: String,
-}
-
-#[derive(Serialize)]
-struct FeedResponse {
-    id: String,
-    slug: String,
-    display_name: String,
-    feed_type: String,
 }
 
 #[derive(Serialize)]
@@ -30,10 +24,7 @@ async fn complete_onboarding(
     AuthUser(claims): AuthUser,
     Json(body): Json<CompleteOnboardingRequest>,
 ) -> Result<Json<OnboardingResponse>, (StatusCode, String)> {
-    let user_id: uuid::Uuid = claims
-        .sub
-        .parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
+    let user_id = parse_user_id(&claims.sub)?;
 
     let role = OnboardingRole::from_str(&body.role).ok_or_else(|| {
         (
@@ -54,12 +45,7 @@ async fn complete_onboarding(
     let feeds_created = result
         .feeds_created
         .iter()
-        .map(|f| FeedResponse {
-            id: f.id.to_string(),
-            slug: f.slug.clone(),
-            display_name: f.display_name.clone(),
-            feed_type: f.feed_type.as_str().to_string(),
-        })
+        .map(to_feed_response)
         .collect();
 
     let response = OnboardingResponse {
@@ -81,9 +67,6 @@ fn map_onboarding_error(e: OnboardingError) -> (StatusCode, String) {
             StatusCode::NOT_FOUND,
             "Personal organization not found".into(),
         ),
-        OnboardingError::InvalidRole(r) => {
-            (StatusCode::BAD_REQUEST, format!("Invalid role: {r}"))
-        }
         OnboardingError::Internal(inner) => {
             eprintln!("Internal onboarding error: {inner}");
             (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())

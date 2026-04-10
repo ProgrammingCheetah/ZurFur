@@ -35,6 +35,11 @@ impl OnboardingRole {
         }
     }
 
+    /// Whether this role triggers creation of a commissions feed on the
+    /// user's personal org.
+    pub fn creates_commissions_feed(&self) -> bool {
+        matches!(self, OnboardingRole::Artist | OnboardingRole::CrafterMaker)
+    }
 }
 
 impl From<OnboardingRole> for &'static str {
@@ -48,14 +53,6 @@ impl TryFrom<&str> for OnboardingRole {
 
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         OnboardingRole::from_str(s).ok_or_else(|| format!("Unknown onboarding role: {s}"))
-    }
-}
-
-impl OnboardingRole {
-    /// Whether this role triggers creation of a commissions feed on the
-    /// user's personal org.
-    pub fn creates_commissions_feed(&self) -> bool {
-        matches!(self, OnboardingRole::Artist | OnboardingRole::CrafterMaker)
     }
 }
 
