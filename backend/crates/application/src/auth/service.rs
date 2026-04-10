@@ -520,12 +520,17 @@ mod tests {
                 handle: handle.map(String::from),
                 email: email.map(String::from),
                 username: handle.unwrap_or(did).to_string(),
+                onboarding_completed_at: None,
             };
             self.users.lock().await.push(user.clone());
             Ok(user)
         }
         async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
             Ok(())
+        }
+        // TODO: Implement when onboarding flow is wired into auth
+        async fn mark_onboarding_completed(&self, _user_id: Uuid) -> Result<(), UserError> {
+            todo!("mark_onboarding_completed not yet implemented in mock")
         }
     }
 

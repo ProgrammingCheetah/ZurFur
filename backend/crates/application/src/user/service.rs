@@ -166,6 +166,10 @@ mod tests {
         async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
             Ok(())
         }
+        // TODO: Implement when OnboardingService is built
+        async fn mark_onboarding_completed(&self, _user_id: Uuid) -> Result<(), UserError> {
+            todo!("mark_onboarding_completed not yet implemented in mock")
+        }
     }
 
     #[derive(Default)]
@@ -367,6 +371,7 @@ mod tests {
             handle: Some("test.bsky.social".into()),
             email: None,
             username: "test".into(),
+            onboarding_completed_at: None,
         }
     }
 

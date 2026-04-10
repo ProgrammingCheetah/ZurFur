@@ -1,4 +1,10 @@
 mod atproto_session_repository;
+mod default_role_repository;
+mod entity_feed_repository;
+mod feed_element_repository;
+mod feed_item_repository;
+mod feed_repository;
+mod feed_subscription_repository;
 mod organization_member_repository;
 mod organization_profile_repository;
 mod organization_repository;
@@ -7,6 +13,12 @@ mod user_preferences_repository;
 mod user_repository;
 
 pub use atproto_session_repository::SqlxAtprotoSessionRepository;
+pub use default_role_repository::SqlxDefaultRoleRepository;
+pub use entity_feed_repository::SqlxEntityFeedRepository;
+pub use feed_element_repository::SqlxFeedElementRepository;
+pub use feed_item_repository::SqlxFeedItemRepository;
+pub use feed_repository::SqlxFeedRepository;
+pub use feed_subscription_repository::SqlxFeedSubscriptionRepository;
 pub use organization_member_repository::SqlxOrganizationMemberRepository;
 pub use organization_profile_repository::SqlxOrganizationProfileRepository;
 pub use organization_repository::SqlxOrganizationRepository;
