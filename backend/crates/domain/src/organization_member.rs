@@ -48,30 +48,78 @@ impl Default for Permissions {
     }
 }
 
+/// Administrative role within an organization.
+///
+/// Roles are structural positions that determine what a member can do.
+/// Cosmetic identifiers like "Artist" or "Furry Illustrator" belong in `title`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    Owner,
+    Admin,
+    Mod,
+    Member,
+}
+
+impl Role {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Role::Owner => "owner",
+            Role::Admin => "admin",
+            Role::Mod => "mod",
+            Role::Member => "member",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "owner" => Some(Role::Owner),
+            "admin" => Some(Role::Admin),
+            "mod" => Some(Role::Mod),
+            "member" => Some(Role::Member),
+            _ => None,
+        }
+    }
+}
+
+impl From<Role> for &'static str {
+    fn from(role: Role) -> Self {
+        role.as_str()
+    }
+}
+
+impl TryFrom<&str> for Role {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        Role::from_str(s).ok_or_else(|| format!("Unknown role: {s}"))
+    }
+}
+
 /// A membership linking a user to an organization with a role, title, and permissions.
 ///
 /// ARCHITECTURE DECISIONS:
-///   `role` is free-text (not an enum) because orgs can define whatever roles make
-///   sense for their context. The platform suggests common roles (Artist, Manager,
-///   Member) but doesn't restrict them.
+///   `role` is an enum of administrative positions (Owner, Admin, Mod, Member).
+///   Cosmetic identifiers belong in `title`, which is a self-given display string
+///   (like "Furry Artist", "Code Breaker", etc.).
 ///
-///   `title` is purely cosmetic — a self-given display string shown on the org
-///   page and profile (like GitHub's "Contributor", "Maintainer" labels, but
-///   fully customizable: "Furry Artist", "Code Breaker", etc.).
-///
-///   `is_owner` is separate from permissions because ownership is a structural
-///   property (can't be removed, gets ALL permissions) not just a permission level.
+///   Ownership is derived from `role == Role::Owner` via the `is_owner()` method.
+///   Domain rule: personal org owners are immutable — their role cannot be changed.
 #[derive(Debug, Clone)]
 pub struct OrganizationMember {
     pub id: Uuid,
     pub org_id: Uuid,
     pub user_id: Uuid,
-    pub role: String,
+    pub role: Role,
     pub title: Option<String>,
-    pub is_owner: bool,
     pub permissions: Permissions,
     pub joined_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl OrganizationMember {
+    pub fn is_owner(&self) -> bool {
+        self.role == Role::Owner
+    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -90,9 +138,8 @@ pub trait OrganizationMemberRepository: Send + Sync {
         &self,
         org_id: Uuid,
         user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
-        is_owner: bool,
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError>;
 
@@ -116,7 +163,7 @@ pub trait OrganizationMemberRepository: Send + Sync {
         &self,
         org_id: Uuid,
         user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
     ) -> Result<OrganizationMember, OrganizationMemberError>;
 
@@ -195,5 +242,44 @@ mod tests {
         let future_bit: u64 = 1 << 42;
         let all = Permissions::new(Permissions::ALL);
         assert!(all.has(future_bit));
+    }
+
+    #[test]
+    fn role_round_trip() {
+        let variants = [
+            (Role::Owner, "owner"),
+            (Role::Admin, "admin"),
+            (Role::Mod, "mod"),
+            (Role::Member, "member"),
+        ];
+        for (variant, s) in variants {
+            assert_eq!(variant.as_str(), s);
+            assert_eq!(Role::from_str(s), Some(variant));
+        }
+    }
+
+    #[test]
+    fn role_from_str_returns_none_for_unknown() {
+        assert_eq!(Role::from_str("artist"), None);
+        assert_eq!(Role::from_str(""), None);
+    }
+
+    #[test]
+    fn is_owner_returns_true_only_for_owner_role() {
+        let make_member = |role: Role| OrganizationMember {
+            id: Uuid::new_v4(),
+            org_id: Uuid::new_v4(),
+            user_id: Uuid::new_v4(),
+            role,
+            title: None,
+            permissions: Permissions::default(),
+            joined_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+
+        assert!(make_member(Role::Owner).is_owner());
+        assert!(!make_member(Role::Admin).is_owner());
+        assert!(!make_member(Role::Mod).is_owner());
+        assert!(!make_member(Role::Member).is_owner());
     }
 }

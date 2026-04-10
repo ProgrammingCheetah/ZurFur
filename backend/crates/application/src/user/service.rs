@@ -126,6 +126,7 @@ mod tests {
     use domain::organization::{Organization, OrganizationError, OrganizationRepository};
     use domain::organization_member::{
         OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
+        Role,
     };
     use domain::organization_profile::{
         CommissionStatus, OrganizationProfile, OrganizationProfileError,
@@ -238,9 +239,8 @@ mod tests {
             &self,
             _org_id: Uuid,
             _user_id: Uuid,
-            _role: &str,
+            _role: Role,
             _title: Option<&str>,
-            _is_owner: bool,
             _permissions: Permissions,
         ) -> Result<OrganizationMember, OrganizationMemberError> {
             unimplemented!()
@@ -275,7 +275,7 @@ mod tests {
             &self,
             _org_id: Uuid,
             _user_id: Uuid,
-            _role: &str,
+            _role: Role,
             _title: Option<&str>,
         ) -> Result<OrganizationMember, OrganizationMemberError> {
             unimplemented!()

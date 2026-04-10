@@ -19,7 +19,7 @@ pub use domain::oauth_state_store::OAuthStateStore;
 pub use domain::onboarding_role::OnboardingRole;
 pub use domain::organization::{Organization, OrganizationError, OrganizationRepository};
 pub use domain::organization_member::{
-    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
+    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
 pub use domain::organization_profile::{
     CommissionStatus, OrganizationProfile, OrganizationProfileError, OrganizationProfileRepository,

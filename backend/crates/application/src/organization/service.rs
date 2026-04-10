@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use domain::organization::{Organization, OrganizationRepository};
 use domain::organization_member::{
-    OrganizationMember, OrganizationMemberRepository, Permissions,
+    OrganizationMember, OrganizationMemberRepository, Permissions, Role,
 };
 use domain::organization_profile::{
     CommissionStatus, OrganizationProfile, OrganizationProfileRepository,
@@ -165,9 +165,8 @@ impl OrganizationService {
             .add(
                 org.id,
                 user_id,
-                "owner",
+                Role::Owner,
                 None,
-                true,
                 Permissions::new(Permissions::ALL),
             )
             .await
@@ -213,9 +212,8 @@ impl OrganizationService {
             .add(
                 org.id,
                 user_id,
-                "owner",
+                Role::Owner,
                 None,
-                true,
                 Permissions::new(Permissions::ALL),
             )
             .await
@@ -334,21 +332,14 @@ impl OrganizationService {
         org_id: Uuid,
         actor_id: Uuid,
         target_user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
     ) -> Result<OrganizationMember, OrgServiceError> {
         self.require_permission(org_id, actor_id, Permissions::MANAGE_MEMBERS)
             .await?;
 
         self.member_repo
-            .add(
-                org_id,
-                target_user_id,
-                role,
-                title,
-                false,
-                Permissions::default(),
-            )
+            .add(org_id, target_user_id, role, title, Permissions::default())
             .await
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
@@ -360,7 +351,7 @@ impl OrganizationService {
         org_id: Uuid,
         actor_id: Uuid,
         target_user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
         permissions: Option<Permissions>,
     ) -> Result<OrganizationMember, OrgServiceError> {
@@ -405,7 +396,7 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?
             .ok_or(OrgServiceError::NotFound)?;
 
-        if target_member.is_owner {
+        if target_member.is_owner() {
             return Err(OrgServiceError::CannotRemoveOwner);
         }
 
@@ -435,7 +426,7 @@ impl OrganizationService {
         actor_id: Uuid,
     ) -> Result<OrganizationMember, OrgServiceError> {
         let member = self.get_actor_member(org_id, actor_id).await?;
-        if !member.is_owner {
+        if !member.is_owner() {
             return Err(OrgServiceError::Forbidden);
         }
         Ok(member)
@@ -461,6 +452,7 @@ mod tests {
     use domain::organization::{Organization, OrganizationError, OrganizationRepository};
     use domain::organization_member::{
         OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
+        Role,
     };
     use domain::organization_profile::{
         CommissionStatus, OrganizationProfile, OrganizationProfileError,
@@ -566,9 +558,8 @@ mod tests {
             &self,
             org_id: Uuid,
             user_id: Uuid,
-            role: &str,
+            role: Role,
             title: Option<&str>,
-            is_owner: bool,
             permissions: Permissions,
         ) -> Result<OrganizationMember, OrganizationMemberError> {
             let mut members = self.members.lock().await;
@@ -582,9 +573,8 @@ mod tests {
                 id: Uuid::new_v4(),
                 org_id,
                 user_id,
-                role: role.into(),
+                role,
                 title: title.map(String::from),
-                is_owner,
                 permissions,
                 joined_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -639,7 +629,7 @@ mod tests {
             &self,
             org_id: Uuid,
             user_id: Uuid,
-            role: &str,
+            role: Role,
             title: Option<&str>,
         ) -> Result<OrganizationMember, OrganizationMemberError> {
             let mut members = self.members.lock().await;
@@ -647,7 +637,7 @@ mod tests {
                 .iter_mut()
                 .find(|m| m.org_id == org_id && m.user_id == user_id)
                 .ok_or(OrganizationMemberError::NotFound)?;
-            member.role = role.into();
+            member.role = role;
             member.title = title.map(String::from);
             Ok(member.clone())
         }
@@ -802,7 +792,7 @@ mod tests {
         assert_eq!(detail.org.slug, "my-studio");
         assert!(!detail.org.is_personal);
         assert_eq!(detail.members.len(), 1);
-        assert!(detail.members[0].is_owner);
+        assert!(detail.members[0].is_owner());
         assert_eq!(detail.members[0].user_id, user_id);
     }
 
@@ -847,7 +837,7 @@ mod tests {
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
 
         // Add non-owner member
-        svc.add_member(detail.org.id, owner_id, other_id, "member", None)
+        svc.add_member(detail.org.id, owner_id, other_id, Role::Member, None)
             .await
             .unwrap();
 
@@ -898,7 +888,7 @@ mod tests {
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
 
         // Add member with no permissions
-        svc.add_member(detail.org.id, owner_id, other_id, "member", None)
+        svc.add_member(detail.org.id, owner_id, other_id, Role::Member, None)
             .await
             .unwrap();
 
@@ -962,7 +952,7 @@ mod tests {
         );
 
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
-        svc.add_member(detail.org.id, owner_id, member_id, "member", None)
+        svc.add_member(detail.org.id, owner_id, member_id, Role::Member, None)
             .await
             .unwrap();
 

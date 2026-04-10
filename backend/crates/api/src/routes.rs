@@ -1,4 +1,6 @@
 mod auth;
+mod feeds;
+mod onboarding;
 mod organizations;
 mod users;
 
@@ -13,6 +15,8 @@ pub fn router() -> Router<SharedState> {
         .nest("/users", users::router())
         .nest("/auth", auth::router())
         .nest("/organizations", organizations::router())
+        .nest("/onboarding", onboarding::router())
+        .nest("/feeds", feeds::feed_router())
 }
 
 /// Serve OAuth client metadata so Bluesky's auth server can verify our identity.

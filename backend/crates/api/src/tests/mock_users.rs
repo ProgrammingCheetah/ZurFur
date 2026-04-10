@@ -47,9 +47,14 @@ impl UserRepository for MockUserRepo {
     async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
         Ok(())
     }
-    // TODO: Implement when onboarding API routes are built
-    async fn mark_onboarding_completed(&self, _user_id: Uuid) -> Result<(), UserError> {
-        todo!("mark_onboarding_completed not yet implemented in mock")
+    async fn mark_onboarding_completed(&self, user_id: Uuid) -> Result<(), UserError> {
+        let mut users = self.users.lock().await;
+        let user = users
+            .iter_mut()
+            .find(|u| u.id == user_id)
+            .ok_or(UserError::NotFound)?;
+        user.onboarding_completed_at = Some(chrono::Utc::now());
+        Ok(())
     }
 }
 

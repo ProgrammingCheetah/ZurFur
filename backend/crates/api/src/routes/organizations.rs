@@ -27,7 +27,6 @@ struct MemberResponse {
     user_id: String,
     role: String,
     title: Option<String>,
-    is_owner: bool,
     permissions: u64,
 }
 
@@ -215,9 +214,16 @@ async fn add_member(
     let org_id = parse_uuid(&id)?;
     let target_user_id = parse_uuid(&body.user_id)?;
 
+    let role = domain::organization_member::Role::from_str(&body.role).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid role: '{}'. Must be 'owner', 'admin', 'mod', or 'member'", body.role),
+        )
+    })?;
+
     let member = state
         .org_service
-        .add_member(org_id, user_id, target_user_id, &body.role, body.title.as_deref())
+        .add_member(org_id, user_id, target_user_id, role, body.title.as_deref())
         .await
         .map_err(map_org_error)?;
 
@@ -235,6 +241,13 @@ async fn update_member(
     let org_id = parse_uuid(&id)?;
     let target_user_id = parse_uuid(&target_user_id_str)?;
 
+    let role = domain::organization_member::Role::from_str(&body.role).ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Invalid role: '{}'. Must be 'owner', 'admin', 'mod', or 'member'", body.role),
+        )
+    })?;
+
     let permissions = body
         .permissions
         .map(domain::organization_member::Permissions::new);
@@ -245,7 +258,7 @@ async fn update_member(
             org_id,
             user_id,
             target_user_id,
-            &body.role,
+            role,
             body.title.as_deref(),
             permissions,
         )
@@ -289,6 +302,10 @@ pub fn router() -> Router<SharedState> {
             "/{id}/members/{user_id}",
             put(update_member).delete(remove_member),
         )
+        .route(
+            "/{id}/feeds",
+            get(super::feeds::list_org_feeds).post(super::feeds::create_org_feed),
+        )
 }
 
 // --- Response mapping --------------------------------------------------------
@@ -306,9 +323,8 @@ fn to_member_response(m: &domain::organization_member::OrganizationMember) -> Me
     MemberResponse {
         id: m.id.to_string(),
         user_id: m.user_id.to_string(),
-        role: m.role.clone(),
+        role: m.role.as_str().to_string(),
         title: m.title.clone(),
-        is_owner: m.is_owner,
         permissions: m.permissions.0,
     }
 }

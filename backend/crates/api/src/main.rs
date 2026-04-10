@@ -34,7 +34,11 @@ async fn main() {
     let org_repo = persistence::SqlxOrganizationRepository::from_pool(pool.clone());
     let member_repo = persistence::SqlxOrganizationMemberRepository::from_pool(pool.clone());
     let org_profile_repo = persistence::SqlxOrganizationProfileRepository::from_pool(pool.clone());
-    let preferences_repo = persistence::SqlxUserPreferencesRepository::from_pool(pool);
+    let preferences_repo = persistence::SqlxUserPreferencesRepository::from_pool(pool.clone());
+    let feed_repo = persistence::SqlxFeedRepository::from_pool(pool.clone());
+    let entity_feed_repo = persistence::SqlxEntityFeedRepository::from_pool(pool.clone());
+    let feed_item_repo = persistence::SqlxFeedItemRepository::from_pool(pool.clone());
+    let feed_element_repo = persistence::SqlxFeedElementRepository::from_pool(pool);
 
     // Pluggable storage (swap these to Redis-backed implementations for production)
     let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(1000).unwrap());
@@ -54,7 +58,7 @@ async fn main() {
     );
 
     let user_service = application::user::service::UserService::new(
-        user_repo,
+        user_repo.clone(),
         org_repo.clone(),
         org_profile_repo.clone(),
         member_repo.clone(),
@@ -62,15 +66,32 @@ async fn main() {
     );
 
     let org_service = application::organization::service::OrganizationService::new(
-        org_repo,
-        member_repo,
+        org_repo.clone(),
+        member_repo.clone(),
         org_profile_repo,
+    );
+
+    let onboarding_service = application::onboarding::service::OnboardingService::new(
+        user_repo,
+        org_repo,
+        feed_repo.clone(),
+        entity_feed_repo.clone(),
+    );
+
+    let feed_service = application::feed::service::FeedService::new(
+        feed_repo,
+        entity_feed_repo,
+        feed_item_repo,
+        feed_element_repo,
+        member_repo,
     );
 
     let state = AppState {
         auth_service,
         user_service,
         org_service,
+        onboarding_service,
+        feed_service,
     };
 
     let app = router(state);

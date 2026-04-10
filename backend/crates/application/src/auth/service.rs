@@ -477,6 +477,7 @@ mod tests {
     use domain::organization::{Organization, OrganizationError, OrganizationRepository};
     use domain::organization_member::{
         OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
+        Role,
     };
     use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
     use domain::user::{User, UserError, UserRepository};
@@ -717,18 +718,16 @@ mod tests {
             &self,
             org_id: Uuid,
             user_id: Uuid,
-            role: &str,
+            role: Role,
             title: Option<&str>,
-            is_owner: bool,
             permissions: Permissions,
         ) -> Result<OrganizationMember, OrganizationMemberError> {
             let member = OrganizationMember {
                 id: Uuid::new_v4(),
                 org_id,
                 user_id,
-                role: role.into(),
+                role,
                 title: title.map(String::from),
-                is_owner,
                 permissions,
                 joined_at: Utc::now(),
                 updated_at: Utc::now(),
@@ -759,7 +758,7 @@ mod tests {
             &self,
             _org_id: Uuid,
             _user_id: Uuid,
-            _role: &str,
+            _role: Role,
             _title: Option<&str>,
         ) -> Result<OrganizationMember, OrganizationMemberError> {
             unimplemented!()

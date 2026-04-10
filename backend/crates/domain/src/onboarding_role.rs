@@ -1,11 +1,10 @@
 //! OnboardingRole — first-login role selection enum.
 //!
 //! ARCHITECTURE DECISIONS:
-//!   This is a domain enum only (no table). The onboarding endpoint maps
-//!   these to org_members.role values using the default_roles lookup.
-//!   artist/crafter_maker map to the "artist" default role, while
-//!   commissioner_client/coder_developer map to the "member" default role.
-//!   The selection also determines whether a commissions feed is auto-created.
+//!   This is a domain enum only (no table). The onboarding wizard uses it to
+//!   determine which system feeds to auto-create on the user's personal org.
+//!   Artist/CrafterMaker trigger commissions feed creation, while
+//!   CommissionerClient/CoderDeveloper do not.
 
 /// Role selected during the onboarding wizard on first login.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,15 +35,23 @@ impl OnboardingRole {
         }
     }
 
-    /// Maps the onboarding selection to the default_roles.name used for
-    /// initial org_members.role assignment.
-    pub fn default_role_name(&self) -> &'static str {
-        match self {
-            OnboardingRole::Artist | OnboardingRole::CrafterMaker => "artist",
-            OnboardingRole::CommissionerClient | OnboardingRole::CoderDeveloper => "member",
-        }
-    }
+}
 
+impl From<OnboardingRole> for &'static str {
+    fn from(role: OnboardingRole) -> Self {
+        role.as_str()
+    }
+}
+
+impl TryFrom<&str> for OnboardingRole {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        OnboardingRole::from_str(s).ok_or_else(|| format!("Unknown onboarding role: {s}"))
+    }
+}
+
+impl OnboardingRole {
     /// Whether this role triggers creation of a commissions feed on the
     /// user's personal org.
     pub fn creates_commissions_feed(&self) -> bool {
@@ -74,18 +81,6 @@ mod tests {
     fn onboarding_role_from_str_returns_none_for_unknown() {
         assert_eq!(OnboardingRole::from_str("viewer"), None);
         assert_eq!(OnboardingRole::from_str(""), None);
-    }
-
-    #[test]
-    fn artist_and_crafter_map_to_artist_role() {
-        assert_eq!(OnboardingRole::Artist.default_role_name(), "artist");
-        assert_eq!(OnboardingRole::CrafterMaker.default_role_name(), "artist");
-    }
-
-    #[test]
-    fn commissioner_and_coder_map_to_member_role() {
-        assert_eq!(OnboardingRole::CommissionerClient.default_role_name(), "member");
-        assert_eq!(OnboardingRole::CoderDeveloper.default_role_name(), "member");
     }
 
     #[test]

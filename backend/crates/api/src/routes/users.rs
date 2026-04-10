@@ -18,7 +18,6 @@ struct MembershipResponse {
     org_id: String,
     role: String,
     title: Option<String>,
-    is_owner: bool,
 }
 
 #[derive(Serialize)]
@@ -96,9 +95,8 @@ async fn get_me(
         .into_iter()
         .map(|m| MembershipResponse {
             org_id: m.org_id.to_string(),
-            role: m.role,
+            role: m.role.as_str().to_string(),
             title: m.title,
-            is_owner: m.is_owner,
         })
         .collect();
 

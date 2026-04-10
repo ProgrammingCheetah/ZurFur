@@ -53,7 +53,7 @@ async fn create_org_returns_created_with_owner() {
     assert_eq!(body["org"]["slug"], "my-studio");
     assert_eq!(body["org"]["display_name"], "My Studio");
     assert_eq!(body["org"]["is_personal"], false);
-    assert_eq!(body["members"][0]["is_owner"], true);
+    assert_eq!(body["members"][0]["role"], "owner");
     assert_eq!(body["members"][0]["user_id"], user_id.to_string());
 }
 

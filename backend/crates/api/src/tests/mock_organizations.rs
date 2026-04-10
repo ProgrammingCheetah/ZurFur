@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use domain::organization::{Organization, OrganizationError, OrganizationRepository};
 use domain::organization_member::{
-    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
+    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
 use domain::organization_profile::{
     CommissionStatus, OrganizationProfile, OrganizationProfileError, OrganizationProfileRepository,
@@ -100,9 +100,8 @@ impl OrganizationMemberRepository for MockMemberRepo {
         &self,
         org_id: Uuid,
         user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
-        is_owner: bool,
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         let mut members = self.members.lock().await;
@@ -116,9 +115,8 @@ impl OrganizationMemberRepository for MockMemberRepo {
             id: Uuid::new_v4(),
             org_id,
             user_id,
-            role: role.into(),
+            role,
             title: title.map(String::from),
-            is_owner,
             permissions,
             joined_at: Utc::now(),
             updated_at: Utc::now(),
@@ -166,7 +164,7 @@ impl OrganizationMemberRepository for MockMemberRepo {
         &self,
         org_id: Uuid,
         user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         let mut members = self.members.lock().await;
@@ -174,7 +172,7 @@ impl OrganizationMemberRepository for MockMemberRepo {
             .iter_mut()
             .find(|m| m.org_id == org_id && m.user_id == user_id)
             .ok_or(OrganizationMemberError::NotFound)?;
-        member.role = role.into();
+        member.role = role;
         member.title = title.map(String::from);
         Ok(member.clone())
     }

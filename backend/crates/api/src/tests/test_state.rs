@@ -5,8 +5,14 @@ use std::sync::Arc;
 
 use application::auth::login::OAuthConfig;
 use application::auth::service::{AuthService, create_default_oauth_storage};
+use application::feed::service::FeedService;
+use application::onboarding::service::OnboardingService;
 use application::organization::service::OrganizationService;
 use application::user::service::UserService;
+use domain::entity_feed::EntityFeedRepository;
+use domain::feed::FeedRepository;
+use domain::feed_element::FeedElementRepository;
+use domain::feed_item::FeedItemRepository;
 use domain::organization::OrganizationRepository;
 use domain::organization_member::OrganizationMemberRepository;
 use domain::organization_profile::OrganizationProfileRepository;
@@ -16,6 +22,7 @@ use shared::JwtConfig;
 use uuid::Uuid;
 
 use super::mock_auth::{MockRefreshRepo, MockSessionRepo, MockStateStore};
+use super::mock_feeds::{MockEntityFeedRepo, MockFeedElementRepo, MockFeedItemRepo, MockFeedRepo};
 use super::mock_organizations::{MockMemberRepo, MockOrgProfileRepo, MockOrgRepo};
 use super::mock_users::{MockPreferencesRepo, MockUserRepo};
 use crate::AppState;
@@ -65,19 +72,46 @@ pub fn test_app_state() -> AppState {
     );
 
     let user_service = UserService::new(
-        user_repo,
+        user_repo.clone(),
         org_repo.clone(),
         org_profile_repo.clone(),
         member_repo.clone(),
         preferences_repo,
     );
 
-    let org_service = OrganizationService::new(org_repo, member_repo, org_profile_repo);
+    let org_service = OrganizationService::new(
+        org_repo.clone(),
+        member_repo.clone(),
+        org_profile_repo,
+    );
+
+    let feed_repo: Arc<dyn FeedRepository> = Arc::new(MockFeedRepo::default());
+    let entity_feed_repo: Arc<dyn EntityFeedRepository> = Arc::new(MockEntityFeedRepo::default());
+    let feed_item_repo: Arc<dyn FeedItemRepository> = Arc::new(MockFeedItemRepo::default());
+    let feed_element_repo: Arc<dyn FeedElementRepository> =
+        Arc::new(MockFeedElementRepo::default());
+
+    let onboarding_service = OnboardingService::new(
+        user_repo,
+        org_repo,
+        feed_repo.clone(),
+        entity_feed_repo.clone(),
+    );
+
+    let feed_service = FeedService::new(
+        feed_repo,
+        entity_feed_repo,
+        feed_item_repo,
+        feed_element_repo,
+        member_repo,
+    );
 
     AppState {
         auth_service,
         user_service,
         org_service,
+        onboarding_service,
+        feed_service,
     }
 }
 

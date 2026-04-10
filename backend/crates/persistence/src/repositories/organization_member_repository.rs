@@ -1,7 +1,7 @@
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
 use domain::organization_member::{
-    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
+    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
 use sqlx::Row;
 use std::sync::Arc;
@@ -23,13 +23,14 @@ impl SqlxOrganizationMemberRepository {
 
 fn map_member(row: sqlx::postgres::PgRow) -> OrganizationMember {
     let permissions_raw: i64 = row.get("permissions");
+    let role_str: String = row.get("role");
+    let role = Role::from_str(&role_str).unwrap_or(Role::Member);
     OrganizationMember {
         id: row.get("id"),
         org_id: row.get("org_id"),
         user_id: row.get("user_id"),
-        role: row.get("role"),
+        role,
         title: row.get("title"),
-        is_owner: row.get("is_owner"),
         permissions: Permissions::new(permissions_raw as u64),
         joined_at: row.get("joined_at"),
         updated_at: row.get("updated_at"),
@@ -38,7 +39,7 @@ fn map_member(row: sqlx::postgres::PgRow) -> OrganizationMember {
 
 macro_rules! cols {
     () => {
-        "id, org_id, user_id, role, title, is_owner, permissions, joined_at, updated_at"
+        "id, org_id, user_id, role, title, permissions, joined_at, updated_at"
     };
 }
 
@@ -48,21 +49,19 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         &self,
         org_id: Uuid,
         user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
-        is_owner: bool,
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         sqlx::query(concat!(
-            "INSERT INTO organization_members (org_id, user_id, role, title, is_owner, permissions) ",
-            "VALUES ($1, $2, $3, $4, $5, $6) ",
+            "INSERT INTO organization_members (org_id, user_id, role, title, permissions) ",
+            "VALUES ($1, $2, $3, $4, $5) ",
             "RETURNING ", cols!()
         ))
         .bind(org_id)
         .bind(user_id)
-        .bind(role)
+        .bind(role.as_str())
         .bind(title)
-        .bind(is_owner)
         .bind(permissions.0 as i64)
         .fetch_one(&self.pool)
         .await
@@ -124,7 +123,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         &self,
         org_id: Uuid,
         user_id: Uuid,
-        role: &str,
+        role: Role,
         title: Option<&str>,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         sqlx::query(concat!(
@@ -132,7 +131,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
             "WHERE org_id = $3 AND user_id = $4 ",
             "RETURNING ", cols!()
         ))
-        .bind(role)
+        .bind(role.as_str())
         .bind(title)
         .bind(org_id)
         .bind(user_id)
