@@ -36,6 +36,20 @@ impl FeedType {
     }
 }
 
+impl From<FeedType> for &'static str {
+    fn from(ft: FeedType) -> Self {
+        ft.as_str()
+    }
+}
+
+impl TryFrom<&str> for FeedType {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        FeedType::from_str(s).ok_or_else(|| format!("Unknown feed type: {s}"))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Feed {
     pub id: Uuid,

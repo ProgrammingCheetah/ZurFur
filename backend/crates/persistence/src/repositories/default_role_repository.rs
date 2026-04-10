@@ -18,8 +18,6 @@ impl SqlxDefaultRoleRepository {
     }
 }
 
-/// Map a database row to a DefaultRole.
-///
 /// ARCHITECTURE DECISIONS:
 ///   Permissions are stored as BIGINT (signed i64) in Postgres but
 ///   represented as u64 in Rust. The cast `i64 as u64` wraps correctly:

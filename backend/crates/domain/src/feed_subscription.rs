@@ -39,6 +39,20 @@ impl SubscriptionPermission {
     }
 }
 
+impl From<SubscriptionPermission> for &'static str {
+    fn from(sp: SubscriptionPermission) -> Self {
+        sp.as_str()
+    }
+}
+
+impl TryFrom<&str> for SubscriptionPermission {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        SubscriptionPermission::from_str(s).ok_or_else(|| format!("Unknown permission: {s}"))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FeedSubscription {
     pub id: Uuid,

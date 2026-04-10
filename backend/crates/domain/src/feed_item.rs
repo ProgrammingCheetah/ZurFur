@@ -41,6 +41,20 @@ impl AuthorType {
     }
 }
 
+impl From<AuthorType> for &'static str {
+    fn from(at: AuthorType) -> Self {
+        at.as_str()
+    }
+}
+
+impl TryFrom<&str> for AuthorType {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        AuthorType::from_str(s).ok_or_else(|| format!("Unknown author type: {s}"))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FeedItem {
     pub id: Uuid,

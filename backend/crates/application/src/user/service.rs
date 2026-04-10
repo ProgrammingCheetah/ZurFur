@@ -166,8 +166,9 @@ mod tests {
         async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
             Ok(())
         }
+        // TODO: Implement when OnboardingService is built
         async fn mark_onboarding_completed(&self, _user_id: Uuid) -> Result<(), UserError> {
-            Ok(())
+            todo!("mark_onboarding_completed not yet implemented in mock")
         }
     }
 

@@ -1,12 +1,17 @@
 //! DefaultRole — system-defined role templates with preset permissions.
 //!
 //! ARCHITECTURE DECISIONS:
-//!   Default roles are seeded in the migration (owner/admin/mod/member).
+//!   Default roles are seeded in the migration (owner/admin/artist/mod/member).
 //!   When assigning a role to a member, the application layer looks up the
 //!   default role to get initial permissions. Per-member permissions can then
 //!   be overridden individually without affecting the default role definition.
 //!   `hierarchy_level` determines who can modify whom: lower level = higher rank
-//!   (owner=0, admin=1, mod=2, member=3).
+//!   (owner=0, admin=1, artist=2, mod=3, member=4).
+//!
+//! TODO: Evolve into a full `Role` entity where default roles are marked with
+//!   `is_default = true`. Currently org_members.role is a free-text string —
+//!   it should eventually become a FK to a roles table. Deferred until the
+//!   commission engine needs custom role definitions.
 
 use uuid::Uuid;
 

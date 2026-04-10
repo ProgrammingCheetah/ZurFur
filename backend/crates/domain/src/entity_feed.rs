@@ -38,6 +38,20 @@ impl EntityType {
     }
 }
 
+impl From<EntityType> for &'static str {
+    fn from(et: EntityType) -> Self {
+        et.as_str()
+    }
+}
+
+impl TryFrom<&str> for EntityType {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        EntityType::from_str(s).ok_or_else(|| format!("Unknown entity type: {s}"))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct EntityFeed {
     pub feed_id: Uuid,

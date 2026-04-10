@@ -42,6 +42,20 @@ impl FeedElementType {
     }
 }
 
+impl From<FeedElementType> for &'static str {
+    fn from(fet: FeedElementType) -> Self {
+        fet.as_str()
+    }
+}
+
+impl TryFrom<&str> for FeedElementType {
+    type Error = String;
+
+    fn try_from(s: &str) -> Result<Self, Self::Error> {
+        FeedElementType::from_str(s).ok_or_else(|| format!("Unknown element type: {s}"))
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct FeedElement {
     pub id: Uuid,
