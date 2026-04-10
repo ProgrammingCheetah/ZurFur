@@ -36,8 +36,9 @@ CREATE TABLE default_roles (
 INSERT INTO default_roles (name, default_permissions, hierarchy_level) VALUES
     ('owner',  -1, 0),    -- all bits set (u64::MAX via i64 wrapping)
     ('admin',  63, 1),    -- all 6 current permission bits (0b111111)
-    ('mod',    9, 2),     -- MANAGE_PROFILE (1) | CHAT (8)
-    ('member', 8, 3);     -- CHAT only
+    ('artist', 13, 2),    -- MANAGE_PROFILE (1) | MANAGE_COMMISSIONS (4) | CHAT (8)
+    ('mod',    9, 3),     -- MANAGE_PROFILE (1) | CHAT (8)
+    ('member', 8, 4);     -- CHAT only
 
 -- 3. Feeds
 CREATE TABLE feeds (
