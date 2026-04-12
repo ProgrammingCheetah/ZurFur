@@ -1,5 +1,6 @@
 use application::auth::service::AuthService;
 use application::feed::service::FeedService;
+use application::tag::service::TagService;
 use application::onboarding::service::OnboardingService;
 use application::organization::service::OrganizationService;
 use application::user::service::UserService;
@@ -16,6 +17,7 @@ pub struct AppState {
     pub org_service: OrganizationService,
     pub onboarding_service: OnboardingService,
     pub feed_service: FeedService,
+    pub tag_service: TagService,
 }
 
 /// State type for Axum: shared across handlers via Arc.
