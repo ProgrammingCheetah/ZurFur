@@ -97,6 +97,7 @@ impl OnboardingService {
 
         // 5. Create missing system feeds
         let mut desired_feeds = vec![
+            ("bio", "Bio"),
             ("updates", "Updates"),
             ("gallery", "Gallery"),
         ];
@@ -392,8 +393,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.feeds_created.len(), 3);
+        assert_eq!(result.feeds_created.len(), 4);
         let slugs: Vec<&str> = result.feeds_created.iter().map(|f| f.slug.as_str()).collect();
+        assert!(slugs.contains(&"bio"));
         assert!(slugs.contains(&"updates"));
         assert!(slugs.contains(&"gallery"));
         assert!(slugs.contains(&"commissions"));
@@ -420,8 +422,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.feeds_created.len(), 2);
+        assert_eq!(result.feeds_created.len(), 3);
         let slugs: Vec<&str> = result.feeds_created.iter().map(|f| f.slug.as_str()).collect();
+        assert!(slugs.contains(&"bio"));
         assert!(slugs.contains(&"updates"));
         assert!(slugs.contains(&"gallery"));
         assert!(!slugs.contains(&"commissions"));
