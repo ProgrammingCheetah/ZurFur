@@ -1,4 +1,4 @@
-# Feature 4: Financial & Payment Gateway
+# Feature 5: Financial & Payment Gateway
 
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
@@ -8,7 +8,7 @@ Zurfur acts as the merchant of record — clients pay the platform, the platform
 
 ## Sub-features
 
-### 4.1 Platform Intermediary (Escrow-Lite)
+### 5.1 Platform Intermediary (Escrow-Lite)
 
 **What it is:** Zurfur is the payment processor's customer (merchant of record). Clients pay Zurfur; Zurfur pays orgs on milestones/completion.
 
@@ -22,7 +22,7 @@ Zurfur acts as the merchant of record — clients pay the platform, the platform
 - Webhook handlers: `payment_intent.succeeded`, `charge.refunded`, `transfer.paid`, `account.updated`
 - Financial data is strictly private — stored in PostgreSQL only, never published to AT Protocol PDS
 
-### 4.2 Flexible Invoicing (Commission Slot Add-On)
+### 5.2 Flexible Invoicing (Commission Slot Add-On)
 
 **What it is:** Multiple invoices per Commission Card, each independently payable. Invoices are rendered as an add-on slot on the commission card.
 
@@ -34,7 +34,7 @@ Zurfur acts as the merchant of record — clients pay the platform, the platform
 - Invoices are displayed as a built-in add-on slot on the commission card (same slot mechanism as plugins)
 - API: `POST /commissions/:id/invoices`, `GET /invoices/:id`, `POST /invoices/:id/pay`
 
-### 4.3 Installments & Subscriptions
+### 5.3 Installments & Subscriptions
 
 **What it is:** Timed/automated billing cycles for large commissions.
 
@@ -44,7 +44,7 @@ Zurfur acts as the merchant of record — clients pay the platform, the platform
 - Alternatively, use Stripe Billing for subscription-like recurring charges
 - Plan creation: artist org defines total, installment size, frequency when creating the commission
 
-### 4.4 Voluntary Fee Coverage
+### 5.4 Voluntary Fee Coverage
 
 **What it is:** Checkout toggle letting buyers absorb the platform transaction fee so the org gets 100%.
 
@@ -59,13 +59,13 @@ Zurfur acts as the merchant of record — clients pay the platform, the platform
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2.1](../02-identity-profile/README.md) — org model (payment accounts belong to orgs)
-- [Feature 3](../03-commission-engine/README.md) — invoices are add-on slots on commission cards
+- [Feature 4](../04-commission-engine/README.md) — invoices are add-on slots on commission cards
 - External: Stripe account, Stripe Connect setup, webhook endpoint configuration
 
 ### Enables (unlocked after this is built)
-- [Feature 6](../06-plugin-ecosystem/README.md) — marketplace plugin purchases use payment infrastructure
-- [Feature 7.3](../07-community-analytics/README.md) — financial data feeds pricing analytics
-- [Feature 12](../12-dispute-resolution/README.md) — disputes freeze/release/refund funds
+- [Feature 7](../07-plugin-ecosystem/README.md) — marketplace plugin purchases use payment infrastructure
+- [Feature 8.3](../08-community-analytics/README.md) — financial data feeds pricing analytics
+- [Feature 13](../13-dispute-resolution/README.md) — disputes freeze/release/refund funds
 
 ## Implementation Phases
 

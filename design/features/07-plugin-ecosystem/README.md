@@ -1,4 +1,4 @@
-# Feature 6: The Plugin Ecosystem
+# Feature 7: The Plugin Ecosystem
 
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
@@ -8,7 +8,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 
 ## Sub-features
 
-### 6.1 Plugin Orgs (Server-Side)
+### 7.1 Plugin Orgs (Server-Side)
 
 **What it is:** A plugin is an org. Server-side plugins subscribe to feeds (commission feeds, org feeds, chat feeds) and react by posting feed items or triggering external actions. No special plugin infrastructure — plugins use the same feed subscription mechanism as any other org.
 
@@ -22,7 +22,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - Feed subscriptions are defined in [Feature 2.3](../02-identity-profile/README.md). Plugin orgs use the same `feed_subscriptions` table as any other subscriber.
 - Retry with exponential backoff for failed webhook deliveries
 
-### 6.2 Client-Side Plugins (UI Iframes)
+### 7.2 Client-Side Plugins (UI Iframes)
 
 **What it is:** Plugins that render UI within commission card add-on slots or org profile pages. Implemented as sandboxed iframes with a defined postMessage API.
 
@@ -38,7 +38,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - Plugin UI configuration stored in `commission_slots.config_json`
 - Size constraints enforced by the host container (max height, responsive width)
 
-### 6.3 Plugin Installation & Permissions
+### 7.3 Plugin Installation & Permissions
 
 **What it is:** Installing a plugin = granting a plugin org feed subscription + write permissions on specific feeds. No `plugin_installations` table — installation is represented by feed subscriptions.
 
@@ -50,7 +50,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - Commission-level installation: grant access to a specific commission's feeds only (via `commission_slots`)
 - Users can review and revoke plugin access at any time via org settings
 
-### 6.4 Plugin Marketplace
+### 7.4 Plugin Marketplace
 
 **What it is:** A directory of plugin orgs. Browse, search, and install plugins. No separate marketplace infrastructure — it queries the `orgs` table filtered by `is_plugin = true`.
 
@@ -59,10 +59,10 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - Marketplace API: `GET /plugins` (list/search), `GET /plugins/:org_id` (detail)
 - Approval process: manual review before listing is visible (moderation queue)
 - Ratings/reviews: `plugin_reviews` table: `id`, `plugin_org_id`, `reviewer_user_id`, `rating` (1-5), `review_text`, `created_at`
-- Paid plugins: purchase via Feature 4 payment infrastructure, unlocks `org_plugin_grants`
+- Paid plugins: purchase via Feature 5 payment infrastructure, unlocks `org_plugin_grants`
 - Installation counts derived from feed subscriptions count per plugin org (see [Feature 2.3](../02-identity-profile/README.md))
 
-### 6.5 Native Analytical Plugins
+### 7.5 Native Analytical Plugins
 
 **What it is:** Premium first-party analytical tools (non-generative AI). Market price suggestions, queue completion forecasting, profile engagement tracking. Built as plugin orgs with privileged access.
 
@@ -72,7 +72,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - **Price suggestions:** Aggregate commission pricing data by tag/category, suggest competitive pricing
 - **Queue forecasting:** Average time per internal state from commission feeds x current queue depth = estimated completion
 - **Engagement tracking:** View counts, conversion rates (org profile view -> commission request)
-- Subscription or one-time purchase via Feature 4 payment infrastructure
+- Subscription or one-time purchase via Feature 5 payment infrastructure
 - Data aggregation jobs run as background tasks, results posted as feed items to subscribing orgs
 
 ## Dependencies
@@ -81,12 +81,12 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2.1](../02-identity-profile/README.md) — org model (plugins are orgs)
 - [Feature 2.3](../02-identity-profile/README.md) — feeds infrastructure (plugins subscribe to feeds)
-- [Feature 3](../03-commission-engine/README.md) — commission feeds and add-on slots
-- [Feature 4](../04-financial-gateway/README.md) — marketplace purchases for paid plugins
+- [Feature 4](../04-commission-engine/README.md) — commission feeds and add-on slots
+- [Feature 5](../05-financial-gateway/README.md) — marketplace purchases for paid plugins
 
 ### Enables (unlocked after this is built)
-- [Feature 5.2](../05-omnichannel-comms/README.md) — chat bridge plugins are plugin orgs
-- [Feature 7.2](../07-community-analytics/README.md) — gamification can be extended via plugin orgs
+- [Feature 6.2](../06-omnichannel-comms/README.md) — chat bridge plugins are plugin orgs
+- [Feature 8.2](../08-community-analytics/README.md) — gamification can be extended via plugin orgs
 - Third-party innovation: features the platform doesn't prioritize can be community-built as plugin orgs
 
 ## Implementation Phases
@@ -109,7 +109,7 @@ Plugins are orgs. There is no separate plugin API, plugin registry, or plugin ru
 - `plugin_listings` table and marketplace API
 - Plugin approval/moderation workflow
 - `plugin_reviews` table and rating system
-- Paid plugin purchase flow (via Feature 4)
+- Paid plugin purchase flow (via Feature 5)
 - Plugin search and discovery
 
 ### Phase 3: Post-implementation

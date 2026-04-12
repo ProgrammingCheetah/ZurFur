@@ -1,6 +1,6 @@
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
-# Feature 7: Community & Analytics
+# Feature 8: Community & Analytics
 
 ## Overview
 
@@ -8,7 +8,7 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 
 ## Sub-features
 
-### 7.1 Feed Subscriptions
+### 8.1 Feed Subscriptions
 
 **What it is:** Subscribe to an org's commissions feed. When the org opens their commission queue, subscribers receive push notifications via the feed system.
 
@@ -16,10 +16,10 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 - Subscriptions are feed subscriptions via the `entity_feeds` system — subscribing to an org's commissions feed
 - When an org updates their availability tags (e.g., adds `status:open` tag) and publishes an availability post to their commissions feed, all subscribers are notified
 - "Open Now" is a feed view: a projection that filters for orgs with the `status:open` tag. Commission availability is a tag on the org, not a database column.
-- Emit notification events → delivered via Feature 9 (in-app, push, email)
+- Emit notification events → delivered via Feature 10 (in-app, push, email)
 - API: `POST /orgs/:id/feeds/commissions/subscribe`, `DELETE /orgs/:id/feeds/commissions/subscribe`, `GET /me/feed-subscriptions`
 
-### 7.2 Gamification
+### 8.2 Gamification
 
 **What it is:** XP, Badges, and Community Rewards for successful transactions and positive platform interactions. XP and badges accrue to users AND orgs separately.
 
@@ -35,7 +35,7 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 - Leaderboards: optional, query top users/orgs by XP within timeframes
 - XP and badges are cosmetic — no platform functionality gating
 
-### 7.3 The Strategy Engine (Open Metrics)
+### 8.3 The Strategy Engine (Open Metrics)
 
 **What it is:** Transparent month-to-month statistics. Clients see org turnaround trends and price changes. Orgs see client risk assessments. Public metrics published to PDS as AT Protocol records; private metrics PostgreSQL-only.
 
@@ -55,20 +55,20 @@ Drives engagement and informed decision-making. Feed subscriptions alert users w
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2](../02-identity-profile/README.md) — org entity and feed infrastructure
-- [Feature 3](../03-commission-engine/README.md) — commission event data to aggregate
-- [Feature 4](../04-financial-gateway/README.md) — financial data for pricing analytics
-- [Feature 9](../09-notification-system/README.md) — delivery mechanism for subscription notifications (7.1)
+- [Feature 4](../04-commission-engine/README.md) — commission event data to aggregate
+- [Feature 5](../05-financial-gateway/README.md) — financial data for pricing analytics
+- [Feature 10](../10-notification-system/README.md) — delivery mechanism for subscription notifications (8.1)
 
 ### Enables (unlocked after this is built)
-- [Feature 8](../08-search-discovery/README.md) — search ranking and filtering by metrics
-- [Feature 12](../12-dispute-resolution/README.md) — client risk scores inform dispute context
+- [Feature 9](../09-search-discovery/README.md) — search ranking and filtering by metrics
+- [Feature 13](../13-dispute-resolution/README.md) — client risk scores inform dispute context
 
 ## Implementation Phases
 
 ### Phase 1: Feed Subscriptions & XP
 - Feed subscription mechanism via `entity_feeds` infrastructure
 - "Open Now" as a feed view (filters for orgs with `status:open` tag)
-- Notification emission on org availability tag changes and feed status posts (depends on Feature 9)
+- Notification emission on org availability tag changes and feed status posts (depends on Feature 10)
 - `user_xp`, `org_xp`, `xp_events` tables
 - XP award logic triggered by commission lifecycle events, accruing to both user and org
 - Level calculation (XP thresholds per level)

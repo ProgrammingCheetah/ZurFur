@@ -1,6 +1,6 @@
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
-# Feature 12: Dispute Resolution
+# Feature 13: Dispute Resolution
 
 ## Overview
 
@@ -8,7 +8,7 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 
 ## Sub-features
 
-### 12.1 Dispute Filing
+### 13.1 Dispute Filing
 
 **What it is:** Either party (client user or org) opens a formal dispute on a commission card, freezing pending fund releases. The dispute is an add-on slot on the commission card.
 
@@ -18,15 +18,15 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 - Filing a dispute:
   1. Creates dispute record
   2. Attaches dispute as an add-on slot on the commission card
-  3. Freezes any pending payouts (updates transaction status in Feature 4)
-  4. Notifies all card participants and relevant org members (via Feature 9)
+  3. Freezes any pending payouts (updates transaction status in Feature 5)
+  4. Notifies all card participants and relevant org members (via Feature 10)
 - If a plugin org was involved in the commission (e.g., payment processing, asset delivery), they may be named as a third party
 - `dispute_third_parties` table: `dispute_id`, `org_id`, `role` (witness/involved_party), `added_at`
 - API: `POST /commissions/:id/dispute`
 - Limit: one active dispute per commission at a time
 - All dispute data is private — PostgreSQL only, never published to PDS
 
-### 12.2 Evidence Submission
+### 13.2 Evidence Submission
 
 **What it is:** Both parties submit evidence, which can reference specific events from the card's immutable history.
 
@@ -38,7 +38,7 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 - Evidence submission deadline: configurable (e.g., 7 days from filing)
 - API: `POST /disputes/:id/evidence`, `GET /disputes/:id/evidence`
 
-### 12.3 Resolution Flow
+### 13.3 Resolution Flow
 
 **What it is:** Structured mediation with auto-resolution for clear cases and escalation for complex ones.
 
@@ -49,11 +49,11 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
   - No delivery past deadline + fully paid → eligible for full refund
   - Partial delivery (some milestones completed) → eligible for partial refund proportional to incomplete milestones
   - Non-payment (invoice overdue > 30 days) → auto-cancel commission
-- **Manual review:** Complex cases assigned to moderators via Feature 13.3
-- Resolution triggers: unfreeze/refund funds (Feature 4), update dispute add-on slot on card, emit resolution event
+- **Manual review:** Complex cases assigned to moderators via Feature 14.3
+- Resolution triggers: unfreeze/refund funds (Feature 5), update dispute add-on slot on card, emit resolution event
 - Resolution record references both the client user and the org
 
-### 12.4 Refund & Payout Policies
+### 13.4 Refund & Payout Policies
 
 **What it is:** Transparent refund rules based on milestone completion and deliverables.
 
@@ -64,7 +64,7 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
   - Quality disputes: case-by-case (manual review)
   - Non-delivery: full refund after deadline + grace period
 - Refund triggers Stripe refund API (partial or full)
-- Org TOS (Feature 10) informs but does not override platform policy
+- Org TOS (Feature 11) informs but does not override platform policy
 - Policy document: publicly accessible at `/policies/refunds`
 
 ## Dependencies
@@ -72,15 +72,15 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2](../02-identity-profile/README.md) — org entity (disputes involve user vs org)
-- [Feature 3](../03-commission-engine/README.md) — commission cards with event history and add-on slots
-- [Feature 4](../04-financial-gateway/README.md) — escrowed funds to freeze/release/refund
+- [Feature 4](../04-commission-engine/README.md) — commission cards with event history and add-on slots
+- [Feature 5](../05-financial-gateway/README.md) — escrowed funds to freeze/release/refund
 
 ### Enables (unlocked after this is built)
-- Dispute outcomes feed into [Feature 7.3](../07-community-analytics/README.md) risk scores (soft enhancement, not a hard dependency).
-- [Feature 13.3](../13-platform-admin/README.md) — complex disputes enter moderation queue
+- Dispute outcomes feed into [Feature 8.3](../08-community-analytics/README.md) risk scores (soft enhancement, not a hard dependency).
+- [Feature 14.3](../14-platform-admin/README.md) — complex disputes enter moderation queue
 
 ### Also references
-- [Feature 10](../10-artist-tos/README.md) — org TOS terms inform dispute context (what was agreed)
+- [Feature 11](../11-artist-tos/README.md) — org TOS terms inform dispute context (what was agreed)
 
 ## Implementation Phases
 
@@ -101,7 +101,7 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 - Stripe refund integration (partial and full)
 - Fund unfreeze on resolution
 - Dispute add-on slot update on commission card
-- Dispute impact on client/org metrics (Feature 7.3)
+- Dispute impact on client/org metrics (Feature 8.3)
 
 ### Phase 3: Post-implementation
 - Dispute analytics: average resolution time, auto-resolution rate, outcome distribution
@@ -127,10 +127,10 @@ When real money is escrowed and commissions go wrong, there must be a formal pro
 
 - **Not legally binding arbitration** — platform decisions are recommendations. Either party can pursue legal action independently.
 - **Auto-resolution rules are simplistic** — can't handle nuanced quality disputes, partial delivery edge cases, or "it's not what I asked for" situations
-- **Moderator tooling** (Feature 13) must exist for manual review to work
+- **Moderator tooling** (Feature 14) must exist for manual review to work
 - **Time limits** for evidence gathering and resolution not enforced in Phase 1
 - **International jurisdictions** complicate enforcement — different countries have different consumer protection laws
-- **Repeat offender escalation** not automated — needs integration with Feature 7.3 metrics
+- **Repeat offender escalation** not automated — needs integration with Feature 8.3 metrics
 - **Partial refund calculations for installment plans** are complex and may be incorrect in edge cases
 - **No escrow license** — platform-held funds may have legal implications depending on jurisdiction
 - **Plugin org disputes** add complexity — determining liability when a plugin org is involved may be ambiguous

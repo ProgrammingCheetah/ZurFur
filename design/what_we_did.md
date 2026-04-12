@@ -39,7 +39,7 @@ During implementation, we redesigned the entire platform architecture through di
 
 ### Design Document Updates
 
-Revised all 14 design files (design_document.md + OVERVIEW.md + 13 feature READMEs):
+Revised all 15 design files (design_document.md + OVERVIEW.md + 14 feature READMEs, with tags later extracted to Feature 3):
 - v2 design document with new Part 2.5 (Core Domain Architecture)
 - Updated Mermaid diagrams throughout
 - Three rounds of audits (automated + manual) with all issues resolved
@@ -105,9 +105,9 @@ Per the plan, Phase 2 includes:
 
 ### Longer Term
 
-- Feature 8.2 (Tag infrastructure) — Tier 1 foundational, needed before Feature 3
-- Feature 10 (Org TOS) — on critical path before commissions
-- Feature 3 (Headless Commission Engine) — artist-defined states, boards as projections, add-on slots
+- Feature 3 (Tag infrastructure) — Tier 1 foundational, needed before Feature 4
+- Feature 11 (Org TOS) — on critical path before commissions
+- Feature 4 (Headless Commission Engine) — artist-defined states, boards as projections, add-on slots
 
 ---
 

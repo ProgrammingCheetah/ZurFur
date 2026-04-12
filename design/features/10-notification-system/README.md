@@ -1,6 +1,6 @@
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
-# Feature 9: Notification System
+# Feature 10: Notification System
 
 ## Overview
 
@@ -8,7 +8,7 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 
 ## Sub-features
 
-### 9.1 In-App Notification Feed
+### 10.1 In-App Notification Feed
 
 **What it is:** A user's private notification feed (bell icon, unread count) categorized by type. Modeled as a feed — the notification center is a feed view over the user's private notification feed.
 
@@ -20,7 +20,7 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 - Unread count: count of notification feed items where `read_at IS NULL`
 - Org-level notifications: when an event targets an org (e.g., new commission request), distribute to relevant org members based on their roles
 
-### 9.2 Push Notifications
+### 10.2 Push Notifications
 
 **What it is:** Browser and mobile push for critical events.
 
@@ -31,7 +31,7 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 - Backend sends push via `web-push` crate on critical events
 - Push categories: payment received, commission state change, new card message, org opened commissions
 
-### 9.3 Email Digests
+### 10.3 Email Digests
 
 **What it is:** Configurable email summaries aggregating platform activity.
 
@@ -43,7 +43,7 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 - Email templates: HTML templates with platform branding
 - Unsubscribe link in every email (CAN-SPAM compliance)
 
-### 9.4 Webhook Notifications (Legacy Path)
+### 10.4 Webhook Notifications (Legacy Path)
 
 **What it is:** Developer-facing API for external integrations to receive platform events. Largely superseded by feed subscriptions for plugin orgs — plugin orgs subscribe to feeds directly and react to feed items. Webhooks remain for external systems that cannot be modeled as orgs.
 
@@ -65,10 +65,10 @@ The platform's event delivery infrastructure. Almost every feature emits notific
 - Email provider account (SendGrid/SES)
 
 ### Enables (unlocked after this is built)
-- [Feature 7.1](../07-community-analytics/README.md) — feed subscription notifications delivered through this system
-- [Feature 5](../05-omnichannel-comms/README.md) — new message notifications
-- [Feature 3](../03-commission-engine/README.md) — commission state change notifications
-- [Feature 4](../04-financial-gateway/README.md) — payment notifications
+- [Feature 8.1](../08-community-analytics/README.md) — feed subscription notifications delivered through this system
+- [Feature 6](../06-omnichannel-comms/README.md) — new message notifications
+- [Feature 4](../04-commission-engine/README.md) — commission state change notifications
+- [Feature 5](../05-financial-gateway/README.md) — payment notifications
 
 ## Implementation Phases
 

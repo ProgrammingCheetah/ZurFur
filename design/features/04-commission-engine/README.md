@@ -1,4 +1,4 @@
-# Feature 3: The Headless Commission Engine (The "Card")
+# Feature 4: The Headless Commission Engine (The "Card")
 
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
@@ -8,7 +8,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 
 ## Sub-features
 
-### 3.1 Headless Commission State
+### 4.1 Headless Commission State
 
 **What it is:** Each commission has internal state only. The state is not tied to any visual representation. States are artist-defined per pipeline template (free-text, e.g., 'inbox', 'sketching', 'lineart', 'coloring', 'review', 'delivered'). The system does not enforce a fixed set of states.
 
@@ -21,7 +21,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - The commission entity has no feed field. Feeds are attached via `entity_feeds` (entity_type='commission') — same decoupled pattern as all other entities.
 - The commission itself knows nothing about boards, columns, or visual layout
 
-### 3.2 Commission Feed (Event History)
+### 4.2 Commission Feed (Event History)
 
 **What it is:** The commission's feed is its event history. `commission_events` is a feed attached to the commission via `entity_feeds`. Events include state changes, comments, file uploads, invoice references, deadline changes, participant additions, etc.
 
@@ -30,9 +30,9 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - `commission_events` are feed items in this feed, each with an `event_type` enum: `Created`, `StateChanged`, `CommentAdded`, `FileUploaded`, `InvoiceAttached`, `PaymentReceived`, `DeadlineSet`, `DeadlineMissed`, `ParticipantAdded`, `Completed`, `Cancelled`, `DisputeOpened`. Cancellation is a terminal state defined in the pipeline template, not a special system event. An artist who wants cancellation adds 'cancelled' to their template's `terminal_states`.
 - Feed items carry structured `payload_json` for event-specific data
 - Current state in `commissions` table is a materialized cache derived from events
-- Plugin orgs can subscribe to the commission feed to react to events (see Feature 6)
+- Plugin orgs can subscribe to the commission feed to react to events (see Feature 7)
 
-### 3.3 Add-On Slots
+### 4.3 Add-On Slots
 
 **What it is:** Commission cards are shells with defined slots for extensibility. Server-side slots are feed subscriptions (plugin orgs that subscribe to the commission's feed and can post back). Client-side slots are sandboxed iframes rendered alongside the card UI.
 
@@ -40,10 +40,10 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - `commission_slots` table: `id`, `commission_id`, `slot_type` (enum: server_side/client_side), `plugin_org_id` (FK orgs), `config_json`, `position` (display order), `created_at`
 - Server-side slots: the plugin org gets a feed subscription to the commission feed with read+write permissions. The plugin can post feed items (e.g., invoice widgets, status updates, automated messages).
 - Client-side slots: the frontend renders an iframe pointing to a URL from `config_json`. The iframe communicates via postMessage API with a defined contract (read feed items, post feed items, render UI).
-- Built-in slots: chat (Feature 5), invoices (Feature 4), file attachments — these are implemented as first-party add-ons using the same slot mechanism.
+- Built-in slots: chat (Feature 6), invoices (Feature 5), file attachments — these are implemented as first-party add-ons using the same slot mechanism.
 - Artists (org members with artist role) configure which slots appear on their commissions via pipeline templates.
 
-### 3.4 Board Projections
+### 4.4 Board Projections
 
 **What it is:** Boards are separate entities that project commissions into visual layouts. A board does not own commissions — it maps them to columns and positions. Multiple boards can display the same commission. Boards belong to orgs.
 
@@ -56,7 +56,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - Default board auto-created per org with columns mapped to internal states.
 - API: `POST /orgs/:id/boards`, `GET /boards/:id`, `PATCH /boards/:id/cards/:commission_id` (move card)
 
-### 3.5 Shapeless Data Attachments
+### 4.5 Shapeless Data Attachments
 
 **What it is:** Cards accept arbitrary file attachments — high-res artwork, PDFs, reference sheets, original intake form JSON.
 
@@ -67,7 +67,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - Virus/malware scanning on upload (ClamAV or similar)
 - File uploads emit a `FileUploaded` event to the commission feed
 
-### 3.6 Deadline & Time Tracking
+### 4.6 Deadline & Time Tracking
 
 **What it is:** Automated triggers that flag cards and track turnaround analytics.
 
@@ -77,7 +77,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - Turnaround analytics derived from `started_at` to `completed_at` per commission
 - Stage-level timing: calculate time spent in each state from `StateChanged` event timestamps in the feed
 
-### 3.7 Multi-Party Collaboration
+### 4.7 Multi-Party Collaboration
 
 **What it is:** Many-to-many participation. Artist-side participants are orgs (a studio org can have multiple members working on one commission). Client-side participants are users directly. All participants have shared visibility into the commission feed.
 
@@ -90,7 +90,7 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - Permission model: artist-role orgs can change state, client-role users can approve/pay, collaborators are read-only + chat
 - Commission creation allows tagging multiple participant orgs/users
 
-### 3.8 Pipeline Templates
+### 4.8 Pipeline Templates
 
 **What it is:** Reusable templates that define default slots, board column mappings, and intake form structure for new commissions. Templates belong to orgs (not users).
 
@@ -107,20 +107,20 @@ The core product of Zurfur. Commissions are headless data objects with internal 
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2.1](../02-identity-profile/README.md) — org model and org roles
 - [Feature 2.3](../02-identity-profile/README.md) — feeds infrastructure (commission feeds are feeds)
-- [Feature 8.2](../08-search-discovery/README.md) — Tag infrastructure for commission descriptive attributes and content rating
-- [Feature 10](../10-artist-tos/README.md) — TOS acceptance required before commission submission
+- [Feature 3](../03-tag-taxonomy/README.md) — Tag infrastructure for commission descriptive attributes and content rating
+- [Feature 11](../11-artist-tos/README.md) — TOS acceptance required before commission submission
 - File storage (S3/MinIO) for attachments
 
 ### Soft dependencies
 - [Feature 2.7](../02-identity-profile/README.md) — character profiles can be attached to commission requests, but a commission can exist without a character reference
 
 ### Enables (unlocked after this is built)
-- [Feature 4](../04-financial-gateway/README.md) — invoices are add-on slots on cards
-- [Feature 5](../05-omnichannel-comms/README.md) — chat is an add-on slot on cards
-- [Feature 6](../06-plugin-ecosystem/README.md) — plugin orgs subscribe to commission feeds
+- [Feature 5](../05-financial-gateway/README.md) — invoices are add-on slots on cards
+- [Feature 6](../06-omnichannel-comms/README.md) — chat is an add-on slot on cards
+- [Feature 7](../07-plugin-ecosystem/README.md) — plugin orgs subscribe to commission feeds
 - [Feature 1.2](../01-atproto-auth/README.md) — cross-post commission openings to Bluesky
-- [Feature 7.3](../07-community-analytics/README.md) — analytics from feed event data
-- [Feature 12](../12-dispute-resolution/README.md) — disputes reference commission feed history
+- [Feature 8.3](../08-community-analytics/README.md) — analytics from feed event data
+- [Feature 13](../13-dispute-resolution/README.md) — disputes reference commission feed history
 
 ## Implementation Phases
 

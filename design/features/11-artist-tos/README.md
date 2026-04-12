@@ -1,6 +1,6 @@
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
-# Feature 10: Organization Terms of Service (TOS) Management
+# Feature 11: Organization Terms of Service (TOS) Management
 
 ## Overview
 
@@ -8,7 +8,7 @@ Orgs define their rules, boundaries, refund policies, and expectations via a str
 
 ## Sub-features
 
-### 10.1 TOS Builder
+### 11.1 TOS Builder
 
 **What it is:** A structured editor for orgs to create and maintain their terms.
 
@@ -21,7 +21,7 @@ Orgs define their rules, boundaries, refund policies, and expectations via a str
 - Any org member with the appropriate role can create/publish TOS versions
 - Frontend renders a form-based editor with section templates
 
-### 10.2 TOS Versioning
+### 11.2 TOS Versioning
 
 **What it is:** Immutable snapshots. Each save creates a new version; old versions are never modified.
 
@@ -33,7 +33,7 @@ Orgs define their rules, boundaries, refund policies, and expectations via a str
 - PDS records for old versions remain (AT Protocol doesn't delete history)
 - Commission cards link to the specific `tos_version_id` that was accepted
 
-### 10.3 Mandatory Acknowledgment
+### 11.3 Mandatory Acknowledgment
 
 **What it is:** Clients must accept the org's current TOS before submitting a commission request. TOS acceptance is an add-on slot on the commission card.
 
@@ -45,7 +45,7 @@ Orgs define their rules, boundaries, refund policies, and expectations via a str
 - TOS acceptance is a commission card add-on slot: the card shell references which TOS version was accepted, with timestamp
 - If TOS changes between commissions, client must re-accept before new commission
 
-### 10.4 TOS Diff View
+### 11.4 TOS Diff View
 
 **What it is:** Visual comparison between TOS versions for returning clients.
 
@@ -63,8 +63,8 @@ Orgs define their rules, boundaries, refund policies, and expectations via a str
 - [Feature 2](../02-identity-profile/README.md) — org entity and membership must exist
 
 ### Enables (unlocked after this is built)
-- [Feature 3](../03-commission-engine/README.md) — commission intake requires TOS acceptance (as card add-on slot)
-- [Feature 12](../12-dispute-resolution/README.md) — TOS terms referenced during dispute resolution
+- [Feature 4](../04-commission-engine/README.md) — commission intake requires TOS acceptance (as card add-on slot)
+- [Feature 13](../13-dispute-resolution/README.md) — TOS terms referenced during dispute resolution
 
 ## Implementation Phases
 

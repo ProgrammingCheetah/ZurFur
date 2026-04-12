@@ -1,4 +1,4 @@
-# Feature 5: Omnichannel Communications
+# Feature 6: Omnichannel Communications
 
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
@@ -8,7 +8,7 @@ Chat is a **built-in first-party plugin add-on**, not an intrinsic commission fe
 
 ## Sub-features
 
-### 5.1 Commission Chat Feed
+### 6.1 Commission Chat Feed
 
 **What it is:** A private messaging feed bound to a specific Commission Card, created and managed by the chat add-on (a built-in first-party plugin). Messages are feed items stored in a dedicated chat feed, separate from the commission's event feed. The chat feed only exists when the chat add-on is active on the commission card.
 
@@ -21,7 +21,7 @@ Chat is a **built-in first-party plugin add-on**, not an intrinsic commission fe
 - File attachments: same S3 flow as commission attachments, linked via `attachments_json`
 - Chat uses the same `commission_slots` mechanism as other plugins — it is a built-in plugin, not a special case
 
-### 5.2 Omnichannel Bridge via Plugin Orgs
+### 6.2 Omnichannel Bridge via Plugin Orgs
 
 **What it is:** External platform bridges (Telegram, Discord, Matrix) are implemented as plugin orgs. A plugin org subscribes to a commission's chat feed and bridges messages bidirectionally. No separate `chat_bridges` table — bridging uses the standard feed subscription model.
 
@@ -39,11 +39,11 @@ Chat is a **built-in first-party plugin add-on**, not an intrinsic commission fe
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2.3](../02-identity-profile/README.md) — feeds infrastructure (chat is a feed)
-- [Feature 3.1](../03-commission-engine/README.md) — commission cards must exist
-- [Feature 3.3](../03-commission-engine/README.md) — add-on slot mechanism for chat rendering
+- [Feature 4.1](../04-commission-engine/README.md) — commission cards must exist
+- [Feature 4.3](../04-commission-engine/README.md) — add-on slot mechanism for chat rendering
 
 ### Enables (unlocked after this is built)
-- Plugin orgs from [Feature 6](../06-plugin-ecosystem/README.md) provide bridge implementations for 5.2.
+- Plugin orgs from [Feature 7](../07-plugin-ecosystem/README.md) provide bridge implementations for 6.2.
 
 ## Implementation Phases
 

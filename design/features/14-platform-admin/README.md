@@ -1,6 +1,6 @@
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
-# Feature 13: Platform Administration
+# Feature 14: Platform Administration
 
 ## Overview
 
@@ -8,7 +8,7 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 
 ## Sub-features
 
-### 13.1 User & Org Management Dashboard
+### 14.1 User & Org Management Dashboard
 
 **What it is:** View, suspend, ban user accounts and orgs, and audit activity. User suspensions and org suspensions are separate actions.
 
@@ -24,21 +24,21 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
   - Orgs: `GET /admin/orgs`, `POST /admin/orgs/:id/suspend`, `POST /admin/orgs/:id/unsuspend`, `GET /admin/orgs/:id/activity`
 - Activity view: recent commissions, reports filed/received, transactions, login history, org memberships
 
-### 13.2 Financial Auditing
+### 14.2 Financial Auditing
 
 **What it is:** Transaction logs, payout tracking, fee reconciliation for the operations team.
 
 **Implementation approach:**
-- Read-only views over Feature 4 transaction/payout data
+- Read-only views over Feature 5 transaction/payout data
 - Dashboard aggregations: daily revenue, total payouts, fee collection, chargeback rate, pending payouts
 - Reconciliation: compare Stripe records with platform records, flag discrepancies
 - Export: CSV download of transactions for accounting
 - Admin API: `GET /admin/finance/summary`, `GET /admin/finance/transactions`, `GET /admin/finance/payouts`, `GET /admin/finance/export`
 - Role-gated: only `finance` and `admin` roles
 
-### 13.3 Moderation Queue
+### 14.3 Moderation Queue
 
-**What it is:** Centralized queue for reviewing reports (Feature 11), disputes (Feature 12), content flags, and feed items. Feed posts are actionable content in the moderation queue.
+**What it is:** Centralized queue for reviewing reports (Feature 12), disputes (Feature 13), content flags, and feed items. Feed posts are actionable content in the moderation queue.
 
 **Implementation approach:**
 - Unified view joining: `reports`, `disputes`, `takedown_requests`, `content_flags`
@@ -56,21 +56,21 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
   - Flags: confirm/dismiss flag, update content tags
 - Admin API: `GET /admin/moderation`, `POST /admin/moderation/:type/:id/claim`, `POST /admin/moderation/:type/:id/resolve`
 
-### 13.4 Plugin Org Moderation
+### 14.4 Plugin Org Moderation
 
 **What it is:** Dedicated moderation actions for plugin orgs that misbehave or violate platform policies.
 
 **Implementation approach:**
 - Plugin org moderation actions:
   - **Disable feed subscriptions:** Plugin org can no longer subscribe to feeds (cuts off data access)
-  - **Delist from search:** Plugin org hidden from search results (Feature 8) but not fully suspended
+  - **Delist from search:** Plugin org hidden from search results (Feature 9) but not fully suspended
   - **Suspend:** Full org suspension (see 13.1)
   - **Revoke:** Permanent ban — all feed subscriptions terminated, org marked as revoked
 - Plugin org status tracked on org entity: `plugin_status` (active/restricted/delisted/suspended/revoked)
 - Graduated enforcement: warning → delist → disable subscriptions → suspend → revoke
 - All plugin moderation actions logged in `admin_audit_log`
 
-### 13.5 AT Protocol Admin Operations
+### 14.5 AT Protocol Admin Operations
 
 **What it is:** Administrative operations on AT Protocol PDS records — takedowns, record labeling, and content management.
 
@@ -80,9 +80,9 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 - Bulk operations: label/takedown multiple records matching criteria
 - PDS sync status: view records that are out of sync between PostgreSQL and PDS
 - Admin API: `POST /admin/pds/takedown`, `POST /admin/pds/label`, `GET /admin/pds/sync-status`
-- Integrates with Feature 11.3 DMCA workflow for PDS record takedowns
+- Integrates with Feature 12.3 DMCA workflow for PDS record takedowns
 
-### 13.6 System Health & Metrics
+### 14.6 System Health & Metrics
 
 **What it is:** API performance, error rates, infrastructure health dashboards.
 
@@ -104,9 +104,9 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authentication + admin role
 - [Feature 2](../02-identity-profile/README.md) — org entity for org suspensions
-- [Feature 4](../04-financial-gateway/README.md) — transaction data to audit (for 13.2)
-- [Feature 11](../11-content-moderation/README.md) — reports and flags to review (for 13.3)
-- [Feature 12](../12-dispute-resolution/README.md) — disputes to arbitrate (for 13.3)
+- [Feature 5](../05-financial-gateway/README.md) — transaction data to audit (for 14.2)
+- [Feature 12](../12-content-moderation/README.md) — reports and flags to review (for 14.3)
+- [Feature 13](../13-dispute-resolution/README.md) — disputes to arbitrate (for 14.3)
 - Feed infrastructure — feed items are actionable content in moderation queue
 
 ### Enables (unlocked after this is built)
@@ -132,7 +132,7 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 - Plugin org moderation actions (delist, disable subscriptions, suspend, revoke)
 - Financial summary endpoints (read-only aggregations)
 - CSV export
-- Integration with Feature 11 reports and Feature 12 disputes
+- Integration with Feature 12 reports and Feature 13 disputes
 
 ### Phase 3: AT Protocol Admin & Post-implementation
 - PDS takedown and record labeling API
@@ -161,7 +161,7 @@ Internal tooling for the team running Zurfur. Admin roles live on users (not org
 
 - **Admin dashboard is a separate frontend** that needs to be built or chosen (off-the-shelf vs custom)
 - **No audit log for admin-on-admin actions** (who changed another admin's role)
-- **Moderation quality** depends on human moderators — no automated moderation decisions beyond Feature 11's auto-flagging
+- **Moderation quality** depends on human moderators — no automated moderation decisions beyond Feature 12's auto-flagging
 - **No automated escalation** if moderation queue grows too large — manual monitoring required
 - **Financial auditing is read-only** — no tools for manual transaction corrections or adjustments
 - **System health metrics don't cover business KPIs** (user retention, commission conversion rate) — those need a separate analytics pipeline

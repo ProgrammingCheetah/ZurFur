@@ -1,14 +1,14 @@
 > **Revised 2026-04-08** — Updated for org-centric identity, feed-driven content, headless commissions, and plugin-as-org architecture.
 
-# Feature 11: Content Moderation & Trust/Safety
+# Feature 12: Content Moderation & Trust/Safety
 
 ## Overview
 
-Protects the community from harassment, scams, IP theft, and untagged NSFW content. Provides user- and org-level controls (block/mute), a reporting system covering orgs and feed items, DMCA compliance including PDS record takedowns, and automated content flagging. Plugin orgs can be reported and disabled. "Untagged NSFW" detection interacts with the tag system (Feature 8.2). Reports and flags feed into the Platform Admin moderation queue (Feature 13).
+Protects the community from harassment, scams, IP theft, and untagged NSFW content. Provides user- and org-level controls (block/mute), a reporting system covering orgs and feed items, DMCA compliance including PDS record takedowns, and automated content flagging. Plugin orgs can be reported and disabled. "Untagged NSFW" detection interacts with the tag system (Feature 3). Reports and flags feed into the Platform Admin moderation queue (Feature 14).
 
 ## Sub-features
 
-### 11.1 Reporting
+### 12.1 Reporting
 
 **What it is:** Any user can report users, orgs, commission cards, chat messages, feed items, or plugin orgs for policy violations.
 
@@ -17,11 +17,11 @@ Protects the community from harassment, scams, IP theft, and untagged NSFW conte
 - Reason categories: `harassment`, `scam`, `untagged_nsfw`, `copyright`, `impersonation`, `spam`, `plugin_abuse`, `other`
 - Reports can target orgs (including plugin orgs) and individual feed items
 - Plugin org reports have a dedicated `plugin_abuse` category for misbehaving plugin orgs
-- API: `POST /reports` (submit), `GET /admin/reports` (moderation queue — Feature 13)
+- API: `POST /reports` (submit), `GET /admin/reports` (moderation queue — Feature 14)
 - Rate limiting: max N reports per user per hour to prevent abuse
 - Reporter identity visible to admins but hidden from the reported entity
 
-### 11.2 Block & Mute
+### 12.2 Block & Mute
 
 **What it is:** User-level and org-level controls to prevent unwanted interaction.
 
@@ -35,7 +35,7 @@ Protects the community from harassment, scams, IP theft, and untagged NSFW conte
 - All content queries must check against the block list — add filter to repository queries
 - API: `POST /users/:id/block`, `POST /orgs/:id/block`, `POST /users/:id/mute`, `DELETE /users/:id/block`, `GET /me/blocked`
 
-### 11.3 DMCA/Takedown Flow
+### 12.3 DMCA/Takedown Flow
 
 **What it is:** Formal copyright claim process compliant with DMCA safe harbor. Covers both PostgreSQL-stored content and PDS records.
 
@@ -51,29 +51,29 @@ Protects the community from harassment, scams, IP theft, and untagged NSFW conte
 - API: `POST /takedowns` (file claim), `POST /takedowns/:id/counter-notice`
 - Legal page: DMCA agent contact information (required for safe harbor)
 
-### 11.4 Content Flagging
+### 12.4 Content Flagging
 
 **What it is:** Automated and manual content flagging that feeds into the moderation queue. "Untagged NSFW" detection integrates with the tag system.
 
 **Implementation approach:**
 - `content_flags` table: `id`, `content_type` (feed_item/commission/org_profile), `content_id`, `flag_type` (untagged_nsfw/spam/suspicious), `source` (automated/community), `confidence` (for automated), `status` (pending/reviewed), `created_at`
-- **Automated:** On image upload, optionally call external NSFW detection API (e.g., AWS Rekognition, custom model). Flag if NSFW detected but content lacks NSFW tags (interacts with Feature 8.2 tag system)
+- **Automated:** On image upload, optionally call external NSFW detection API (e.g., AWS Rekognition, custom model). Flag if NSFW detected but content lacks NSFW tags (interacts with Feature 3 tag system)
 - **"Untagged NSFW" detection:** Cross-reference automated NSFW confidence score with entity tags — if high NSFW confidence but no NSFW-category tags present, auto-flag
 - **Community:** Users flag content → after N independent flags, auto-escalate to moderation queue
 - Flag threshold: configurable (e.g., 3 community flags → auto-review)
 - Feed posts are flaggable content — moderation queue includes feed items as actionable items
-- Feeds into Feature 13.3 moderation queue
+- Feeds into Feature 14.3 moderation queue
 
 ## Dependencies
 
 ### Requires (must be built first)
 - [Feature 1.1](../01-atproto-auth/README.md) — authenticated users
 - [Feature 2](../02-identity-profile/README.md) — orgs and profiles to moderate
-- [Feature 8.2](../08-search-discovery/README.md) — tag system for NSFW tag detection
+- [Feature 3](../03-tag-taxonomy/README.md) — tag system for NSFW tag detection
 - Feed infrastructure — feed items are reportable/flaggable content
 
 ### Enables (unlocked after this is built)
-- [Feature 13.3](../13-platform-admin/README.md) — moderation queue processes reports and flags
+- [Feature 14.3](../14-platform-admin/README.md) — moderation queue processes reports and flags
 - Safer platform: required before any public launch
 
 ## Implementation Phases
@@ -94,7 +94,7 @@ Protects the community from harassment, scams, IP theft, and untagged NSFW conte
 - Community flagging with threshold escalation
 - Automated NSFW detection integration (optional, behind feature flag)
 - Feed posts as flaggable content
-- Integration with Feature 13 moderation queue
+- Integration with Feature 14 moderation queue
 
 ### Phase 3: Post-implementation
 - DMCA agent page (legal requirement)

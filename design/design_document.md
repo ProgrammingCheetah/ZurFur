@@ -73,17 +73,24 @@ This section details the granular feature modules that make up the Zurfur platfo
 - **2.6 SFW/NSFW Viewer Control:** A strict, viewer-controlled toggle (defaulting to SFW) that filters character galleries and active commissions. Content rating is a tag on feeds and feed items.
 - **2.7 Character Repositories:** Dedicated entities for original characters, storing reference sheets, hex codes, species info, and linked galleries. **(v2)** Each character has its own feed. "Character gallery" is a feed view filtered by that character's feed. Ref sheets, art, and updates all flow through the character's feed.
 
-### Feature 3: The Headless Commission Engine (The "Card") (v2 — Shell + Add-ons)
+### Feature 3: Tag Taxonomy & Attribution (Tier 1 Infrastructure)
 
-- **3.1 Commission as Minimal Shell (v2):** The commission entity is minimal: `id`, `current_state (artist-defined via pipeline template)`, and a feed. Everything else — invoices, TOS acceptance, chat threads, file attachments, milestone tracking — attaches via add-on slots rather than being baked into the commission schema. This replaces the v1 monolithic card model.
-- **3.2 Artist-Defined States (v2):** Commissions have artist-defined states (e.g., 'sketching', 'coloring', 'review', 'delivered') configured per pipeline template. The system only distinguishes active vs terminal states. These are not displayed directly — visual presentation is handled by boards.
-- **3.3 Boards as Projections (v2):** Kanban boards and pipeline views are separate entities that map commissions to columns via configurable rules. The same commission can appear on multiple boards with different column placements. An artist's "Work Queue" board and a client's "My Commissions" board are both projections over the same underlying commission data.
-- **3.4 Event-Driven History:** Every action (comment, payment, file upload, state change) is an "Event" appended to the commission's feed, serving as an immutable history log and single source of truth for dispute resolution.
-- **3.5 Add-on Slots (v2):** Commission cards are shells with add-on slots. Server-side add-ons are feed participants that react to commission events and post items back. Client-side add-ons render in sandboxed iframes within the card UI. This is the mechanism for invoicing, TOS, chat, and file management — they are all add-ons, not core card features.
-- **3.6 Deadline & Time Tracking:** Automated triggers that flag cards as "Late" or measure turnaround analytics based on start and end timestamps. Implemented as a system add-on.
-- **3.7 Multi-Party Collaboration:** Cards support many-to-many relationships via org memberships, allowing multiple artists (org members) to collaborate on a piece, or multiple users to co-commission a group piece, with shared visibility for all involved.
+- **3.1 Typed Tags:** Tags have types (organization, character, metadata, general). Entity-backed tags (org/character) are auto-created on entity creation and serve as permanent identity markers for attribution. Metadata tags have optional categories for faceted search (species, art_style, medium, content_type, status). General tags are free-form.
+- **3.2 Entity-Backed Identity & Attribution:** Every organization and character auto-gets an immutable tag. The tag's UUID is permanent; display resolves from the entity name. Attribution = attaching the org's tag to a commission. "Show me everything by this artist" = filter by org tag.
+- **3.3 Universal Tag Assignment:** Any entity can be tagged via the `entity_tags` junction table (same polymorphic pattern as `entity_feeds`). Status tags (`status:open`, `status:closed`) express commission availability on orgs.
+- **3.4 Tag Curation & Governance:** Community-curated metadata/general tags with approval workflow. Tag suggestions, synonyms/aliases for search. Seed data for common species, styles, and mediums.
 
-> **Note:** This diagram illustrates a conceptual workflow as one artist might configure it. Commission states are **artist-defined per pipeline template**, not system constants. The system only tracks whether a commission is active or terminal. See [Feature 3](features/03-commission-engine/README.md) for the canonical model.
+### Feature 4: The Headless Commission Engine (The "Card") (v2 — Shell + Add-ons)
+
+- **4.1 Commission as Minimal Shell (v2):** The commission entity is minimal: `id`, `current_state (artist-defined via pipeline template)`, and a feed. Everything else — invoices, TOS acceptance, chat threads, file attachments, milestone tracking — attaches via add-on slots rather than being baked into the commission schema. This replaces the v1 monolithic card model.
+- **4.2 Artist-Defined States (v2):** Commissions have artist-defined states (e.g., 'sketching', 'coloring', 'review', 'delivered') configured per pipeline template. The system only distinguishes active vs terminal states. These are not displayed directly — visual presentation is handled by boards.
+- **4.3 Boards as Projections (v2):** Kanban boards and pipeline views are separate entities that map commissions to columns via configurable rules. The same commission can appear on multiple boards with different column placements. An artist's "Work Queue" board and a client's "My Commissions" board are both projections over the same underlying commission data.
+- **4.4 Event-Driven History:** Every action (comment, payment, file upload, state change) is an "Event" appended to the commission's feed, serving as an immutable history log and single source of truth for dispute resolution.
+- **4.5 Add-on Slots (v2):** Commission cards are shells with add-on slots. Server-side add-ons are feed participants that react to commission events and post items back. Client-side add-ons render in sandboxed iframes within the card UI. This is the mechanism for invoicing, TOS, chat, and file management — they are all add-ons, not core card features.
+- **4.6 Deadline & Time Tracking:** Automated triggers that flag cards as "Late" or measure turnaround analytics based on start and end timestamps. Implemented as a system add-on.
+- **4.7 Multi-Party Collaboration:** Cards support many-to-many relationships via org memberships, allowing multiple artists (org members) to collaborate on a piece, or multiple users to co-commission a group piece, with shared visibility for all involved.
+
+> **Note:** This diagram illustrates a conceptual workflow as one artist might configure it. Commission states are **artist-defined per pipeline template**, not system constants. The system only tracks whether a commission is active or terminal. See [Feature 4](features/04-commission-engine/README.md) for the canonical model.
 
 ```mermaid
 stateDiagram-v2
@@ -159,75 +166,75 @@ graph TD
     style CUSTOM fill:#264653,stroke:#1d3557,color:#fff
 ```
 
-### Feature 4: Financial & Payment Gateway
+### Feature 5: Financial & Payment Gateway
 
-- **4.1 Platform Intermediary (Escrow-Lite):** Zurfur acts as the merchant of record. Clients pay the platform; the platform holds/tracks the funds and automatically issues payouts to the artist upon completion/milestones, minimizing chargeback fraud.
-- **4.2 Flexible Invoicing:** Support for multiple invoices per Card. **(v2)** Invoicing is implemented as a commission add-on, not a core card field. The invoice add-on subscribes to the commission's feed and posts payment events.
-- **4.3 Installments & Subscriptions:** Support for timed/automated billing cycles (e.g., partial payments once a month).
-- **4.4 Voluntary Fee Coverage:** A checkout toggle allowing buyers to voluntarily absorb platform transaction fees so the artist retains 100% of their quote.
+- **5.1 Platform Intermediary (Escrow-Lite):** Zurfur acts as the merchant of record. Clients pay the platform; the platform holds/tracks the funds and automatically issues payouts to the artist upon completion/milestones, minimizing chargeback fraud.
+- **5.2 Flexible Invoicing:** Support for multiple invoices per Card. **(v2)** Invoicing is implemented as a commission add-on, not a core card field. The invoice add-on subscribes to the commission's feed and posts payment events.
+- **5.3 Installments & Subscriptions:** Support for timed/automated billing cycles (e.g., partial payments once a month).
+- **5.4 Voluntary Fee Coverage:** A checkout toggle allowing buyers to voluntarily absorb platform transaction fees so the artist retains 100% of their quote.
 
-### Feature 5: Omnichannel Communications
+### Feature 6: Omnichannel Communications
 
-- **5.1 Isolated Card Chat (v2):** A private messaging thread bound to a Commission Card. **(v2)** Chat is a commission add-on, not a core card feature. The chat add-on manages its own feed of messages attached to the commission. This is distinct from the formal, immutable event history.
-- **5.2 Omnichannel Sync (API Abstraction):** The chat logic is abstracted, allowing bots to "subscribe" to a card's feed. **(v2)** Since plugins are orgs and orgs interact via feeds, external bridges (Telegram, Discord, Matrix) are plugin orgs that subscribe to commission chat feeds and relay messages bidirectionally.
+- **6.1 Isolated Card Chat (v2):** A private messaging thread bound to a Commission Card. **(v2)** Chat is a commission add-on, not a core card feature. The chat add-on manages its own feed of messages attached to the commission. This is distinct from the formal, immutable event history.
+- **6.2 Omnichannel Sync (API Abstraction):** The chat logic is abstracted, allowing bots to "subscribe" to a card's feed. **(v2)** Since plugins are orgs and orgs interact via feeds, external bridges (Telegram, Discord, Matrix) are plugin orgs that subscribe to commission chat feeds and relay messages bidirectionally.
 
-### Feature 6: The Plugin Ecosystem (v2 — Plugins are Orgs)
+### Feature 7: The Plugin Ecosystem (v2 — Plugins are Orgs)
 
-- **6.1 Plugins as Organizations (v2):** Plugins authenticate as organizations, subscribe to feeds, react to events, and post feed items. "Installing a plugin" means granting a plugin org feed subscription and/or write access to specific feeds. There is no separate plugin API — the feed API IS the plugin API. This replaces the v1 model of isolated modules interacting via safe webhooks.
-- **6.2 Server-Side Plugins (v2):** Feed participants that subscribe to events, process data, and post results back to feeds. Examples: auto-invoicing on milestone completion, price estimation based on commission history, queue analytics.
-- **6.3 Client-Side Plugins (v2):** Sandboxed iframes that render within the Zurfur UI (inside commission card add-on slots, on profile pages, as dashboard widgets). They consume feed data via a safe client SDK.
-- **6.4 Native Statistical AI Plugins:** Premium analytical tools (non-generative). Features include market price suggestions, queue completion forecasting, and profile engagement tracking. **(v2)** These are server-side plugin orgs that subscribe to relevant feeds.
-- **6.5 Plugin Marketplace:** A marketplace where the community can upload, share, and monetize plugins. **(v2)** Since plugins are orgs, the marketplace is a curated directory of plugin orgs with install flows that manage feed permissions.
+- **7.1 Plugins as Organizations (v2):** Plugins authenticate as organizations, subscribe to feeds, react to events, and post feed items. "Installing a plugin" means granting a plugin org feed subscription and/or write access to specific feeds. There is no separate plugin API — the feed API IS the plugin API. This replaces the v1 model of isolated modules interacting via safe webhooks.
+- **7.2 Server-Side Plugins (v2):** Feed participants that subscribe to events, process data, and post results back to feeds. Examples: auto-invoicing on milestone completion, price estimation based on commission history, queue analytics.
+- **7.3 Client-Side Plugins (v2):** Sandboxed iframes that render within the Zurfur UI (inside commission card add-on slots, on profile pages, as dashboard widgets). They consume feed data via a safe client SDK.
+- **7.4 Native Statistical AI Plugins:** Premium analytical tools (non-generative). Features include market price suggestions, queue completion forecasting, and profile engagement tracking. **(v2)** These are server-side plugin orgs that subscribe to relevant feeds.
+- **7.5 Plugin Marketplace:** A marketplace where the community can upload, share, and monetize plugins. **(v2)** Since plugins are orgs, the marketplace is a curated directory of plugin orgs with install flows that manage feed permissions.
 
-### Feature 7: Community & Analytics
+### Feature 8: Community & Analytics
 
-- **7.1 Commission Subscriptions (v2):** Push notifications triggered when a specific artist opens their commission queue. **(v2)** This is implemented as a feed subscription — "subscribe to artist commission availability" means subscribing to that org's "availability" feed.
-- **7.2 Gamification:** XP, Badges, and Community Rewards for successful transactions and positive platform interactions.
-- **7.3 The Strategy Engine (Open Metrics):** Open, reproducible month-to-month statistics. Clients can see artist turnaround trends/price drops; Artists receive "Risk Assessment" warnings for clients with a history of disputes or late payments.
+- **8.1 Commission Subscriptions (v2):** Push notifications triggered when a specific artist opens their commission queue. **(v2)** This is implemented as a feed subscription — "subscribe to artist commission availability" means subscribing to that org's "availability" feed.
+- **8.2 Gamification:** XP, Badges, and Community Rewards for successful transactions and positive platform interactions.
+- **8.3 The Strategy Engine (Open Metrics):** Open, reproducible month-to-month statistics. Clients can see artist turnaround trends/price drops; Artists receive "Risk Assessment" warnings for clients with a history of disputes or late payments.
 
-### Feature 8: Search & Discovery
+### Feature 9: Search & Discovery
 
-- **8.1 Artist Search (v2):** Users can find artists by tag, art style, species specialty, price range, and availability status. Supports full-text and faceted filtering. **(v2)** Search indexes org profiles (since the org is the profile) and their associated tags.
-- **8.2 Tag Taxonomy (v2):** A structured, community-curated tag system covering species, art style, medium, and content rating. **(v2)** Tags are a root domain aggregate. Descriptive attributes (species, colors, art style, body type, etc.) are tags, not database columns. Only bio/description is free text. Tags are reusable across all entities — orgs, characters, commissions, feed items.
-- **8.3 Recommendation Engine:** Personalized suggestions based on commission history, followed artists, and character species. Surfaces relevant artists a user may not have discovered organically.
-- **8.4 "Open Now" Feed (v2):** A real-time, filterable feed of artists currently accepting commissions, sorted by recency and optionally by relevance to the user's preferences. **(v2)** This is literally a feed — a system-level aggregation feed that collects availability-change events from all org feeds.
+- **9.1 Org Search (v2):** Users can find artists by tag, art style, species specialty, price range, and availability status. Supports full-text and faceted filtering. **(v2)** Search indexes org profiles (since the org is the profile) and their associated tags.
+- Tag infrastructure is now [Feature 3](features/03-tag-taxonomy/README.md) (Tag Taxonomy & Attribution).
+- **9.2 Recommendation Engine:** Personalized suggestions based on commission history, followed artists, and character species. Surfaces relevant artists a user may not have discovered organically.
+- **9.3 "Open Now" Feed (v2):** A real-time, filterable feed of artists currently accepting commissions, sorted by recency and optionally by relevance to the user's preferences. **(v2)** This is literally a feed — a system-level aggregation feed that collects availability-change events from all org feeds.
 
-### Feature 9: Notification System
+### Feature 10: Notification System
 
-- **9.1 In-App Notification Center (v2):** A unified notification feed (bell icon, unread count) categorized by type: commission updates, payments, social interactions, and system alerts. **(v2)** The notification center is a personal feed view — notifications are feed items delivered to the user's notification feed.
-- **9.2 Push Notifications:** Browser and mobile push for critical events (payment received, commission state change, new message in card chat).
-- **9.3 Email Digests:** Configurable email summaries (daily/weekly) aggregating commission activity, new followers, and marketplace updates.
-- **9.4 Webhook Notifications (v2):** A developer-facing API allowing plugins and external integrations to subscribe to specific event types programmatically. **(v2)** Since plugins are orgs with feed subscriptions, webhook delivery is a built-in capability of the feed system — no separate webhook API needed.
+- **10.1 In-App Notification Center (v2):** A unified notification feed (bell icon, unread count) categorized by type: commission updates, payments, social interactions, and system alerts. **(v2)** The notification center is a personal feed view — notifications are feed items delivered to the user's notification feed.
+- **10.2 Push Notifications:** Browser and mobile push for critical events (payment received, commission state change, new message in card chat).
+- **10.3 Email Digests:** Configurable email summaries (daily/weekly) aggregating commission activity, new followers, and marketplace updates.
+- **10.4 Webhook Notifications (v2):** A developer-facing API allowing plugins and external integrations to subscribe to specific event types programmatically. **(v2)** Since plugins are orgs with feed subscriptions, webhook delivery is a built-in capability of the feed system — no separate webhook API needed.
 
-### Feature 10: Organization Terms of Service (TOS) Management
+### Feature 11: Organization Terms of Service (TOS) Management
 
-- **10.1 TOS Builder:** A structured editor for organizations to define their rules, boundaries, refund policy, usage rights, and communication expectations. **(v2)** TOS is managed at the org level (since the org is the artist profile).
-- **10.2 TOS Versioning:** Immutable snapshots of each TOS revision. The specific version a client agreed to at the time of commission submission is preserved and linked to the Card's audit trail.
-- **10.3 Mandatory Acknowledgment (v2):** Clients must explicitly accept the organization's current TOS before submitting a commission request. **(v2)** This acceptance is recorded as an event in the commission's feed via the TOS add-on.
-- **10.4 TOS Diff View:** A visual comparison tool showing what changed between TOS versions, so returning clients can quickly review updates before re-commissioning.
+- **11.1 TOS Builder:** A structured editor for organizations to define their rules, boundaries, refund policy, usage rights, and communication expectations. **(v2)** TOS is managed at the org level (since the org is the artist profile).
+- **11.2 TOS Versioning:** Immutable snapshots of each TOS revision. The specific version a client agreed to at the time of commission submission is preserved and linked to the Card's audit trail.
+- **11.3 Mandatory Acknowledgment (v2):** Clients must explicitly accept the organization's current TOS before submitting a commission request. **(v2)** This acceptance is recorded as an event in the commission's feed via the TOS add-on.
+- **11.4 TOS Diff View:** A visual comparison tool showing what changed between TOS versions, so returning clients can quickly review updates before re-commissioning.
 
-### Feature 11: Content Moderation & Trust/Safety
+### Feature 12: Content Moderation & Trust/Safety
 
-- **11.1 User Reporting:** Any user can report profiles, commission cards, chat messages, or gallery content for policy violations (harassment, scams, undisclosed NSFW, IP theft).
-- **11.2 Block & Mute (v2):** User-level controls to prevent interaction. Blocking prevents all contact and hides the blocked user's content; muting silently suppresses notifications without alerting the other party. **(v2)** Block/mute operates on org-to-org relationships and propagates through feed subscriptions.
-- **11.3 DMCA/Takedown Flow:** A formal, documented process for copyright claims on uploaded content, including counter-notification support, aligned with legal requirements.
-- **11.4 Content Flagging:** A combination of automated heuristics (e.g., untagged NSFW detection) and manual community flagging, feeding into the moderation queue (see Feature 13).
+- **12.1 User Reporting:** Any user can report profiles, commission cards, chat messages, or gallery content for policy violations (harassment, scams, undisclosed NSFW, IP theft).
+- **12.2 Block & Mute (v2):** User-level controls to prevent interaction. Blocking prevents all contact and hides the blocked user's content; muting silently suppresses notifications without alerting the other party. **(v2)** Block/mute operates on org-to-org relationships and propagates through feed subscriptions.
+- **12.3 DMCA/Takedown Flow:** A formal, documented process for copyright claims on uploaded content, including counter-notification support, aligned with legal requirements.
+- **12.4 Content Flagging:** A combination of automated heuristics (e.g., untagged NSFW detection) and manual community flagging, feeding into the moderation queue (see Feature 14).
 
-### Feature 12: Dispute Resolution
+### Feature 13: Dispute Resolution
 
-- **12.1 Dispute Filing:** Either party (artist or client) can open a formal dispute on an active commission card. Filing a dispute freezes any pending fund releases until resolution.
-- **12.2 Evidence Submission (v2):** Both parties submit evidence referencing the Card's immutable event history (timestamps, state changes, chat logs, file deliveries). **(v2)** The commission's feed IS the audit trail — all events are feed items with timestamps and authorship.
-- **12.3 Resolution Flow:** A structured mediation process: automated resolution for clear-cut cases (e.g., no delivery after deadline + paid invoice), escalation to platform review for complex disputes.
-- **12.4 Refund & Payout Policies:** Clear rules for partial refunds based on milestone completion, time invested, and deliverables provided. Policies are transparent and referenced during dispute resolution.
+- **13.1 Dispute Filing:** Either party (artist or client) can open a formal dispute on an active commission card. Filing a dispute freezes any pending fund releases until resolution.
+- **13.2 Evidence Submission (v2):** Both parties submit evidence referencing the Card's immutable event history (timestamps, state changes, chat logs, file deliveries). **(v2)** The commission's feed IS the audit trail — all events are feed items with timestamps and authorship.
+- **13.3 Resolution Flow:** A structured mediation process: automated resolution for clear-cut cases (e.g., no delivery after deadline + paid invoice), escalation to platform review for complex disputes.
+- **13.4 Refund & Payout Policies:** Clear rules for partial refunds based on milestone completion, time invested, and deliverables provided. Policies are transparent and referenced during dispute resolution.
 
-### Feature 13: Platform Administration
+### Feature 14: Platform Administration
 
-- **13.1 User Management Dashboard:** Internal tooling to view, suspend, or ban accounts, audit user activity, and manage role escalations. **(v2)** Operates on both Users and Organizations, since all public-facing state lives on orgs.
-- **13.2 Financial Auditing:** Transaction logs, payout tracking, fee reconciliation, and fraud detection dashboards for the operations team.
-- **13.3 Moderation Queue:** A centralized queue for reviewing reported content, active disputes, flagged accounts, and DMCA claims. Supports priority sorting and assignment to moderators.
-- **13.4 Plugin Org Moderation (v2):** Tools to review, disable, or delist plugin orgs. Revoke feed subscriptions and write permissions for abusive plugins.
-- **13.5 AT Protocol Admin Operations (v2):** PDS takedown requests, record labeling, and AT Protocol network moderation tooling.
-- **13.6 System Health & Metrics:** API performance monitoring, error rate tracking, active user counts, and infrastructure health dashboards.
+- **14.1 User Management Dashboard:** Internal tooling to view, suspend, or ban accounts, audit user activity, and manage role escalations. **(v2)** Operates on both Users and Organizations, since all public-facing state lives on orgs.
+- **14.2 Financial Auditing:** Transaction logs, payout tracking, fee reconciliation, and fraud detection dashboards for the operations team.
+- **14.3 Moderation Queue:** A centralized queue for reviewing reported content, active disputes, flagged accounts, and DMCA claims. Supports priority sorting and assignment to moderators.
+- **14.4 Plugin Org Moderation (v2):** Tools to review, disable, or delist plugin orgs. Revoke feed subscriptions and write permissions for abusive plugins.
+- **14.5 AT Protocol Admin Operations (v2):** PDS takedown requests, record labeling, and AT Protocol network moderation tooling.
+- **14.6 System Health & Metrics:** API performance monitoring, error rate tracking, active user counts, and infrastructure health dashboards.
 
 ---
 
@@ -588,7 +595,7 @@ No new backend endpoints are needed for new views — they are all feed queries 
 The frontend is developed with a **mobile-first** approach, ensuring the UI is designed for small screens first and scales up to desktop. The application is delivered as a **Progressive Web App (PWA)**, providing:
 
 - **Installable Experience:** Users can add Zurfur to their home screen on any device without app store distribution — bypassing platform gatekeeping that often restricts NSFW-capable applications.
-- **Push Notifications:** Service worker-powered push notifications for commission updates, payments, and messages (directly supporting Feature 9).
+- **Push Notifications:** Service worker-powered push notifications for commission updates, payments, and messages (directly supporting Feature 10).
 - **Offline Resilience:** Cached assets and read-only offline access to galleries, character sheets, and commission history via service worker strategies.
 - **Responsive Layouts:** Touch-first interaction patterns (swipe to move cards, pull-to-refresh) that gracefully enhance to keyboard-first power-user controls on desktop.
 
