@@ -43,7 +43,7 @@ impl FeedElementRepository for SqlxFeedElementRepository {
         position: i32,
     ) -> Result<FeedElement, FeedElementError> {
         let row = sqlx::query(
-            "INSERT INTO feed_elements (feed_item_id, element_type, content_json, position) \
+            "INSERT INTO feed_element (feed_item_id, element_type, content_json, position) \
              VALUES ($1, $2, $3, $4) \
              RETURNING id, feed_item_id, element_type, content_json, position",
         )
@@ -61,7 +61,7 @@ impl FeedElementRepository for SqlxFeedElementRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<FeedElement>, FeedElementError> {
         let row = sqlx::query(
             "SELECT id, feed_item_id, element_type, content_json, position \
-             FROM feed_elements WHERE id = $1",
+             FROM feed_element WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -80,7 +80,7 @@ impl FeedElementRepository for SqlxFeedElementRepository {
     ) -> Result<Vec<FeedElement>, FeedElementError> {
         let rows = sqlx::query(
             "SELECT id, feed_item_id, element_type, content_json, position \
-             FROM feed_elements WHERE feed_item_id = $1 \
+             FROM feed_element WHERE feed_item_id = $1 \
              ORDER BY position ASC",
         )
         .bind(feed_item_id)
@@ -101,7 +101,7 @@ impl FeedElementRepository for SqlxFeedElementRepository {
         content_json: &str,
     ) -> Result<FeedElement, FeedElementError> {
         let row = sqlx::query(
-            "UPDATE feed_elements SET content_json = $1 \
+            "UPDATE feed_element SET content_json = $1 \
              WHERE id = $2 \
              RETURNING id, feed_item_id, element_type, content_json, position",
         )
@@ -116,7 +116,7 @@ impl FeedElementRepository for SqlxFeedElementRepository {
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), FeedElementError> {
-        let result = sqlx::query("DELETE FROM feed_elements WHERE id = $1")
+        let result = sqlx::query("DELETE FROM feed_element WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await

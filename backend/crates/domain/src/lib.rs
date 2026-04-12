@@ -10,7 +10,6 @@ pub mod oauth_state_store;
 pub mod onboarding_role;
 pub mod organization;
 pub mod organization_member;
-pub mod organization_profile;
 pub mod refresh_token;
 pub mod user;
 pub mod user_preferences;

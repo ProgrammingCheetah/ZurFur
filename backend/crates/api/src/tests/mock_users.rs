@@ -1,7 +1,6 @@
 //! Mock implementations for user-related repository traits.
 
 use async_trait::async_trait;
-use domain::content_rating::ContentRating;
 use domain::user::{User, UserError, UserRepository};
 use domain::user_preferences::{UserPreferences, UserPreferencesError, UserPreferencesRepository};
 use tokio::sync::Mutex;
@@ -73,20 +72,20 @@ impl UserPreferencesRepository for MockPreferencesRepo {
             .cloned()
             .unwrap_or(UserPreferences {
                 user_id,
-                max_content_rating: ContentRating::Sfw,
+                settings: "{}".into(),
             });
         Ok(pref)
     }
-    async fn set_max_content_rating(
+    async fn set(
         &self,
         user_id: Uuid,
-        rating: ContentRating,
+        settings: &str,
     ) -> Result<UserPreferences, UserPreferencesError> {
         let mut prefs = self.prefs.lock().await;
         prefs.retain(|p| p.user_id != user_id);
         let updated = UserPreferences {
             user_id,
-            max_content_rating: rating,
+            settings: settings.into(),
         };
         prefs.push(updated.clone());
         Ok(updated)

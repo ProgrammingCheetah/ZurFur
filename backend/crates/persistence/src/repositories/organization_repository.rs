@@ -25,7 +25,6 @@ fn map_organization(row: sqlx::postgres::PgRow) -> Organization {
         slug: row.get("slug"),
         display_name: row.get("display_name"),
         is_personal: row.get("is_personal"),
-        created_by: row.get("created_by"),
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
     }
@@ -38,24 +37,20 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         slug: &str,
         display_name: Option<&str>,
         is_personal: bool,
-        created_by: Uuid,
     ) -> Result<Organization, OrganizationError> {
         sqlx::query(
-            "INSERT INTO organizations (slug, display_name, is_personal, created_by) \
-             VALUES ($1, $2, $3, $4) \
-             RETURNING id, slug, display_name, is_personal, created_by, created_at, updated_at",
+            "INSERT INTO organization (slug, display_name, is_personal) \
+             VALUES ($1, $2, $3) \
+             RETURNING id, slug, display_name, is_personal, created_at, updated_at",
         )
         .bind(slug)
         .bind(display_name)
         .bind(is_personal)
-        .bind(created_by)
         .fetch_one(&self.pool)
         .await
         .map(map_organization)
         .map_err(|e| {
             if is_unique_violation(&e) {
-                // Distinguish slug uniqueness (uq_organizations_slug) from
-                // personal org uniqueness (uq_organizations_personal).
                 match violated_constraint(&e) {
                     Some("uq_organizations_slug") => {
                         OrganizationError::SlugTaken(slug.to_string())
@@ -70,8 +65,8 @@ impl OrganizationRepository for SqlxOrganizationRepository {
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Organization>, OrganizationError> {
         sqlx::query(
-            "SELECT id, slug, display_name, is_personal, created_by, created_at, updated_at \
-             FROM organizations WHERE id = $1 AND deleted_at IS NULL",
+            "SELECT id, slug, display_name, is_personal, created_at, updated_at \
+             FROM organization WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -82,8 +77,8 @@ impl OrganizationRepository for SqlxOrganizationRepository {
 
     async fn find_by_slug(&self, slug: &str) -> Result<Option<Organization>, OrganizationError> {
         sqlx::query(
-            "SELECT id, slug, display_name, is_personal, created_by, created_at, updated_at \
-             FROM organizations WHERE slug = $1 AND deleted_at IS NULL",
+            "SELECT id, slug, display_name, is_personal, created_at, updated_at \
+             FROM organization WHERE slug = $1 AND deleted_at IS NULL",
         )
         .bind(slug)
         .fetch_optional(&self.pool)
@@ -97,9 +92,11 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         user_id: Uuid,
     ) -> Result<Option<Organization>, OrganizationError> {
         sqlx::query(
-            "SELECT id, slug, display_name, is_personal, created_by, created_at, updated_at \
-             FROM organizations \
-             WHERE created_by = $1 AND is_personal = true AND deleted_at IS NULL",
+            "SELECT o.id, o.slug, o.display_name, o.is_personal, o.created_at, o.updated_at \
+             FROM organization o \
+             JOIN organization_member om ON om.org_id = o.id \
+             WHERE om.user_id = $1 AND om.role = 'owner' \
+             AND o.is_personal = true AND o.deleted_at IS NULL",
         )
         .bind(user_id)
         .fetch_optional(&self.pool)
@@ -114,9 +111,9 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         display_name: Option<&str>,
     ) -> Result<Organization, OrganizationError> {
         sqlx::query(
-            "UPDATE organizations SET display_name = $1 \
+            "UPDATE organization SET display_name = $1 \
              WHERE id = $2 AND deleted_at IS NULL \
-             RETURNING id, slug, display_name, is_personal, created_by, created_at, updated_at",
+             RETURNING id, slug, display_name, is_personal, created_at, updated_at",
         )
         .bind(display_name)
         .bind(id)
@@ -129,7 +126,7 @@ impl OrganizationRepository for SqlxOrganizationRepository {
 
     async fn soft_delete(&self, id: Uuid) -> Result<(), OrganizationError> {
         let result = sqlx::query(
-            "UPDATE organizations SET deleted_at = now() \
+            "UPDATE organization SET deleted_at = now() \
              WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
@@ -143,4 +140,3 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         Ok(())
     }
 }
-

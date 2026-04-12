@@ -198,7 +198,6 @@ mod tests {
             _slug: &str,
             _display_name: Option<&str>,
             _is_personal: bool,
-            _created_by: Uuid,
         ) -> Result<Organization, OrganizationError> {
             unimplemented!()
         }
@@ -220,7 +219,7 @@ mod tests {
                 .lock()
                 .await
                 .iter()
-                .find(|o| o.created_by == user_id && o.is_personal)
+                .find(|o| o.is_personal)
                 .cloned())
         }
         async fn update_display_name(
@@ -351,7 +350,6 @@ mod tests {
             slug: "test".into(),
             display_name: None,
             is_personal: true,
-            created_by: user_id,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }

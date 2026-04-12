@@ -15,28 +15,6 @@ use uuid::Uuid;
 
 use crate::organization::service::OrganizationService;
 
-/// No-op implementation of OrganizationProfileRepository used when only
-/// org + member repos are needed (e.g., personal org creation in auth flow).
-struct NoOpProfileRepo;
-
-#[async_trait::async_trait]
-impl domain::organization_profile::OrganizationProfileRepository for NoOpProfileRepo {
-    async fn upsert(
-        &self,
-        _org_id: Uuid,
-        _bio: Option<&str>,
-        _status: domain::organization_profile::CommissionStatus,
-    ) -> Result<domain::organization_profile::OrganizationProfile, domain::organization_profile::OrganizationProfileError> {
-        unimplemented!("NoOpProfileRepo::upsert should not be called during personal org creation")
-    }
-    async fn find_by_org_id(
-        &self,
-        _org_id: Uuid,
-    ) -> Result<Option<domain::organization_profile::OrganizationProfile>, domain::organization_profile::OrganizationProfileError> {
-        Ok(None)
-    }
-}
-
 use super::login::{
     LoginError, OAuthConfig, complete_oauth_login, default_oauth_storage,
     resolve_identity_document, start_oauth_login,
@@ -262,7 +240,6 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                     let org_service = OrganizationService::new(
                         self.org_repo.clone(),
                         self.member_repo.clone(),
-                        Arc::new(NoOpProfileRepo),
                     );
                     if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
                         eprintln!(
@@ -303,10 +280,6 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                 let org_service = OrganizationService::new(
                     self.org_repo.clone(),
                     self.member_repo.clone(),
-                    // Profile repo not needed for personal org creation — pass a
-                    // no-op. OrganizationService::create_personal_org only touches
-                    // org_repo and member_repo.
-                    Arc::new(NoOpProfileRepo),
                 );
                 if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
                     eprintln!(
@@ -657,14 +630,12 @@ mod tests {
             slug: &str,
             display_name: Option<&str>,
             is_personal: bool,
-            created_by: Uuid,
         ) -> Result<Organization, OrganizationError> {
             let org = Organization {
                 id: Uuid::new_v4(),
                 slug: slug.into(),
                 display_name: display_name.map(String::from),
                 is_personal,
-                created_by,
                 created_at: Utc::now(),
                 updated_at: Utc::now(),
             };
@@ -692,7 +663,7 @@ mod tests {
                 .lock()
                 .await
                 .iter()
-                .find(|o| o.created_by == user_id && o.is_personal)
+                .find(|o| o.is_personal)
                 .cloned())
         }
         async fn update_display_name(

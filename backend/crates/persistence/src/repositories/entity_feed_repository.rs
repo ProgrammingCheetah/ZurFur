@@ -41,7 +41,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
         entity_id: Uuid,
     ) -> Result<EntityFeed, EntityFeedError> {
         let row = sqlx::query(
-            "INSERT INTO entity_feeds (feed_id, entity_type, entity_id) \
+            "INSERT INTO entity_feed (feed_id, entity_type, entity_id) \
              VALUES ($1, $2, $3) \
              RETURNING feed_id, entity_type, entity_id",
         )
@@ -63,7 +63,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
 
     async fn find_by_feed_id(&self, feed_id: Uuid) -> Result<Option<EntityFeed>, EntityFeedError> {
         let row = sqlx::query(
-            "SELECT feed_id, entity_type, entity_id FROM entity_feeds WHERE feed_id = $1",
+            "SELECT feed_id, entity_type, entity_id FROM entity_feed WHERE feed_id = $1",
         )
         .bind(feed_id)
         .fetch_optional(&self.pool)
@@ -83,7 +83,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
     ) -> Result<Vec<EntityFeed>, EntityFeedError> {
         let rows = sqlx::query(
             "SELECT feed_id, entity_type, entity_id \
-             FROM entity_feeds WHERE entity_type = $1 AND entity_id = $2",
+             FROM entity_feed WHERE entity_type = $1 AND entity_id = $2",
         )
         .bind(entity_type.as_str())
         .bind(entity_id)
@@ -99,7 +99,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
     }
 
     async fn detach(&self, feed_id: Uuid) -> Result<(), EntityFeedError> {
-        let result = sqlx::query("DELETE FROM entity_feeds WHERE feed_id = $1")
+        let result = sqlx::query("DELETE FROM entity_feed WHERE feed_id = $1")
             .bind(feed_id)
             .execute(&self.pool)
             .await

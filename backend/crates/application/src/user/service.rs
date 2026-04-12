@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
-use domain::content_rating::ContentRating;
 use domain::organization::{Organization, OrganizationRepository};
 use domain::organization_member::{OrganizationMember, OrganizationMemberRepository};
-use domain::organization_profile::{OrganizationProfile, OrganizationProfileRepository};
 use domain::user::{User, UserRepository};
 use domain::user_preferences::{UserPreferences, UserPreferencesRepository};
 use uuid::Uuid;
@@ -12,8 +10,6 @@ use uuid::Uuid;
 pub enum UserServiceError {
     #[error("User not found")]
     NotFound,
-    #[error("Invalid content rating: {0}")]
-    InvalidRating(String),
     #[error("Internal error: {0}")]
     Internal(String),
 }
@@ -23,21 +19,12 @@ pub enum UserServiceError {
 pub struct UserProfile {
     pub user: User,
     pub personal_org: Option<Organization>,
-    pub personal_org_profile: Option<OrganizationProfile>,
     pub memberships: Vec<OrganizationMember>,
 }
 
-/// Service for user profile and preferences operations.
-///
-/// ARCHITECTURE DECISIONS:
-///   UserService does NOT own org/member repos for mutation — that's
-///   OrganizationService's job. UserService only reads org data to
-///   assemble the user's profile view. This keeps write responsibility
-///   in a single service per aggregate.
 pub struct UserService {
     user_repo: Arc<dyn UserRepository>,
     org_repo: Arc<dyn OrganizationRepository>,
-    org_profile_repo: Arc<dyn OrganizationProfileRepository>,
     member_repo: Arc<dyn OrganizationMemberRepository>,
     preferences_repo: Arc<dyn UserPreferencesRepository>,
 }
@@ -46,21 +33,17 @@ impl UserService {
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
         org_repo: Arc<dyn OrganizationRepository>,
-        org_profile_repo: Arc<dyn OrganizationProfileRepository>,
         member_repo: Arc<dyn OrganizationMemberRepository>,
         preferences_repo: Arc<dyn UserPreferencesRepository>,
     ) -> Self {
         Self {
             user_repo,
             org_repo,
-            org_profile_repo,
             member_repo,
             preferences_repo,
         }
     }
 
-    /// Get the authenticated user's full profile: user identity, personal org
-    /// (with profile if it exists), and all org memberships.
     pub async fn get_my_profile(&self, user_id: Uuid) -> Result<UserProfile, UserServiceError> {
         let user = self
             .user_repo
@@ -75,15 +58,6 @@ impl UserService {
             .await
             .map_err(|e| UserServiceError::Internal(e.to_string()))?;
 
-        let personal_org_profile = match &personal_org {
-            Some(org) => self
-                .org_profile_repo
-                .find_by_org_id(org.id)
-                .await
-                .map_err(|e| UserServiceError::Internal(e.to_string()))?,
-            None => None,
-        };
-
         let memberships = self
             .member_repo
             .list_by_user(user_id)
@@ -93,7 +67,6 @@ impl UserService {
         Ok(UserProfile {
             user,
             personal_org,
-            personal_org_profile,
             memberships,
         })
     }
@@ -108,13 +81,13 @@ impl UserService {
             .map_err(|e| UserServiceError::Internal(e.to_string()))
     }
 
-    pub async fn set_max_content_rating(
+    pub async fn set_preferences(
         &self,
         user_id: Uuid,
-        rating: ContentRating,
+        settings: &str,
     ) -> Result<UserPreferences, UserServiceError> {
         self.preferences_repo
-            .set_max_content_rating(user_id, rating)
+            .set(user_id, settings)
             .await
             .map_err(|e| UserServiceError::Internal(e.to_string()))
     }
@@ -128,17 +101,11 @@ mod tests {
         OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
         Role,
     };
-    use domain::organization_profile::{
-        CommissionStatus, OrganizationProfile, OrganizationProfileError,
-        OrganizationProfileRepository,
-    };
     use domain::user::{User, UserError, UserRepository};
     use domain::user_preferences::{
         UserPreferences, UserPreferencesError, UserPreferencesRepository,
     };
     use tokio::sync::Mutex;
-
-    // --- Mock Repositories ---------------------------------------------------
 
     #[derive(Default)]
     struct MockUserRepo {
@@ -167,9 +134,8 @@ mod tests {
         async fn update_handle(&self, _user_id: Uuid, _handle: &str) -> Result<(), UserError> {
             Ok(())
         }
-        // TODO: Implement when OnboardingService is built
         async fn mark_onboarding_completed(&self, _user_id: Uuid) -> Result<(), UserError> {
-            todo!("mark_onboarding_completed not yet implemented in mock")
+            Ok(())
         }
     }
 
@@ -185,7 +151,6 @@ mod tests {
             _slug: &str,
             _display_name: Option<&str>,
             _is_personal: bool,
-            _created_by: Uuid,
         ) -> Result<Organization, OrganizationError> {
             unimplemented!()
         }
@@ -206,14 +171,14 @@ mod tests {
         }
         async fn find_personal_org(
             &self,
-            user_id: Uuid,
+            _user_id: Uuid,
         ) -> Result<Option<Organization>, OrganizationError> {
             Ok(self
                 .orgs
                 .lock()
                 .await
                 .iter()
-                .find(|o| o.created_by == user_id && o.is_personal)
+                .find(|o| o.is_personal)
                 .cloned())
         }
         async fn update_display_name(
@@ -298,35 +263,6 @@ mod tests {
     }
 
     #[derive(Default)]
-    struct MockOrgProfileRepo {
-        profiles: Mutex<Vec<OrganizationProfile>>,
-    }
-
-    #[async_trait::async_trait]
-    impl OrganizationProfileRepository for MockOrgProfileRepo {
-        async fn upsert(
-            &self,
-            _org_id: Uuid,
-            _bio: Option<&str>,
-            _commission_status: CommissionStatus,
-        ) -> Result<OrganizationProfile, OrganizationProfileError> {
-            unimplemented!()
-        }
-        async fn find_by_org_id(
-            &self,
-            org_id: Uuid,
-        ) -> Result<Option<OrganizationProfile>, OrganizationProfileError> {
-            Ok(self
-                .profiles
-                .lock()
-                .await
-                .iter()
-                .find(|p| p.org_id == org_id)
-                .cloned())
-        }
-    }
-
-    #[derive(Default)]
     struct MockPreferencesRepo {
         prefs: Mutex<Vec<UserPreferences>>,
     }
@@ -343,26 +279,24 @@ mod tests {
                 .cloned()
                 .unwrap_or(UserPreferences {
                     user_id,
-                    max_content_rating: ContentRating::Sfw,
+                    settings: "{}".into(),
                 }))
         }
-        async fn set_max_content_rating(
+        async fn set(
             &self,
             user_id: Uuid,
-            rating: ContentRating,
+            settings: &str,
         ) -> Result<UserPreferences, UserPreferencesError> {
             let mut prefs = self.prefs.lock().await;
             prefs.retain(|p| p.user_id != user_id);
             let updated = UserPreferences {
                 user_id,
-                max_content_rating: rating,
+                settings: settings.into(),
             };
             prefs.push(updated.clone());
             Ok(updated)
         }
     }
-
-    // --- Helpers --------------------------------------------------------------
 
     fn test_user(id: Uuid) -> User {
         User {
@@ -375,13 +309,12 @@ mod tests {
         }
     }
 
-    fn test_org(id: Uuid, user_id: Uuid) -> Organization {
+    fn test_org(id: Uuid) -> Organization {
         Organization {
             id,
             slug: "test".into(),
             display_name: None,
             is_personal: true,
-            created_by: user_id,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
         }
@@ -390,20 +323,16 @@ mod tests {
     fn build_service(
         user_repo: MockUserRepo,
         org_repo: MockOrgRepo,
-        org_profile_repo: MockOrgProfileRepo,
         member_repo: MockMemberRepo,
         prefs_repo: MockPreferencesRepo,
     ) -> UserService {
         UserService::new(
             Arc::new(user_repo),
             Arc::new(org_repo),
-            Arc::new(org_profile_repo),
             Arc::new(member_repo),
             Arc::new(prefs_repo),
         )
     }
-
-    // --- Tests ----------------------------------------------------------------
 
     #[tokio::test]
     async fn get_my_profile_returns_user_and_personal_org() {
@@ -414,13 +343,12 @@ mod tests {
             users: Mutex::new(vec![test_user(user_id)]),
         };
         let org_repo = MockOrgRepo {
-            orgs: Mutex::new(vec![test_org(org_id, user_id)]),
+            orgs: Mutex::new(vec![test_org(org_id)]),
         };
 
         let svc = build_service(
             user_repo,
             org_repo,
-            MockOrgProfileRepo::default(),
             MockMemberRepo::default(),
             MockPreferencesRepo::default(),
         );
@@ -436,7 +364,6 @@ mod tests {
         let svc = build_service(
             MockUserRepo::default(),
             MockOrgRepo::default(),
-            MockOrgProfileRepo::default(),
             MockMemberRepo::default(),
             MockPreferencesRepo::default(),
         );
@@ -446,35 +373,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_preferences_returns_sfw_default() {
+    async fn get_preferences_returns_empty_default() {
         let svc = build_service(
             MockUserRepo::default(),
             MockOrgRepo::default(),
-            MockOrgProfileRepo::default(),
             MockMemberRepo::default(),
             MockPreferencesRepo::default(),
         );
 
         let prefs = svc.get_preferences(Uuid::new_v4()).await.unwrap();
-        assert_eq!(prefs.max_content_rating, ContentRating::Sfw);
+        assert_eq!(prefs.settings, "{}");
     }
 
     #[tokio::test]
-    async fn set_and_get_content_rating_round_trip() {
+    async fn set_and_get_preferences_round_trip() {
         let user_id = Uuid::new_v4();
         let svc = build_service(
             MockUserRepo::default(),
             MockOrgRepo::default(),
-            MockOrgProfileRepo::default(),
             MockMemberRepo::default(),
             MockPreferencesRepo::default(),
         );
 
-        svc.set_max_content_rating(user_id, ContentRating::Nsfw)
+        svc.set_preferences(user_id, r#"{"max_content_rating":"nsfw"}"#)
             .await
             .unwrap();
 
         let prefs = svc.get_preferences(user_id).await.unwrap();
-        assert_eq!(prefs.max_content_rating, ContentRating::Nsfw);
+        assert!(prefs.settings.contains("nsfw"));
     }
 }
