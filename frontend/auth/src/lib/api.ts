@@ -1,4 +1,7 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+// Default to empty string (relative URLs) so requests go through nginx proxy.
+// When accessed through a cloudflared tunnel, relative URLs route correctly.
+// Set VITE_API_URL explicitly only for direct backend access during development.
+const API_URL = import.meta.env.VITE_API_URL ?? "";
 
 export interface StartLoginResponse {
   redirect_url: string;
@@ -53,7 +56,8 @@ export function exchangeCallback(
   state: string,
   iss?: string,
 ): Promise<CallbackResponse> {
-  const params = new URLSearchParams({ code, state });
-  if (iss) params.set("iss", iss);
-  return request<CallbackResponse>(`/auth/callback?${params.toString()}`);
+  return request<CallbackResponse>("/auth/callback", {
+    method: "POST",
+    body: JSON.stringify({ code, state, iss }),
+  });
 }

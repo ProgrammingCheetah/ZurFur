@@ -2,14 +2,41 @@ mod config;
 pub mod oauth_state_store_memory;
 mod pool;
 mod repositories;
+pub(crate) mod sqlx_utils;
 
 pub use config::{Config, ConfigError};
 pub use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
+pub use domain::content_rating::ContentRating;
+pub use domain::default_role::{DefaultRole, DefaultRoleError, DefaultRoleRepository};
+pub use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository, EntityType};
+pub use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
+pub use domain::feed_element::{FeedElement, FeedElementError, FeedElementRepository, FeedElementType};
+pub use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
+pub use domain::feed_subscription::{
+    FeedSubscription, FeedSubscriptionError, FeedSubscriptionRepository, SubscriptionPermission,
+};
 pub use domain::oauth_state_store::OAuthStateStore;
+pub use domain::onboarding_role::OnboardingRole;
+pub use domain::organization::{Organization, OrganizationError, OrganizationRepository};
+pub use domain::organization_member::{
+    OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
+};
+pub use domain::organization_profile::{
+    CommissionStatus, OrganizationProfile, OrganizationProfileError, OrganizationProfileRepository,
+};
 pub use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
 pub use domain::user::{User, UserError, UserRepository};
+pub use domain::user_preferences::{
+    UserPreferences, UserPreferencesError, UserPreferencesRepository,
+};
 pub use pool::{create, Pool};
-pub use repositories::{SqlxAtprotoSessionRepository, SqlxRefreshTokenRepository, SqlxUserRepository};
+pub use repositories::{
+    SqlxAtprotoSessionRepository, SqlxDefaultRoleRepository, SqlxEntityFeedRepository,
+    SqlxFeedElementRepository, SqlxFeedItemRepository, SqlxFeedRepository,
+    SqlxFeedSubscriptionRepository, SqlxOrganizationMemberRepository,
+    SqlxOrganizationProfileRepository, SqlxOrganizationRepository, SqlxRefreshTokenRepository,
+    SqlxUserPreferencesRepository, SqlxUserRepository,
+};
 
 /// Configures SQLx and returns a ready-to-use database pool.
 ///

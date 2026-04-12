@@ -90,3 +90,55 @@ Automated reviewers re-review the full diff on every push, regenerating comments
 - Rate limiting on auth endpoints
 - `iss` claim validation in OAuth callback (mix-up attack prevention)
 - Redis-backed OAuthStateStore for production
+
+---
+
+## Feature 2: Identity & Profile Engine (Phase 1)
+
+**PR #5** — `feature/identity-profile_domain-persistence`: Domain entities, repository traits, migration, SQLx implementations
+**PR #6** — `feature/identity-profile_application-api`: Application services, API routes, tests, personal org auto-creation
+
+### Key Architectural Decisions
+
+1. **Org-centric identity model**: Every user gets a personal org on signup. The personal org IS the user's public profile. All roles, titles, bios, and capabilities are expressed through org membership — User entity stays atomic (identity only). This replaces the original `is_artist` flag approach.
+
+2. **User is atomic**: User holds only `{id, did, handle, email, username}`. No feature flags, bios, or roles were added. This principle must be maintained as new features are added. All capabilities attach to organizations, not users.
+
+3. **Two-tier data architecture**: Public identity data (orgs, profiles, memberships) will eventually live on the user's AT Protocol PDS. Private transaction data (commissions, payments, disputes) stays in Zurfur's PostgreSQL. Repository trait abstraction enables swapping from SqlxRepo to PdsRepo without touching application or API layers.
+
+4. **display_name is nullable**: Personal orgs store NULL — resolved from owner's username/handle at the API layer. Avoids duplicating handle data that syncs from Bluesky.
+
+5. **PG enum for content_rating, TEXT + CHECK for commission_status**: content_rating is stable; commission_status will grow (paused, by_request, etc.).
+
+6. **Permissions as BIGINT bitfield**: `ALL = u64::MAX` future-proofs new bit positions without migration. Faster than JSONB.
+
+7. **No transactions across repos**: `create_org` + `add_owner` are two separate repo calls. MVP trade-off — UoW pattern deferred to Feature 4.
+
+8. **Slug validation at service layer**: Format rules + reserved word list enforced in Rust, DB only enforces uniqueness. Partial unique index on slug (excludes soft-deleted rows).
+
+9. **Partial unique index for personal orgs**: `uq_organizations_personal` enforces at most one non-deleted personal org per user at the DB level.
+
+10. **`sqlx_utils` shared module**: `is_unique_violation()` and `violated_constraint()` extracted to avoid duplication across repositories.
+
+11. **Route pattern `/{id_or_slug}`**: GET/PUT/DELETE on `/organizations/:param` share one route — handler disambiguates by attempting UUID parse first, then slug lookup.
+
+### What Went Well
+- Org-centric model emerged from design discussion and is much more flexible than the original `is_artist` flag approach
+- Two-tier data architecture (AT Protocol + PostgreSQL) was validated by researching how Bluesky handles DMs
+- Repository trait abstraction makes future PDS integration a persistence-layer-only change
+- Permission bitfield is clean and extensible
+- Personal org auto-creation with self-healing for returning users
+
+### What Didn't Go Well
+- Route conflict between `/{slug}` and `/{id}` wasn't caught until tests ran — Axum treats them as the same wildcard pattern. Fixed by merging into single `/{id_or_slug}`.
+- Mock repos are duplicated across application tests and API tests (same pattern as Feature 1). Consider a shared test-utils crate if this continues to grow.
+- `NoOpProfileRepo` in auth service is a code smell — needed because `OrganizationService::create_personal_org` takes a profile repo it doesn't use. Could be refactored with a standalone function instead.
+
+### Tracked for Future (Not This PR)
+- AT Protocol Lexicon definitions for public org/profile data (Phase 1.5)
+- PDS write-through and indexer (Phase 1.5)
+- Onboarding "What are you?" flow that sets initial title on personal org
+- Team org invite/join flows
+- Org focus tags (art, fursuits, coding)
+- UoW/transaction pattern for multi-repo operations
+- Shared test-utils crate for mock repositories

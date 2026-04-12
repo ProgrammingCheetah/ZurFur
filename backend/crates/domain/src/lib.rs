@@ -1,4 +1,16 @@
 pub mod atproto_session;
+pub mod content_rating;
+pub mod default_role;
+pub mod entity_feed;
+pub mod feed;
+pub mod feed_element;
+pub mod feed_item;
+pub mod feed_subscription;
 pub mod oauth_state_store;
+pub mod onboarding_role;
+pub mod organization;
+pub mod organization_member;
+pub mod organization_profile;
 pub mod refresh_token;
 pub mod user;
+pub mod user_preferences;
