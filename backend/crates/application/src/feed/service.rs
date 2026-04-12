@@ -94,6 +94,31 @@ impl FeedService {
             .ok_or(FeedServiceError::FeedNotFound)
     }
 
+    /// Create a system feed and attach it to an org. No permission check —
+    /// called from orchestration layer (org creation, onboarding), not from users.
+    pub async fn create_system_feed(
+        &self,
+        org_id: Uuid,
+        slug: &str,
+        display_name: &str,
+    ) -> Result<Feed, FeedServiceError> {
+        let feed = self
+            .feed_repo
+            .create(slug, display_name, None, FeedType::System)
+            .await
+            .map_err(|e| match e {
+                FeedError::SlugTaken(s) => FeedServiceError::SlugTaken(s),
+                other => FeedServiceError::Internal(other.to_string()),
+            })?;
+
+        self.entity_feed_repo
+            .attach(feed.id, EntityType::Org, org_id)
+            .await
+            .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
+
+        Ok(feed)
+    }
+
     /// Create a custom feed and attach it to an org.
     pub async fn create_custom_feed(
         &self,
