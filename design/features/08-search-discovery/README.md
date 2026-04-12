@@ -23,15 +23,26 @@ How users find orgs offering commissions. Without discovery, users can only find
 
 ### 8.2 Tag Taxonomy (Tier 1 Infrastructure)
 
-**What it is:** Structured, community-curated tag system. Tier 1 foundational infrastructure — the tag system underpins search, content classification, moderation, and discovery across the platform. Tags is one of the five root aggregates.
+**What it is:** Typed, cross-cutting identity and metadata system. Tier 1 foundational infrastructure — the tag system underpins attribution, search, content classification, moderation, and discovery. Tags is one of the five root aggregates.
+
+**Core design: entity-backed tags + descriptive tags.**
+
+Every organization and character automatically gets an immutable tag on creation. These entity-backed tags serve as permanent identity markers — attribution is just "attach the org's tag." Descriptive tags (metadata/general) are user-created and community-curated.
+
+**Tag types:**
+- `organization` — auto-created on org creation, entity-backed (entity_id → org), immutable identity, display resolves from org name. Used for attribution (artist credit, studio credit).
+- `character` — auto-created on character creation, entity-backed (entity_id → character), immutable identity, display resolves from character name. Used for character depiction tagging.
+- `metadata` — user-created descriptive attributes with optional category (species/art_style/medium/content_type/status). Community-curated. E.g., "canine", "digital art", "status:open".
+- `general` — free-form user-created tags without category constraints.
 
 **Implementation approach:**
-- `tags` table: `id`, `name`, `category` (species/style/medium/content_type/status/custom), `parent_id` (hierarchical), `usage_count`, `is_approved`
-- Status category tags: `status:open`, `status:closed`, `status:waitlist` — commission availability is expressed as tags on the org, not as a database column
-- `entity_tags` junction table: `entity_type` (org/commission/feed_item/character), `entity_id`, `tag_id` — universal tag assignment for any entity
-- `org_tags` convenience view over `entity_tags WHERE entity_type = 'org'`
+- `tags` table: `id`, `tag_type` (organization/character/metadata/general), `entity_id` (nullable — set for org/character-backed tags), `name` (display for metadata/general; entity-backed tags resolve from entity), `category` (nullable — for metadata faceted search), `parent_id` (hierarchical), `usage_count`, `is_approved`
+- Entity-backed tags: auto-created, never deleted, `entity_id` references the owning org/character
+- Status tags: `status:open`, `status:closed`, `status:waitlist` — commission availability expressed as metadata tags on the org
+- `entity_tags` junction table: `entity_type` (org/commission/feed_item/character/feed_element), `entity_id`, `tag_id` — universal tag assignment for any entity
+- Attribution: attaching an org's tag to a commission = crediting that org as participant
 - Tag suggestions: auto-complete from existing approved tags
-- Community tag proposals: users suggest new tags → moderation queue
+- Community tag proposals: users suggest new metadata/general tags → moderation queue
 - Tag synonyms/aliases for search (e.g., "wolf" matches "canine")
 - Tags interact with content moderation: "untagged NSFW" detection relies on tag presence (Feature 11)
 
@@ -74,14 +85,15 @@ How users find orgs offering commissions. Without discovery, users can only find
 ## Implementation Phases
 
 ### Phase 1: Tag Infrastructure & Basic Search
-- `tags` table with seed data (common species, styles, mediums)
+- `tags` table with `tag_type`, `entity_id`, `name`, `category`, `parent_id`
+- Auto-creation of org/character tags on entity creation
 - `entity_tags` universal junction table
-- `org_tags` convenience view
+- Seed data for common metadata tags (species, styles, mediums)
 - Tag management API: suggest, approve, assign to any entity
 - PostgreSQL tsvector search on org profiles
 - Basic search endpoint: `GET /search/orgs`
 - "Open Now" feed view endpoint
-- Crates: domain (Tag root aggregate), persistence (tag repository, search queries), application (search use case), api (search routes)
+- Crates: domain (Tag root aggregate), persistence (tag repository, search queries), application (tag + search services), api (search routes)
 
 ### Phase 2: Faceted Search & Recommendations
 - All faceted filtering driven by tags (no separate columns)
@@ -105,6 +117,7 @@ How users find orgs offering commissions. Without discovery, users can only find
 - PostgreSQL full-text search is sufficient for MVP (thousands of orgs, not millions)
 - Tag taxonomy is manually seeded, community-curated later
 - Tags are the sole mechanism for descriptive attributes — no separate columns for species, style, etc.
+- Entity-backed tags (org/character) are immutable and permanent — they serve as identity references for attribution
 - Recommendation engine starts as heuristics — ML is a future upgrade
 - "Open Now" feed view doesn't need sub-second latency — 30s polling is acceptable
 - Search indexes primarily from PDS records for public data
