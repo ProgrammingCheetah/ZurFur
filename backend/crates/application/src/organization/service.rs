@@ -4,9 +4,6 @@ use domain::organization::{Organization, OrganizationRepository};
 use domain::organization_member::{
     OrganizationMember, OrganizationMemberRepository, Permissions, Role,
 };
-use domain::organization_profile::{
-    CommissionStatus, OrganizationProfile, OrganizationProfileRepository,
-};
 use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
@@ -23,35 +20,20 @@ pub enum OrgServiceError {
     CannotDeletePersonal,
     #[error("Cannot remove the owner from an organization")]
     CannotRemoveOwner,
-    #[error("Invalid commission status: {0}")]
-    InvalidStatus(String),
     #[error("Internal error: {0}")]
     Internal(String),
 }
 
-/// Response for get_org — combines org, members, and optional profile.
+/// Response for get_org — combines org and members.
 #[derive(Debug)]
 pub struct OrgDetail {
     pub org: Organization,
     pub members: Vec<OrganizationMember>,
-    pub profile: Option<OrganizationProfile>,
 }
 
-/// Service for organization CRUD, member management, and profile operations.
-///
-/// ARCHITECTURE DECISIONS:
-///   All permission checks and business rules (owner-only, can't remove owner,
-///   can't delete personal org) are enforced here at the service layer, not in
-///   the database. This keeps the DB schema simple and business rules in Rust
-///   where they're testable with mock repos.
-///
-///   Slug validation is also at the service layer — the DB only enforces
-///   uniqueness via the UNIQUE index. Format rules and reserved word checks
-///   are in validate_slug().
 pub struct OrganizationService {
     org_repo: Arc<dyn OrganizationRepository>,
     member_repo: Arc<dyn OrganizationMemberRepository>,
-    profile_repo: Arc<dyn OrganizationProfileRepository>,
 }
 
 /// Reserved slugs that cannot be used for organization names.
@@ -64,19 +46,13 @@ impl OrganizationService {
     pub fn new(
         org_repo: Arc<dyn OrganizationRepository>,
         member_repo: Arc<dyn OrganizationMemberRepository>,
-        profile_repo: Arc<dyn OrganizationProfileRepository>,
     ) -> Self {
         Self {
             org_repo,
             member_repo,
-            profile_repo,
         }
     }
 
-    /// Validate a slug against format rules and reserved words.
-    ///
-    /// Rules: lowercase alphanumeric + hyphens, 2-64 chars, cannot start/end
-    /// with hyphen, not in the reserved list.
     pub fn validate_slug(slug: &str) -> Result<(), OrgServiceError> {
         if slug.len() < 2 || slug.len() > 64 {
             return Err(OrgServiceError::InvalidSlug(
@@ -108,8 +84,6 @@ impl OrganizationService {
         Ok(())
     }
 
-    /// Sanitize a handle into a valid slug for personal org creation.
-    /// Strips `.bsky.social` suffix, lowercases, replaces invalid chars with hyphens.
     pub fn slug_from_handle(handle: &str) -> String {
         let base = handle
             .strip_suffix(".bsky.social")
@@ -127,11 +101,9 @@ impl OrganizationService {
             })
             .collect();
 
-        // Trim leading/trailing hyphens
         let trimmed = sanitized.trim_matches('-');
 
         if trimmed.len() < 2 {
-            // Fallback for very short handles
             format!("user-{}", &Uuid::new_v4().to_string()[..8])
         } else if trimmed.len() > 64 {
             trimmed[..64].trim_end_matches('-').to_string()
@@ -140,7 +112,6 @@ impl OrganizationService {
         }
     }
 
-    /// Create a new organization. The creating user becomes the owner.
     pub async fn create_org(
         &self,
         user_id: Uuid,
@@ -151,7 +122,7 @@ impl OrganizationService {
 
         let org = self
             .org_repo
-            .create(slug, Some(display_name), false, user_id)
+            .create(slug, Some(display_name), false)
             .await
             .map_err(|e| match e {
                 domain::organization::OrganizationError::SlugTaken(s) => {
@@ -175,28 +146,14 @@ impl OrganizationService {
         Ok(OrgDetail {
             org,
             members: vec![member],
-            profile: None,
         })
     }
 
-    /// Create a personal organization for a user. Called during signup.
-    ///
-    /// ARCHITECTURE DECISIONS:
-    ///   display_name is NULL for personal orgs — resolved from the owner's
-    ///   username/handle at the API layer. This avoids duplicating the user's
-    ///   handle (which syncs from Bluesky) and prevents stale-data drift.
-    ///
-    ///   No transaction wraps the org creation + member add. These are two
-    ///   separate repo calls behind Arc<dyn Trait>. If the member add fails
-    ///   after org creation, the org exists without an owner — a self-healing
-    ///   check can be added later. MVP trade-off; TODO for Feature 4 UoW pattern.
     pub async fn create_personal_org(
         &self,
         user_id: Uuid,
         slug: &str,
     ) -> Result<Organization, OrgServiceError> {
-        // Validate the derived slug; fall back to a UUID-based slug if it's
-        // invalid or reserved (e.g., handles like "admin.bsky.social").
         let effective_slug = match Self::validate_slug(slug) {
             Ok(()) => slug.to_owned(),
             Err(_) => format!("user-{}", &Uuid::new_v4().to_string()[..8]),
@@ -204,7 +161,7 @@ impl OrganizationService {
 
         let org = self
             .org_repo
-            .create(&effective_slug, None, true, user_id)
+            .create(&effective_slug, None, true)
             .await
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
 
@@ -222,7 +179,6 @@ impl OrganizationService {
         Ok(org)
     }
 
-    /// Get an organization by ID with its members and profile.
     pub async fn get_org_by_id(&self, org_id: Uuid) -> Result<OrgDetail, OrgServiceError> {
         let org = self
             .org_repo
@@ -234,7 +190,6 @@ impl OrganizationService {
         self.load_org_detail(org).await
     }
 
-    /// Get an organization by slug with its members and profile.
     pub async fn get_org(&self, slug: &str) -> Result<OrgDetail, OrgServiceError> {
         let org = self
             .org_repo
@@ -256,20 +211,9 @@ impl OrganizationService {
             .await
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
 
-        let profile = self
-            .profile_repo
-            .find_by_org_id(org.id)
-            .await
-            .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
-
-        Ok(OrgDetail {
-            org,
-            members,
-            profile,
-        })
+        Ok(OrgDetail { org, members })
     }
 
-    /// Update an org's display name. Owner only.
     pub async fn update_org(
         &self,
         org_id: Uuid,
@@ -284,7 +228,6 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
-    /// Soft-delete an organization. Owner only. Personal orgs cannot be deleted.
     pub async fn delete_org(
         &self,
         org_id: Uuid,
@@ -309,24 +252,6 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
-    /// Update org profile (bio, commission status). Requires MANAGE_PROFILE permission.
-    pub async fn update_profile(
-        &self,
-        org_id: Uuid,
-        actor_id: Uuid,
-        bio: Option<&str>,
-        commission_status: CommissionStatus,
-    ) -> Result<OrganizationProfile, OrgServiceError> {
-        self.require_permission(org_id, actor_id, Permissions::MANAGE_PROFILE)
-            .await?;
-
-        self.profile_repo
-            .upsert(org_id, bio, commission_status)
-            .await
-            .map_err(|e| OrgServiceError::Internal(e.to_string()))
-    }
-
-    /// Add a member to an org. Requires MANAGE_MEMBERS permission.
     pub async fn add_member(
         &self,
         org_id: Uuid,
@@ -344,8 +269,6 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
-    /// Update a member's role and title. Requires MANAGE_MEMBERS permission.
-    /// Updating permissions requires being the owner.
     pub async fn update_member(
         &self,
         org_id: Uuid,
@@ -365,7 +288,6 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
 
         if let Some(perms) = permissions {
-            // Only the owner can change permissions
             self.require_owner(org_id, actor_id).await?;
             member = self
                 .member_repo
@@ -377,8 +299,6 @@ impl OrganizationService {
         Ok(member)
     }
 
-    /// Remove a member from an org. Requires MANAGE_MEMBERS permission.
-    /// The owner cannot be removed.
     pub async fn remove_member(
         &self,
         org_id: Uuid,
@@ -388,7 +308,6 @@ impl OrganizationService {
         self.require_permission(org_id, actor_id, Permissions::MANAGE_MEMBERS)
             .await?;
 
-        // Check if target is the owner
         let target_member = self
             .member_repo
             .find_by_org_and_user(org_id, target_user_id)
@@ -405,8 +324,6 @@ impl OrganizationService {
             .await
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
-
-    // --- Permission helpers --------------------------------------------------
 
     async fn get_actor_member(
         &self,
@@ -454,13 +371,7 @@ mod tests {
         OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions,
         Role,
     };
-    use domain::organization_profile::{
-        CommissionStatus, OrganizationProfile, OrganizationProfileError,
-        OrganizationProfileRepository,
-    };
     use tokio::sync::Mutex;
-
-    // --- Mock Repositories ---------------------------------------------------
 
     #[derive(Default)]
     struct MockOrgRepo {
@@ -474,7 +385,6 @@ mod tests {
             slug: &str,
             display_name: Option<&str>,
             is_personal: bool,
-            created_by: Uuid,
         ) -> Result<Organization, OrganizationError> {
             let mut orgs = self.orgs.lock().await;
             if orgs.iter().any(|o| o.slug == slug) {
@@ -485,7 +395,6 @@ mod tests {
                 slug: slug.into(),
                 display_name: display_name.map(String::from),
                 is_personal,
-                created_by,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             };
@@ -512,14 +421,14 @@ mod tests {
 
         async fn find_personal_org(
             &self,
-            user_id: Uuid,
+            _user_id: Uuid,
         ) -> Result<Option<Organization>, OrganizationError> {
             Ok(self
                 .orgs
                 .lock()
                 .await
                 .iter()
-                .find(|o| o.created_by == user_id && o.is_personal)
+                .find(|o| o.is_personal)
                 .cloned())
         }
 
@@ -673,61 +582,12 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
-    struct MockProfileRepo {
-        profiles: Mutex<Vec<OrganizationProfile>>,
-    }
-
-    #[async_trait::async_trait]
-    impl OrganizationProfileRepository for MockProfileRepo {
-        async fn upsert(
-            &self,
-            org_id: Uuid,
-            bio: Option<&str>,
-            commission_status: CommissionStatus,
-        ) -> Result<OrganizationProfile, OrganizationProfileError> {
-            let mut profiles = self.profiles.lock().await;
-            profiles.retain(|p| p.org_id != org_id);
-            let profile = OrganizationProfile {
-                org_id,
-                bio: bio.map(String::from),
-                commission_status,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            };
-            profiles.push(profile.clone());
-            Ok(profile)
-        }
-
-        async fn find_by_org_id(
-            &self,
-            org_id: Uuid,
-        ) -> Result<Option<OrganizationProfile>, OrganizationProfileError> {
-            Ok(self
-                .profiles
-                .lock()
-                .await
-                .iter()
-                .find(|p| p.org_id == org_id)
-                .cloned())
-        }
-    }
-
-    // --- Helpers --------------------------------------------------------------
-
     fn build_service(
         org_repo: MockOrgRepo,
         member_repo: MockMemberRepo,
-        profile_repo: MockProfileRepo,
     ) -> OrganizationService {
-        OrganizationService::new(
-            Arc::new(org_repo),
-            Arc::new(member_repo),
-            Arc::new(profile_repo),
-        )
+        OrganizationService::new(Arc::new(org_repo), Arc::new(member_repo))
     }
-
-    // --- Slug Validation Tests ------------------------------------------------
 
     #[test]
     fn valid_slugs() {
@@ -777,16 +637,10 @@ mod tests {
         );
     }
 
-    // --- Create Org Tests ----------------------------------------------------
-
     #[tokio::test]
     async fn create_org_makes_user_owner() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let detail = svc.create_org(user_id, "my-studio", "My Studio").await.unwrap();
         assert_eq!(detail.org.slug, "my-studio");
@@ -798,12 +652,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_org_with_invalid_slug_fails() {
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
-
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
         let err = svc.create_org(Uuid::new_v4(), "admin", "Admin").await.unwrap_err();
         assert!(matches!(err, OrgServiceError::InvalidSlug(_)));
     }
@@ -811,32 +660,21 @@ mod tests {
     #[tokio::test]
     async fn create_personal_org_has_null_display_name() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let org = svc.create_personal_org(user_id, "testuser").await.unwrap();
         assert!(org.is_personal);
         assert!(org.display_name.is_none());
     }
 
-    // --- Permission Tests ----------------------------------------------------
-
     #[tokio::test]
     async fn update_org_by_non_owner_fails() {
         let owner_id = Uuid::new_v4();
         let other_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
 
-        // Add non-owner member
         svc.add_member(detail.org.id, owner_id, other_id, Role::Member, None)
             .await
             .unwrap();
@@ -851,11 +689,7 @@ mod tests {
     #[tokio::test]
     async fn delete_personal_org_fails() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let org = svc.create_personal_org(user_id, "testuser").await.unwrap();
         let err = svc.delete_org(org.id, user_id).await.unwrap_err();
@@ -865,73 +699,16 @@ mod tests {
     #[tokio::test]
     async fn delete_org_by_owner_succeeds() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
         svc.delete_org(detail.org.id, user_id).await.unwrap();
     }
 
     #[tokio::test]
-    async fn update_profile_without_permission_fails() {
-        let owner_id = Uuid::new_v4();
-        let other_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
-
-        let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
-
-        // Add member with no permissions
-        svc.add_member(detail.org.id, owner_id, other_id, Role::Member, None)
-            .await
-            .unwrap();
-
-        let err = svc
-            .update_profile(detail.org.id, other_id, Some("bio"), CommissionStatus::Open)
-            .await
-            .unwrap_err();
-        assert!(matches!(err, OrgServiceError::Forbidden));
-    }
-
-    #[tokio::test]
-    async fn update_profile_with_permission_succeeds() {
-        let owner_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
-
-        let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
-
-        let profile = svc
-            .update_profile(
-                detail.org.id,
-                owner_id,
-                Some("Artist studio"),
-                CommissionStatus::Open,
-            )
-            .await
-            .unwrap();
-
-        assert_eq!(profile.bio.as_deref(), Some("Artist studio"));
-        assert_eq!(profile.commission_status, CommissionStatus::Open);
-    }
-
-    #[tokio::test]
     async fn remove_owner_fails() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
         let err = svc
@@ -945,11 +722,7 @@ mod tests {
     async fn remove_non_owner_member_succeeds() {
         let owner_id = Uuid::new_v4();
         let member_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
         svc.add_member(detail.org.id, owner_id, member_id, Role::Member, None)
@@ -962,28 +735,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_org_returns_org_with_members_and_profile() {
+    async fn get_org_returns_org_with_members() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(
-            MockOrgRepo::default(),
-            MockMemberRepo::default(),
-            MockProfileRepo::default(),
-        );
+        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
 
-        let detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
-        svc.update_profile(
-            detail.org.id,
-            user_id,
-            Some("test bio"),
-            CommissionStatus::Closed,
-        )
-        .await
-        .unwrap();
+        let _detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
 
         let fetched = svc.get_org("my-org").await.unwrap();
         assert_eq!(fetched.org.slug, "my-org");
         assert_eq!(fetched.members.len(), 1);
-        assert!(fetched.profile.is_some());
-        assert_eq!(fetched.profile.unwrap().bio.as_deref(), Some("test bio"));
     }
 }

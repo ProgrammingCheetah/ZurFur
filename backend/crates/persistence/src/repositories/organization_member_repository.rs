@@ -54,7 +54,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         sqlx::query(concat!(
-            "INSERT INTO organization_members (org_id, user_id, role, title, permissions) ",
+            "INSERT INTO organization_member (org_id, user_id, role, title, permissions) ",
             "VALUES ($1, $2, $3, $4, $5) ",
             "RETURNING ", cols!()
         ))
@@ -81,7 +81,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         user_id: Uuid,
     ) -> Result<Option<OrganizationMember>, OrganizationMemberError> {
         sqlx::query(concat!(
-            "SELECT ", cols!(), " FROM organization_members WHERE org_id = $1 AND user_id = $2"
+            "SELECT ", cols!(), " FROM organization_member WHERE org_id = $1 AND user_id = $2"
         ))
         .bind(org_id)
         .bind(user_id)
@@ -96,7 +96,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         org_id: Uuid,
     ) -> Result<Vec<OrganizationMember>, OrganizationMemberError> {
         sqlx::query(concat!(
-            "SELECT ", cols!(), " FROM organization_members WHERE org_id = $1 ORDER BY joined_at"
+            "SELECT ", cols!(), " FROM organization_member WHERE org_id = $1 ORDER BY joined_at"
         ))
         .bind(org_id)
         .fetch_all(&self.pool)
@@ -110,7 +110,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         user_id: Uuid,
     ) -> Result<Vec<OrganizationMember>, OrganizationMemberError> {
         sqlx::query(concat!(
-            "SELECT ", cols!(), " FROM organization_members WHERE user_id = $1 ORDER BY joined_at"
+            "SELECT ", cols!(), " FROM organization_member WHERE user_id = $1 ORDER BY joined_at"
         ))
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -127,7 +127,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         title: Option<&str>,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         sqlx::query(concat!(
-            "UPDATE organization_members SET role = $1, title = $2 ",
+            "UPDATE organization_member SET role = $1, title = $2 ",
             "WHERE org_id = $3 AND user_id = $4 ",
             "RETURNING ", cols!()
         ))
@@ -149,7 +149,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
         sqlx::query(concat!(
-            "UPDATE organization_members SET permissions = $1 ",
+            "UPDATE organization_member SET permissions = $1 ",
             "WHERE org_id = $2 AND user_id = $3 ",
             "RETURNING ", cols!()
         ))
@@ -169,7 +169,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         user_id: Uuid,
     ) -> Result<(), OrganizationMemberError> {
         let result = sqlx::query(
-            "DELETE FROM organization_members WHERE org_id = $1 AND user_id = $2",
+            "DELETE FROM organization_member WHERE org_id = $1 AND user_id = $2",
         )
         .bind(org_id)
         .bind(user_id)

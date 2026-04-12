@@ -21,9 +21,6 @@ pub use domain::organization::{Organization, OrganizationError, OrganizationRepo
 pub use domain::organization_member::{
     OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
-pub use domain::organization_profile::{
-    CommissionStatus, OrganizationProfile, OrganizationProfileError, OrganizationProfileRepository,
-};
 pub use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
 pub use domain::user::{User, UserError, UserRepository};
 pub use domain::user_preferences::{
@@ -34,7 +31,7 @@ pub use repositories::{
     SqlxAtprotoSessionRepository, SqlxDefaultRoleRepository, SqlxEntityFeedRepository,
     SqlxFeedElementRepository, SqlxFeedItemRepository, SqlxFeedRepository,
     SqlxFeedSubscriptionRepository, SqlxOrganizationMemberRepository,
-    SqlxOrganizationProfileRepository, SqlxOrganizationRepository, SqlxRefreshTokenRepository,
+    SqlxOrganizationRepository, SqlxRefreshTokenRepository,
     SqlxUserPreferencesRepository, SqlxUserRepository,
 };
 

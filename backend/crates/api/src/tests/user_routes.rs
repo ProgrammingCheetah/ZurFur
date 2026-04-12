@@ -39,7 +39,7 @@ async fn update_preferences_without_token_returns_401() {
     let server = test_server();
     let response = server
         .put("/users/me/preferences")
-        .json(&serde_json::json!({"max_content_rating": "nsfw"}))
+        .json(&serde_json::json!({"settings": {"max_content_rating": "nsfw"}}))
         .await;
     response.assert_status_unauthorized();
 }
@@ -60,7 +60,7 @@ async fn get_me_for_nonexistent_user_returns_404() {
 // --- GET /users/me/preferences -----------------------------------------------
 
 #[tokio::test]
-async fn get_preferences_returns_default_sfw() {
+async fn get_preferences_returns_empty_default() {
     let server = test_server();
     let user_id = Uuid::new_v4();
     let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
@@ -73,13 +73,13 @@ async fn get_preferences_returns_default_sfw() {
     response.assert_status_ok();
 
     let body: serde_json::Value = response.json();
-    assert_eq!(body["max_content_rating"], "sfw");
+    assert_eq!(body["settings"], serde_json::json!({}));
 }
 
 // --- PUT /users/me/preferences -----------------------------------------------
 
 #[tokio::test]
-async fn update_preferences_with_valid_rating() {
+async fn update_preferences_with_valid_json() {
     let server = test_server();
     let user_id = Uuid::new_v4();
     let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
@@ -87,26 +87,11 @@ async fn update_preferences_with_valid_rating() {
 
     let response = server
         .put("/users/me/preferences")
-        .json(&serde_json::json!({"max_content_rating": "nsfw"}))
+        .json(&serde_json::json!({"settings": {"max_content_rating": "nsfw"}}))
         .add_header(name, value)
         .await;
     response.assert_status_ok();
 
     let body: serde_json::Value = response.json();
-    assert_eq!(body["max_content_rating"], "nsfw");
-}
-
-#[tokio::test]
-async fn update_preferences_with_invalid_rating_returns_400() {
-    let server = test_server();
-    let user_id = Uuid::new_v4();
-    let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
-    let (name, value) = auth_header(&token);
-
-    let response = server
-        .put("/users/me/preferences")
-        .json(&serde_json::json!({"max_content_rating": "extreme"}))
-        .add_header(name, value)
-        .await;
-    response.assert_status(StatusCode::BAD_REQUEST);
+    assert_eq!(body["settings"]["max_content_rating"], "nsfw");
 }

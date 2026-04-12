@@ -35,7 +35,7 @@ fn map_session(row: sqlx::postgres::PgRow) -> AtprotoSessionEntity {
 impl AtprotoSessionRepository for SqlxAtprotoSessionRepository {
     async fn upsert(&self, session: &AtprotoSessionEntity) -> Result<(), UserError> {
         sqlx::query(
-            r#"INSERT INTO atproto_sessions (id, user_id, did, access_token, refresh_token, expires_at, pds_url)
+            r#"INSERT INTO atproto_session (id, user_id, did, access_token, refresh_token, expires_at, pds_url)
                VALUES ($1, $2, $3, $4, $5, $6, $7)
                ON CONFLICT (user_id) DO UPDATE SET
                    did = EXCLUDED.did,
@@ -61,7 +61,7 @@ impl AtprotoSessionRepository for SqlxAtprotoSessionRepository {
         &self,
         user_id: Uuid,
     ) -> Result<Option<AtprotoSessionEntity>, UserError> {
-        sqlx::query("SELECT id, user_id, did, access_token, refresh_token, expires_at, pds_url FROM atproto_sessions WHERE user_id = $1")
+        sqlx::query("SELECT id, user_id, did, access_token, refresh_token, expires_at, pds_url FROM atproto_session WHERE user_id = $1")
             .bind(user_id)
             .fetch_optional(&self.pool)
             .await
@@ -70,7 +70,7 @@ impl AtprotoSessionRepository for SqlxAtprotoSessionRepository {
     }
 
     async fn find_by_did(&self, did: &str) -> Result<Option<AtprotoSessionEntity>, UserError> {
-        sqlx::query("SELECT id, user_id, did, access_token, refresh_token, expires_at, pds_url FROM atproto_sessions WHERE did = $1")
+        sqlx::query("SELECT id, user_id, did, access_token, refresh_token, expires_at, pds_url FROM atproto_session WHERE did = $1")
             .bind(did)
             .fetch_optional(&self.pool)
             .await
@@ -79,7 +79,7 @@ impl AtprotoSessionRepository for SqlxAtprotoSessionRepository {
     }
 
     async fn delete_by_user_id(&self, user_id: Uuid) -> Result<(), UserError> {
-        sqlx::query("DELETE FROM atproto_sessions WHERE user_id = $1")
+        sqlx::query("DELETE FROM atproto_session WHERE user_id = $1")
             .bind(user_id)
             .execute(&self.pool)
             .await

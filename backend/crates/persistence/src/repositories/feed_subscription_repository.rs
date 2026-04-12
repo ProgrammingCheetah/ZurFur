@@ -47,7 +47,7 @@ impl FeedSubscriptionRepository for SqlxFeedSubscriptionRepository {
         granted_by_user_id: Uuid,
     ) -> Result<FeedSubscription, FeedSubscriptionError> {
         let row = sqlx::query(
-            "INSERT INTO feed_subscriptions (feed_id, subscriber_org_id, permissions, granted_by_user_id) \
+            "INSERT INTO feed_subscription (feed_id, subscriber_org_id, permissions, granted_by_user_id) \
              VALUES ($1, $2, $3, $4) \
              RETURNING id, feed_id, subscriber_org_id, permissions, granted_at, granted_by_user_id",
         )
@@ -74,7 +74,7 @@ impl FeedSubscriptionRepository for SqlxFeedSubscriptionRepository {
     ) -> Result<Option<FeedSubscription>, FeedSubscriptionError> {
         let row = sqlx::query(
             "SELECT id, feed_id, subscriber_org_id, permissions, granted_at, granted_by_user_id \
-             FROM feed_subscriptions WHERE id = $1",
+             FROM feed_subscription WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -93,7 +93,7 @@ impl FeedSubscriptionRepository for SqlxFeedSubscriptionRepository {
     ) -> Result<Vec<FeedSubscription>, FeedSubscriptionError> {
         let rows = sqlx::query(
             "SELECT id, feed_id, subscriber_org_id, permissions, granted_at, granted_by_user_id \
-             FROM feed_subscriptions WHERE feed_id = $1",
+             FROM feed_subscription WHERE feed_id = $1",
         )
         .bind(feed_id)
         .fetch_all(&self.pool)
@@ -113,7 +113,7 @@ impl FeedSubscriptionRepository for SqlxFeedSubscriptionRepository {
     ) -> Result<Vec<FeedSubscription>, FeedSubscriptionError> {
         let rows = sqlx::query(
             "SELECT id, feed_id, subscriber_org_id, permissions, granted_at, granted_by_user_id \
-             FROM feed_subscriptions WHERE subscriber_org_id = $1",
+             FROM feed_subscription WHERE subscriber_org_id = $1",
         )
         .bind(subscriber_org_id)
         .fetch_all(&self.pool)
@@ -133,7 +133,7 @@ impl FeedSubscriptionRepository for SqlxFeedSubscriptionRepository {
         permissions: SubscriptionPermission,
     ) -> Result<FeedSubscription, FeedSubscriptionError> {
         let row = sqlx::query(
-            "UPDATE feed_subscriptions SET permissions = $1 \
+            "UPDATE feed_subscription SET permissions = $1 \
              WHERE id = $2 \
              RETURNING id, feed_id, subscriber_org_id, permissions, granted_at, granted_by_user_id",
         )
@@ -148,7 +148,7 @@ impl FeedSubscriptionRepository for SqlxFeedSubscriptionRepository {
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), FeedSubscriptionError> {
-        let result = sqlx::query("DELETE FROM feed_subscriptions WHERE id = $1")
+        let result = sqlx::query("DELETE FROM feed_subscription WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await

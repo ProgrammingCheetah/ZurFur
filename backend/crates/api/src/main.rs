@@ -33,7 +33,6 @@ async fn main() {
     let refresh_repo = persistence::SqlxRefreshTokenRepository::from_pool(pool.clone());
     let org_repo = persistence::SqlxOrganizationRepository::from_pool(pool.clone());
     let member_repo = persistence::SqlxOrganizationMemberRepository::from_pool(pool.clone());
-    let org_profile_repo = persistence::SqlxOrganizationProfileRepository::from_pool(pool.clone());
     let preferences_repo = persistence::SqlxUserPreferencesRepository::from_pool(pool.clone());
     let feed_repo = persistence::SqlxFeedRepository::from_pool(pool.clone());
     let entity_feed_repo = persistence::SqlxEntityFeedRepository::from_pool(pool.clone());
@@ -60,7 +59,6 @@ async fn main() {
     let user_service = application::user::service::UserService::new(
         user_repo.clone(),
         org_repo.clone(),
-        org_profile_repo.clone(),
         member_repo.clone(),
         preferences_repo,
     );
@@ -68,7 +66,6 @@ async fn main() {
     let org_service = application::organization::service::OrganizationService::new(
         org_repo.clone(),
         member_repo.clone(),
-        org_profile_repo,
     );
 
     let onboarding_service = application::onboarding::service::OnboardingService::new(

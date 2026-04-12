@@ -47,7 +47,7 @@ impl FeedRepository for SqlxFeedRepository {
         feed_type: FeedType,
     ) -> Result<Feed, FeedError> {
         let row = sqlx::query(
-            "INSERT INTO feeds (slug, display_name, description, feed_type) \
+            "INSERT INTO feed (slug, display_name, description, feed_type) \
              VALUES ($1, $2, $3, $4) \
              RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
         )
@@ -71,7 +71,7 @@ impl FeedRepository for SqlxFeedRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Feed>, FeedError> {
         let row = sqlx::query(
             "SELECT id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at \
-             FROM feeds WHERE id = $1 AND deleted_at IS NULL",
+             FROM feed WHERE id = $1 AND deleted_at IS NULL",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -91,7 +91,7 @@ impl FeedRepository for SqlxFeedRepository {
         description: Option<&str>,
     ) -> Result<Feed, FeedError> {
         let row = sqlx::query(
-            "UPDATE feeds SET display_name = $1, description = $2 \
+            "UPDATE feed SET display_name = $1, description = $2 \
              WHERE id = $3 AND deleted_at IS NULL \
              RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
         )
@@ -111,9 +111,9 @@ impl FeedRepository for SqlxFeedRepository {
         // No TOCTOU race — all in one statement.
         let row = sqlx::query(
             "WITH target AS ( \
-                 SELECT feed_type FROM feeds WHERE id = $1 AND deleted_at IS NULL \
+                 SELECT feed_type FROM feed WHERE id = $1 AND deleted_at IS NULL \
              ), deleted AS ( \
-                 UPDATE feeds SET deleted_at = now() \
+                 UPDATE feed SET deleted_at = now() \
                  WHERE id = $1 AND deleted_at IS NULL AND feed_type = 'custom' \
                  RETURNING 1 \
              ) \
@@ -140,7 +140,7 @@ impl FeedRepository for SqlxFeedRepository {
     async fn list_by_ids(&self, ids: &[Uuid]) -> Result<Vec<Feed>, FeedError> {
         let rows = sqlx::query(
             "SELECT id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at \
-             FROM feeds WHERE id = ANY($1) AND deleted_at IS NULL",
+             FROM feed WHERE id = ANY($1) AND deleted_at IS NULL",
         )
         .bind(ids)
         .fetch_all(&self.pool)
