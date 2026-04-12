@@ -37,7 +37,9 @@ async fn main() {
     let feed_repo = persistence::SqlxFeedRepository::from_pool(pool.clone());
     let entity_feed_repo = persistence::SqlxEntityFeedRepository::from_pool(pool.clone());
     let feed_item_repo = persistence::SqlxFeedItemRepository::from_pool(pool.clone());
-    let feed_element_repo = persistence::SqlxFeedElementRepository::from_pool(pool);
+    let feed_element_repo = persistence::SqlxFeedElementRepository::from_pool(pool.clone());
+    let tag_repo = persistence::SqlxTagRepository::from_pool(pool.clone());
+    let entity_tag_repo = persistence::SqlxEntityTagRepository::from_pool(pool);
 
     // Pluggable storage (swap these to Redis-backed implementations for production)
     let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(1000).unwrap());
@@ -83,12 +85,18 @@ async fn main() {
         member_repo,
     );
 
+    let tag_service = application::tag::service::TagService::new(
+        tag_repo,
+        entity_tag_repo,
+    );
+
     let state = AppState {
         auth_service,
         user_service,
         org_service,
         onboarding_service,
         feed_service,
+        tag_service,
     };
 
     let app = router(state);
