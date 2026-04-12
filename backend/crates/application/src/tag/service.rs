@@ -36,12 +36,15 @@ impl TagService {
         }
     }
 
-    /// Create a user-submitted tag (metadata or general). Not auto-approved.
+    /// Create a user-submitted tag. Only metadata and general categories allowed.
     pub async fn create_tag(
         &self,
         category: TagCategory,
         name: &str,
     ) -> Result<Tag, TagServiceError> {
+        if category.is_immutable() {
+            return Err(TagServiceError::Immutable);
+        }
         let name = Self::validate_tag_name(name)?;
 
         self.tag_repo
@@ -55,6 +58,7 @@ impl TagService {
 
     /// Create an entity-backed tag and attach it to the entity in one call.
     /// Auto-approved. Used for org/character tag auto-creation.
+    /// If attach fails, the created tag is cleaned up.
     pub async fn create_entity_tag(
         &self,
         category: TagCategory,
@@ -64,7 +68,7 @@ impl TagService {
     ) -> Result<Tag, TagServiceError> {
         let name = Self::validate_tag_name(name)?;
 
-        let tag = self
+        let mut tag = self
             .tag_repo
             .create(category, &name, true)
             .await
@@ -73,17 +77,22 @@ impl TagService {
                 other => TagServiceError::Internal(other.to_string()),
             })?;
 
-        self.entity_tag_repo
+        if let Err(e) = self
+            .entity_tag_repo
             .attach(entity_type, entity_id, tag.id)
             .await
-            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
+        {
+            // Compensating rollback: clean up the orphaned tag
+            let _ = self.tag_repo.delete(tag.id).await;
+            return Err(TagServiceError::Internal(e.to_string()));
+        }
 
-        // Don't increment usage_count — auto-attached tags start at 0+1
         self.tag_repo
             .increment_usage_count(tag.id)
             .await
             .map_err(|e| TagServiceError::Internal(e.to_string()))?;
 
+        tag.usage_count = 1;
         Ok(tag)
     }
 
@@ -180,7 +189,10 @@ impl TagService {
                 other => TagServiceError::Internal(other.to_string()),
             })?;
 
-        let _ = self.tag_repo.increment_usage_count(tag_id).await;
+        self.tag_repo
+            .increment_usage_count(tag_id)
+            .await
+            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
 
         Ok(entity_tag)
     }
@@ -200,7 +212,10 @@ impl TagService {
                 other => TagServiceError::Internal(other.to_string()),
             })?;
 
-        let _ = self.tag_repo.decrement_usage_count(tag_id).await;
+        self.tag_repo
+            .decrement_usage_count(tag_id)
+            .await
+            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
 
         Ok(())
     }
@@ -241,12 +256,13 @@ impl TagService {
         if trimmed.is_empty() {
             return Err(TagServiceError::InvalidName("Tag name cannot be empty".into()));
         }
-        if trimmed.len() > 100 {
+        let normalized = trimmed.to_lowercase();
+        if normalized.len() > 100 {
             return Err(TagServiceError::InvalidName(
                 "Tag name cannot exceed 100 characters".into(),
             ));
         }
-        Ok(trimmed.to_lowercase())
+        Ok(normalized)
     }
 }
 
@@ -478,6 +494,13 @@ mod tests {
         let svc = build_service();
         let tag = svc.create_tag(TagCategory::General, "  Digital Art  ").await.unwrap();
         assert_eq!(tag.name, "digital art");
+    }
+
+    #[tokio::test]
+    async fn create_tag_with_immutable_category_fails() {
+        let svc = build_service();
+        let err = svc.create_tag(TagCategory::Organization, "test").await.unwrap_err();
+        assert!(matches!(err, TagServiceError::Immutable));
     }
 
     #[tokio::test]

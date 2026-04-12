@@ -82,7 +82,7 @@ async fn create_org(
             domain::tag::TagCategory::Organization,
             domain::entity_tag::TaggableEntityType::Org,
             detail.org.id,
-            &body.display_name,
+            &body.slug,
         )
         .await
     {

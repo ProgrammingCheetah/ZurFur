@@ -10,7 +10,7 @@ use domain::tag::TagCategory;
 use serde::{Deserialize, Serialize};
 
 use crate::state::SharedState;
-use super::organizations::{parse_user_id, parse_uuid};
+use super::organizations::parse_uuid;
 use crate::middleware::AuthUser;
 
 // --- Request / Response types ------------------------------------------------
@@ -155,9 +155,19 @@ async fn update_tag(
     Json(body): Json<UpdateTagRequest>,
 ) -> Result<Json<TagResponse>, (StatusCode, String)> {
     let tag_id = parse_uuid(&id)?;
+
+    // Preserve existing approval state when not explicitly provided
+    let is_approved = match body.is_approved {
+        Some(v) => v,
+        None => {
+            let existing = state.tag_service.get_tag(tag_id).await.map_err(map_tag_error)?;
+            existing.is_approved
+        }
+    };
+
     let tag = state
         .tag_service
-        .update_tag(tag_id, &body.name, body.is_approved.unwrap_or(false))
+        .update_tag(tag_id, &body.name, is_approved)
         .await
         .map_err(map_tag_error)?;
 
