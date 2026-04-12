@@ -67,7 +67,7 @@ This section details the granular feature modules that make up the Zurfur platfo
 
 - **2.1 Atomic User Identity (v2):** The User entity holds only identity data: `id`, `did`, `handle`, `email`, `username`. No feature flags, roles, bios, or artist toggles. All capabilities are expressed through organization membership. This replaces the v1 "flat account hierarchy" where "Artist" was a toggle on the user.
 - **2.2 Personal Organization as Profile (v2):** Every user receives a personal organization on signup. The personal org IS the user's public profile — it holds the bio, avatar, banner, content rating, commission availability, and focus tags. There is no separate "user profile" concept.
-- **2.3 Organization Membership & Roles (v2):** Users can own and belong to many organizations. Roles (Artist, Moderator, Manager), titles ("Lead Character Designer"), and permissions are per-membership, not per-user. "Artist" is an org role, not a user flag. Solo creators and multi-member studios use the exact same org model with no special casing.
+- **2.3 Organization Membership & Roles (v2):** Users can own and belong to many organizations. Roles are administrative positions (Owner, Admin, Mod, Member) — a constrained enum, not free-text. Titles ("Lead Character Designer", "Furry Artist") are cosmetic and self-given. Permissions are per-membership via bitfield. Ownership is derived from `role == Owner`. Personal org owners are immutable. Solo creators and multi-member studios use the exact same org model with no special casing.
 - **2.4 Profile Customization (The Toyhouse Model):** Users have deep control over their org profile and character pages (colors, CSS, layout). Customization is stored at the org level, since the org is the profile.
 - **2.5 The "Universal Layout" Safety Fallback:** A mandatory, highly visible toggle that instantly strips all custom user code from a profile, reverting it to the platform's clean, safe, and accessible default theme.
 - **2.6 SFW/NSFW Viewer Control:** A strict, viewer-controlled toggle (defaulting to SFW) that filters character galleries and active commissions. Content rating is a tag on feeds and feed items.
@@ -245,7 +245,7 @@ The entire Zurfur domain is built on five root aggregates. Every feature decompo
 | **Organization** | All public-facing state. Profiles, bios, roles, permissions, commission availability. Personal orgs = user profiles. Team orgs = studios/groups. Plugin orgs = installed plugins. | Has members (users), has feeds, has tags. |
 | **Feed** | Universal content container. Feed items contain feed elements (text, images, files, events, embeds). Galleries, activity streams, notifications, commission histories. | Attached to entities via `entity_feeds` (polymorphic). Has feed items. Has subscribers. |
 | **Commission** | Minimal shell: `{id, pipeline_template_id, current_state}`. States are artist-defined per pipeline template, not a system enum. Add-ons attach via slots. | Has a feed. Participants are orgs. Add-ons are feed participants. |
-| **Tag** | Reusable descriptive attribute. Species, art style, content rating, medium, body type. | Attached to any entity. No free-text columns for descriptive data — tags or bio only. |
+| **Tag** | Typed, cross-cutting identity and metadata. Entity-backed tags (org/character) are auto-created and immutable; metadata/general tags are user-created descriptors. | Attached to any entity via `entity_tags`. Org and character tags double as attribution. |
 
 ```mermaid
 graph TD
@@ -253,7 +253,7 @@ graph TD
     ORG[Organization<br/>All Public State]
     FEED[Feed<br/>Universal Content]
     COMM[Commission<br/>Minimal Shell]
-    TAG[Tag<br/>Descriptive Attribute]
+    TAG[Tag<br/>Typed Identity & Metadata]
 
     USER -->|membership| ORG
     ORG -->|entity_feeds| FEED
@@ -455,6 +455,26 @@ Descriptive attributes are tags, not database columns:
 This keeps the schema stable as new descriptive dimensions are added — no migrations needed for "we want to filter by fur pattern now."
 
 Commission availability (open/closed/waitlist) is also a tag on the org — not a dedicated column.
+
+### 2.5.8 Typed Tags & Entity-Backed Identity
+
+Tags have a `tag_type` that determines their behavior:
+
+| Tag Type | Entity-Backed | Auto-Created | Mutable Identity | Examples |
+|----------|--------------|--------------|-----------------|----------|
+| `organization` | Yes (org_id) | On org creation | No — tag is permanent, display resolves from org | Artist attribution, studio credit |
+| `character` | Yes (character_id) | On character creation | No — tag is permanent, display resolves from character | Character depiction in art |
+| `metadata` | No | User-created | Name is the identity | "canine", "digital art", "fullbody" |
+| `general` | No | User-created | Name is the identity | Free-form descriptive tags |
+
+**Entity-backed tags** (organization, character) are immutable references. The tag's UUID never changes and cannot be deleted, even if the entity's display name changes. This makes attribution a first-class operation: tagging a commission with an artist's org tag IS the attribution — no separate "participants" table needed.
+
+**Attribution via tags:** When an artist creates a commission piece, their org's tag gets attached (type: `organization`). When a character is depicted, the character's tag gets attached (type: `character`). "Show me everything by this artist" and "show me all digital art" are the same query shape — just filtered by tag type.
+
+**Schema implications:**
+- `tags` table: `id`, `tag_type` (organization/character/metadata/general), `entity_id` (nullable — set for org/character tags), `name` (display name for metadata/general; entity-backed tags resolve from their entity)
+- `entity_tags` junction: `entity_type`, `entity_id`, `tag_id` — universal assignment (same pattern as `entity_feeds`)
+- Metadata tags can optionally have a `category` for faceted search (species, art_style, medium, etc.)
 
 ---
 

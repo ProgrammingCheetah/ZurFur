@@ -148,17 +148,16 @@ Two migrations in consecutive days could collide if the `000001` suffix doesn't 
 
 **Suggestion:** Not critical — SQLx orders by filename lexicographically, and the current naming works. Just be aware if multiple migrations are created on the same day.
 
-### 8. Tag System Should Be Built Alongside Feed Application Layer
+### 8. Tag System — Typed Tags & Entity-Backed Identity
 
-The design document places Tag Taxonomy (Feature 8.2) on the critical path before the Commission Engine. Tags are needed for:
-- Content rating on feed items
-- Commission categorization
-- Artist discovery / search facets
-- Org profile descriptors (species, art style)
+The tag system has been redesigned with typed tags. Key design decisions (Apr 2026):
 
-The current plan builds feeds before tags. This is fine for the infrastructure (tables and repos), but the application layer should not build feed item creation without considering how items will be tagged.
+- **Tags have types:** `organization`, `character`, `metadata`, `general` — a constrained enum, not free-form categories
+- **Entity-backed tags:** Every org and character auto-gets an immutable tag on creation. The tag's UUID is permanent; display resolves from the entity name. Attribution = attaching an org's tag.
+- **Metadata tags** have an optional `category` for faceted search (species, art_style, medium, content_type, status)
+- **Attribution via tags:** "This artist made this" = the artist's org tag attached to the commission. No separate participants table.
 
-**Suggestion:** Build the tag domain + persistence layer (tables, entities, repos) in the same tier as feeds, so both are available when the application layer wires things up. Tag assignment can be a simple `entity_tags` junction table with `entity_type` + `entity_id` + `tag_id`.
+The tag domain + persistence layer should be built as the next Tier 1 infrastructure piece, before the Commission Engine. The `entity_tags` junction follows the same polymorphic pattern as `entity_feeds`.
 
 ---
 
