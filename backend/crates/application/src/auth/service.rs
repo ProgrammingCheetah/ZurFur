@@ -71,6 +71,7 @@ pub struct AuthService<S: OAuthRequestStorage> {
 }
 
 impl<S: OAuthRequestStorage> AuthService<S> {
+    /// Create a new auth service with all required dependencies.
     pub fn new(
         oauth_config: OAuthConfig,
         jwt_config: JwtConfig,

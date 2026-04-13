@@ -18,6 +18,7 @@ pub enum EntityType {
 }
 
 impl EntityType {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             EntityType::Org => "org",
@@ -27,6 +28,7 @@ impl EntityType {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "org" => Some(EntityType::Org),
@@ -52,6 +54,7 @@ impl TryFrom<&str> for EntityType {
     }
 }
 
+/// A polymorphic join attaching a feed to an entity (org, character, commission, or user).
 #[derive(Debug, Clone)]
 pub struct EntityFeed {
     pub feed_id: Uuid,
@@ -59,6 +62,7 @@ pub struct EntityFeed {
     pub entity_id: Uuid,
 }
 
+/// Errors from entity feed operations.
 #[derive(Debug, thiserror::Error)]
 pub enum EntityFeedError {
     #[error("Entity feed not found")]
@@ -69,6 +73,7 @@ pub enum EntityFeedError {
     Database(String),
 }
 
+/// Repository trait for entity feed persistence.
 #[async_trait::async_trait]
 pub trait EntityFeedRepository: Send + Sync {
     async fn attach(

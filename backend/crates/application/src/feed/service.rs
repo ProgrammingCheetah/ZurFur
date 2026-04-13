@@ -7,6 +7,7 @@ use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository};
 use domain::organization_member::{OrganizationMemberRepository, Permissions};
 use uuid::Uuid;
 
+/// Errors from feed service operations.
 #[derive(Debug, thiserror::Error)]
 pub enum FeedServiceError {
     #[error("Feed not found")]
@@ -23,17 +24,20 @@ pub enum FeedServiceError {
     Internal(String),
 }
 
+/// Input for creating a new feed element within a post.
 pub struct NewFeedElement {
     pub element_type: FeedElementType,
     pub content_json: String,
     pub position: i32,
 }
 
+/// A feed item together with its content elements.
 pub struct FeedItemWithElements {
     pub item: FeedItem,
     pub elements: Vec<FeedElement>,
 }
 
+/// Orchestrates feed CRUD, posting, and permission checks.
 pub struct FeedService {
     feed_repo: Arc<dyn FeedRepository>,
     entity_feed_repo: Arc<dyn EntityFeedRepository>,
@@ -43,6 +47,7 @@ pub struct FeedService {
 }
 
 impl FeedService {
+    /// Create a new feed service with all required repositories.
     pub fn new(
         feed_repo: Arc<dyn FeedRepository>,
         entity_feed_repo: Arc<dyn EntityFeedRepository>,

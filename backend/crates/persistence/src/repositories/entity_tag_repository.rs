@@ -17,10 +17,12 @@ pub struct SqlxEntityTagRepository {
 }
 
 impl SqlxEntityTagRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn EntityTagRepository> {
         Arc::new(Self::new(pool))
     }

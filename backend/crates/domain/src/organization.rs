@@ -25,6 +25,7 @@ pub struct Organization {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Errors from organization operations.
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationError {
     #[error("Organization not found")]
@@ -35,6 +36,7 @@ pub enum OrganizationError {
     Database(String),
 }
 
+/// Repository trait for organization persistence.
 #[async_trait::async_trait]
 pub trait OrganizationRepository: Send + Sync {
     async fn create(

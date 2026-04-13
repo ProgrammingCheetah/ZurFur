@@ -9,6 +9,7 @@ use axum::{Router, routing::get};
 
 use crate::state::SharedState;
 
+/// Build the aggregated route tree for all API modules.
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", get(|| async { "Hello, World!" }))

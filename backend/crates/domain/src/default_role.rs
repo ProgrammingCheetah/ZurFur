@@ -18,6 +18,7 @@ use uuid::Uuid;
 
 use crate::organization_member::Permissions;
 
+/// A system-defined role template with preset permissions and hierarchy level.
 #[derive(Debug, Clone)]
 pub struct DefaultRole {
     pub id: Uuid,
@@ -26,6 +27,7 @@ pub struct DefaultRole {
     pub hierarchy_level: i32,
 }
 
+/// Errors from default role operations.
 #[derive(Debug, thiserror::Error)]
 pub enum DefaultRoleError {
     #[error("Default role not found: {0}")]
@@ -34,6 +36,7 @@ pub enum DefaultRoleError {
     Database(String),
 }
 
+/// Repository trait for default role persistence.
 #[async_trait::async_trait]
 pub trait DefaultRoleRepository: Send + Sync {
     async fn find_by_name(&self, name: &str) -> Result<Option<DefaultRole>, DefaultRoleError>;

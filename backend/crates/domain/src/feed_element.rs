@@ -20,6 +20,7 @@ pub enum FeedElementType {
 }
 
 impl FeedElementType {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             FeedElementType::Text => "text",
@@ -30,6 +31,7 @@ impl FeedElementType {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "text" => Some(FeedElementType::Text),
@@ -56,6 +58,7 @@ impl TryFrom<&str> for FeedElementType {
     }
 }
 
+/// A single content block within a feed item (text, image, file, event, or embed).
 #[derive(Debug, Clone)]
 pub struct FeedElement {
     pub id: Uuid,
@@ -65,6 +68,7 @@ pub struct FeedElement {
     pub position: i32,
 }
 
+/// Errors from feed element operations.
 #[derive(Debug, thiserror::Error)]
 pub enum FeedElementError {
     #[error("Feed element not found")]
@@ -73,6 +77,7 @@ pub enum FeedElementError {
     Database(String),
 }
 
+/// Repository trait for feed element persistence.
 #[async_trait::async_trait]
 pub trait FeedElementRepository: Send + Sync {
     async fn create(

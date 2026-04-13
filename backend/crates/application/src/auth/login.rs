@@ -23,6 +23,7 @@ use thiserror::Error;
 
 // --- Errors ------------------------------------------------------------------
 
+/// Errors from the AT Protocol OAuth login flow.
 #[derive(Debug, Error)]
 pub enum LoginError {
     #[error("Invalid email")]

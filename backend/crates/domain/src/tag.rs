@@ -92,6 +92,7 @@ pub struct Tag {
     pub updated_at: DateTime<Utc>,
 }
 
+/// Errors from tag operations.
 #[derive(Debug, thiserror::Error)]
 pub enum TagError {
     #[error("Tag not found")]

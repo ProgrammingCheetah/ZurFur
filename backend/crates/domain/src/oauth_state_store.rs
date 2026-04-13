@@ -19,6 +19,7 @@ pub trait OAuthStateStore: Send + Sync {
     async fn take(&self, state: &str) -> Result<Option<OAuthStateData>, OAuthStateError>;
 }
 
+/// Errors from OAuth state store operations.
 #[derive(Debug, thiserror::Error)]
 pub enum OAuthStateError {
     #[error("Storage error: {0}")]

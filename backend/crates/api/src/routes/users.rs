@@ -141,6 +141,7 @@ async fn update_preferences(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the user route group (profile, preferences).
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/me", get(get_me))

@@ -17,10 +17,12 @@ pub struct SqlxTagRepository {
 }
 
 impl SqlxTagRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn TagRepository> {
         Arc::new(Self::new(pool))
     }

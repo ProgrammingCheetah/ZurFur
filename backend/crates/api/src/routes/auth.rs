@@ -12,17 +12,20 @@ use crate::state::SharedState;
 
 // --- Request / Response types ------------------------------------------------
 
+/// Request body for `POST /auth/start`.
 #[derive(Deserialize)]
 pub struct StartLoginRequest {
     pub handle: String,
 }
 
+/// Response body for `POST /auth/start`.
 #[derive(Serialize)]
 pub struct StartLoginResponse {
     pub redirect_url: String,
     pub state: String,
 }
 
+/// Request body for `POST /auth/callback`.
 #[derive(Deserialize)]
 pub struct CallbackQuery {
     pub code: String,
@@ -32,6 +35,7 @@ pub struct CallbackQuery {
     pub iss: Option<String>,
 }
 
+/// Response body for `POST /auth/callback`.
 #[derive(Serialize)]
 pub struct CallbackResponse {
     pub access_token: String,
@@ -42,17 +46,20 @@ pub struct CallbackResponse {
     pub is_new_user: bool,
 }
 
+/// Request body for `POST /auth/refresh`.
 #[derive(Deserialize)]
 pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
+/// Response body for `POST /auth/refresh`.
 #[derive(Serialize)]
 pub struct RefreshResponse {
     pub access_token: String,
     pub refresh_token: String,
 }
 
+/// Response body for `GET /auth/me`.
 #[derive(Serialize)]
 pub struct MeResponse {
     pub user_id: String,
@@ -160,6 +167,7 @@ async fn logout(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the auth route group (start, callback, refresh, me, logout).
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/start", post(start_login))

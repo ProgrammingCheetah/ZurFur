@@ -56,6 +56,7 @@ async fn complete_onboarding(
     Ok(Json(response))
 }
 
+/// Build the onboarding route group.
 pub fn router() -> Router<SharedState> {
     Router::new().route("/complete", post(complete_onboarding))
 }

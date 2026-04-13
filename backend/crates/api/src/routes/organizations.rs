@@ -255,6 +255,7 @@ async fn remove_member(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the organization route group (CRUD, members, feeds).
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", post(create_org))

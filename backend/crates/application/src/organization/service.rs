@@ -6,6 +6,7 @@ use domain::organization_member::{
 };
 use uuid::Uuid;
 
+/// Errors from organization service operations.
 #[derive(Debug, thiserror::Error)]
 pub enum OrgServiceError {
     #[error("Organization not found")]
@@ -31,6 +32,7 @@ pub struct OrgDetail {
     pub members: Vec<OrganizationMember>,
 }
 
+/// Orchestrates organization CRUD, membership management, and permission checks.
 pub struct OrganizationService {
     org_repo: Arc<dyn OrganizationRepository>,
     member_repo: Arc<dyn OrganizationMemberRepository>,
@@ -43,6 +45,7 @@ const RESERVED_SLUGS: &[&str] = &[
 ];
 
 impl OrganizationService {
+    /// Create a new organization service with the required repositories.
     pub fn new(
         org_repo: Arc<dyn OrganizationRepository>,
         member_repo: Arc<dyn OrganizationMemberRepository>,
@@ -53,6 +56,7 @@ impl OrganizationService {
         }
     }
 
+    /// Validate an organization slug for length, characters, and reserved words.
     pub fn validate_slug(slug: &str) -> Result<(), OrgServiceError> {
         if slug.len() < 2 || slug.len() > 64 {
             return Err(OrgServiceError::InvalidSlug(
@@ -84,6 +88,7 @@ impl OrganizationService {
         Ok(())
     }
 
+    /// Derive a valid slug from a Bluesky handle or DID.
     pub fn slug_from_handle(handle: &str) -> String {
         let base = handle
             .strip_suffix(".bsky.social")
@@ -112,6 +117,7 @@ impl OrganizationService {
         }
     }
 
+    /// Create a new (non-personal) organization and make the user the owner.
     pub async fn create_org(
         &self,
         user_id: Uuid,
@@ -149,6 +155,7 @@ impl OrganizationService {
         })
     }
 
+    /// Create a personal organization for a user (auto-created on signup).
     pub async fn create_personal_org(
         &self,
         user_id: Uuid,
@@ -179,6 +186,7 @@ impl OrganizationService {
         Ok(org)
     }
 
+    /// Get an organization and its members by UUID.
     pub async fn get_org_by_id(&self, org_id: Uuid) -> Result<OrgDetail, OrgServiceError> {
         let org = self
             .org_repo
@@ -190,6 +198,7 @@ impl OrganizationService {
         self.load_org_detail(org).await
     }
 
+    /// Get an organization and its members by slug.
     pub async fn get_org(&self, slug: &str) -> Result<OrgDetail, OrgServiceError> {
         let org = self
             .org_repo
@@ -214,6 +223,7 @@ impl OrganizationService {
         Ok(OrgDetail { org, members })
     }
 
+    /// Update an organization's display name. Requires owner role.
     pub async fn update_org(
         &self,
         org_id: Uuid,
@@ -228,6 +238,7 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
+    /// Soft-delete a non-personal organization. Requires owner role.
     pub async fn delete_org(
         &self,
         org_id: Uuid,
@@ -252,6 +263,7 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
+    /// Add a new member to an organization. Requires MANAGE_MEMBERS permission.
     pub async fn add_member(
         &self,
         org_id: Uuid,
@@ -269,6 +281,7 @@ impl OrganizationService {
             .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
+    /// Update a member's role, title, and optionally permissions.
     pub async fn update_member(
         &self,
         org_id: Uuid,
@@ -299,6 +312,7 @@ impl OrganizationService {
         Ok(member)
     }
 
+    /// Remove a member from an organization. Owners cannot be removed.
     pub async fn remove_member(
         &self,
         org_id: Uuid,

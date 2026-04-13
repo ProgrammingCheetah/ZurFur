@@ -6,15 +6,18 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// SQLx implementation of `RefreshTokenRepository`.
 pub struct SqlxRefreshTokenRepository {
     pool: Pool,
 }
 
 impl SqlxRefreshTokenRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn RefreshTokenRepository> {
         Arc::new(Self::new(pool))
     }

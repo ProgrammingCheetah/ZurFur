@@ -77,6 +77,7 @@ pub struct EntityTag {
     pub tag_id: Uuid,
 }
 
+/// Errors from entity tag operations.
 #[derive(Debug, thiserror::Error)]
 pub enum EntityTagError {
     #[error("Entity tag not found")]
