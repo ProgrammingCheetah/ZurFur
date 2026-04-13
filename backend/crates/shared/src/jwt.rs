@@ -4,6 +4,7 @@ use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation}
 use serde::{de::DeserializeOwned, Serialize};
 use thiserror::Error;
 
+/// Errors from JWT creation and verification.
 #[derive(Error, Debug)]
 pub enum JwtError {
     #[error("JWT error: {0}")]

@@ -9,6 +9,7 @@ pub struct UserPreferences {
     pub settings: String,
 }
 
+/// Errors from user preferences operations.
 #[derive(Debug, thiserror::Error)]
 pub enum UserPreferencesError {
     #[error("Database error: {0}")]

@@ -16,6 +16,7 @@ pub enum OnboardingRole {
 }
 
 impl OnboardingRole {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             OnboardingRole::Artist => "artist",
@@ -25,6 +26,7 @@ impl OnboardingRole {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "artist" => Some(OnboardingRole::Artist),

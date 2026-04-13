@@ -5,15 +5,18 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// SQLx implementation of `FeedRepository`.
 pub struct SqlxFeedRepository {
     pool: Pool,
 }
 
 impl SqlxFeedRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn FeedRepository> {
         Arc::new(Self::new(pool))
     }

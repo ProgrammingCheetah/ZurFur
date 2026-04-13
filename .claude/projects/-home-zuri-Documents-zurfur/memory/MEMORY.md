@@ -1,0 +1,7 @@
+- [Language preferences](user_preferences.md) — Strongly prefers Rust everywhere, Leptos for frontend, other langs only when Rust is genuinely bad
+- [Platform vision](project_vision.md) — AT Protocol furry art commission platform, auth done, identity/profile is next on critical path
+- [Always include tests](feedback_tests.md) — Every submodule PR must include extensive frontend and backend tests
+- Retrospectives live in repo at `docs/retrospectives.md` — read before starting any feature work
+- [No generic module names](feedback_no_generic_names.md) — Never use "helpers", "base", "misc" — use domain-specific names
+- [Assign before Ok](feedback_variable_before_ok.md) — Always assign to a variable before returning Ok(), never chain into Ok()
+- [Readability over cleverness](feedback_readability_over_cleverness.md) — Always favor readable, maintainable code over clever or terse patterns
