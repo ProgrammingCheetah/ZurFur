@@ -101,6 +101,7 @@ impl FeedService {
 
     /// Create a system feed and attach it to an org. No permission check —
     /// called from orchestration layer (org creation, onboarding), not from users.
+    /// If attach fails, the created feed is cleaned up (compensating rollback).
     pub async fn create_system_feed(
         &self,
         org_id: Uuid,
@@ -116,10 +117,14 @@ impl FeedService {
                 other => FeedServiceError::Internal(other.to_string()),
             })?;
 
-        self.entity_feed_repo
+        if let Err(e) = self
+            .entity_feed_repo
             .attach(feed.id, EntityType::Org, org_id)
             .await
-            .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
+        {
+            let _ = self.feed_repo.soft_delete(feed.id).await;
+            return Err(FeedServiceError::Internal(e.to_string()));
+        }
 
         Ok(feed)
     }

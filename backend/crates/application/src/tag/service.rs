@@ -9,10 +9,14 @@ use uuid::Uuid;
 pub enum TagServiceError {
     #[error("Tag not found")]
     NotFound,
+    #[error("Tag is not attached to this entity")]
+    NotAttached,
     #[error("Tag name already taken: {0}")]
     NameTaken(String),
     #[error("Entity-backed tags cannot be modified or deleted")]
     Immutable,
+    #[error("This category cannot be used for user-created tags")]
+    InvalidCategory,
     #[error("Invalid tag name: {0}")]
     InvalidName(String),
     #[error("Tag is already attached to this entity")]
@@ -52,7 +56,7 @@ impl TagService {
         name: &str,
     ) -> Result<Tag, TagServiceError> {
         if category.is_immutable() {
-            return Err(TagServiceError::Immutable);
+            return Err(TagServiceError::InvalidCategory);
         }
         let name = Self::validate_tag_name(name)?;
 
@@ -223,7 +227,7 @@ impl TagService {
             .detach(entity_type, entity_id, tag_id)
             .await
             .map_err(|e| match e {
-                domain::entity_tag::EntityTagError::NotFound => TagServiceError::NotFound,
+                domain::entity_tag::EntityTagError::NotFound => TagServiceError::NotAttached,
                 other => TagServiceError::Internal(other.to_string()),
             })?;
 
@@ -275,7 +279,7 @@ impl TagService {
             return Err(TagServiceError::InvalidName("Tag name cannot be empty".into()));
         }
         let normalized = trimmed.to_lowercase();
-        if normalized.len() > 100 {
+        if normalized.chars().count() > 100 {
             return Err(TagServiceError::InvalidName(
                 "Tag name cannot exceed 100 characters".into(),
             ));
@@ -518,7 +522,7 @@ mod tests {
     async fn create_tag_with_immutable_category_fails() {
         let svc = build_service();
         let err = svc.create_tag(TagCategory::Organization, "test").await.unwrap_err();
-        assert!(matches!(err, TagServiceError::Immutable));
+        assert!(matches!(err, TagServiceError::InvalidCategory));
     }
 
     #[tokio::test]
