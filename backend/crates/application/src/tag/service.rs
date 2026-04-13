@@ -4,6 +4,7 @@ use domain::entity_tag::{EntityTag, EntityTagRepository, TaggableEntityType};
 use domain::tag::{Tag, TagCategory, TagRepository};
 use uuid::Uuid;
 
+/// Errors that can occur during tag operations.
 #[derive(Debug, thiserror::Error)]
 pub enum TagServiceError {
     #[error("Tag not found")]
@@ -20,12 +21,20 @@ pub enum TagServiceError {
     Internal(String),
 }
 
+/// Application service for tag operations: CRUD, attach/detach, search, approval.
+///
+/// Enforces business rules:
+/// - Organization/character tags are immutable (cannot update/delete)
+/// - Tag names are trimmed, lowercased, and validated (1-100 chars)
+/// - Usage count is maintained atomically on attach/detach
+/// - `create_entity_tag` performs compensating rollback on failure
 pub struct TagService {
     tag_repo: Arc<dyn TagRepository>,
     entity_tag_repo: Arc<dyn EntityTagRepository>,
 }
 
 impl TagService {
+    /// Create a new TagService with the given repository implementations.
     pub fn new(
         tag_repo: Arc<dyn TagRepository>,
         entity_tag_repo: Arc<dyn EntityTagRepository>,
@@ -96,6 +105,7 @@ impl TagService {
         Ok(tag)
     }
 
+    /// Look up a tag by UUID. Returns `NotFound` if it doesn't exist.
     pub async fn get_tag(&self, id: Uuid) -> Result<Tag, TagServiceError> {
         self.tag_repo
             .find_by_id(id)
@@ -104,6 +114,7 @@ impl TagService {
             .ok_or(TagServiceError::NotFound)
     }
 
+    /// Search tags by name prefix (case-insensitive). Limit clamped to [1, 100].
     pub async fn search_tags(
         &self,
         query: &str,
@@ -115,6 +126,7 @@ impl TagService {
             .map_err(|e| TagServiceError::Internal(e.to_string()))
     }
 
+    /// List tags filtered by category, paginated. Limit clamped to [1, 100].
     pub async fn list_tags_by_category(
         &self,
         category: TagCategory,
@@ -127,6 +139,7 @@ impl TagService {
             .map_err(|e| TagServiceError::Internal(e.to_string()))
     }
 
+    /// Update a tag's name and approval status. Rejects organization/character tags (immutable).
     pub async fn update_tag(
         &self,
         id: Uuid,
@@ -148,6 +161,7 @@ impl TagService {
             })
     }
 
+    /// Hard-delete a tag. Rejects organization/character tags (immutable).
     pub async fn delete_tag(&self, id: Uuid) -> Result<(), TagServiceError> {
         let tag = self.get_tag(id).await?;
         Self::require_mutable(&tag)?;
@@ -161,6 +175,7 @@ impl TagService {
             })
     }
 
+    /// Mark a tag as approved. Rejects organization/character tags (already auto-approved).
     pub async fn approve_tag(&self, id: Uuid) -> Result<Tag, TagServiceError> {
         let tag = self.get_tag(id).await?;
         Self::require_mutable(&tag)?;
@@ -243,6 +258,7 @@ impl TagService {
             .map_err(|e| TagServiceError::Internal(e.to_string()))
     }
 
+    /// Guard: rejects organization/character tags which are immutable identity markers.
     fn require_mutable(tag: &Tag) -> Result<(), TagServiceError> {
         if tag.category.is_immutable() {
             Err(TagServiceError::Immutable)
@@ -251,6 +267,8 @@ impl TagService {
         }
     }
 
+    /// Validate and normalize a tag name: trim whitespace, lowercase, check length (1-100).
+    /// Returns the normalized name on success.
     fn validate_tag_name(name: &str) -> Result<String, TagServiceError> {
         let trimmed = name.trim();
         if trimmed.is_empty() {

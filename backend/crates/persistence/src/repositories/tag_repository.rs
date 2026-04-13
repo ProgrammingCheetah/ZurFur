@@ -1,3 +1,5 @@
+//! SQLx PostgreSQL implementation of `TagRepository`.
+
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
@@ -5,6 +7,11 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// PostgreSQL implementation of `TagRepository`.
+///
+/// Uses the `tag` table with `tag_category` PG ENUM. The `category` column
+/// is cast to `::text` on SELECT and from `::tag_category` on INSERT/WHERE
+/// to bridge between the PG ENUM and Rust's `TagCategory` enum.
 pub struct SqlxTagRepository {
     pool: Pool,
 }
@@ -19,6 +26,8 @@ impl SqlxTagRepository {
     }
 }
 
+/// Map a PostgreSQL row to a `Tag` domain entity. The `category` column is
+/// read as text (via `::text` cast in SQL) and parsed into `TagCategory`.
 fn map_tag(row: sqlx::postgres::PgRow) -> Result<Tag, TagError> {
     let category_str: String = row.get("category");
     let category = TagCategory::from_str(&category_str)

@@ -1,3 +1,8 @@
+//! Tag API routes: CRUD, search, attach/detach, approval.
+//!
+//! All routes require authentication. Authorization (role-gating approve/delete
+//! to admins/mods) is tracked for a future iteration.
+
 use application::tag::service::{TagService, TagServiceError};
 use axum::{
     Json, Router,
@@ -15,6 +20,7 @@ use crate::middleware::AuthUser;
 
 // --- Request / Response types ------------------------------------------------
 
+/// JSON response for a single tag.
 #[derive(Serialize)]
 pub(crate) struct TagResponse {
     id: String,
@@ -24,6 +30,7 @@ pub(crate) struct TagResponse {
     is_approved: bool,
 }
 
+/// Convert a domain `Tag` into a JSON-serializable `TagResponse`.
 pub(crate) fn to_tag_response(tag: &domain::tag::Tag) -> TagResponse {
     TagResponse {
         id: tag.id.to_string(),
@@ -81,6 +88,7 @@ fn default_limit() -> i64 {
 
 // --- Handlers ----------------------------------------------------------------
 
+/// POST /tags — create a user-submitted tag (metadata or general only).
 async fn create_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
@@ -105,6 +113,7 @@ async fn create_tag(
     Ok((StatusCode::CREATED, Json(to_tag_response(&tag))))
 }
 
+/// GET /tags/:id — get a tag by UUID.
 async fn get_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -115,6 +124,7 @@ async fn get_tag(
     Ok(Json(to_tag_response(&tag)))
 }
 
+/// GET /tags/search?q=&limit= — prefix search on tag name.
 async fn search_tags(
     State(state): State<SharedState>,
     Query(params): Query<SearchQuery>,
@@ -129,6 +139,7 @@ async fn search_tags(
     Ok(Json(tags.iter().map(to_tag_response).collect()))
 }
 
+/// GET /tags/category/:category?limit=&offset= — list tags by category, paginated.
 async fn list_by_category(
     State(state): State<SharedState>,
     Path(category_str): Path<String>,
@@ -148,6 +159,8 @@ async fn list_by_category(
     Ok(Json(tags.iter().map(to_tag_response).collect()))
 }
 
+/// PUT /tags/:id — update a tag's name (and optionally approval). Metadata/general only.
+/// Preserves existing `is_approved` when the field is omitted from the request.
 async fn update_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -174,6 +187,7 @@ async fn update_tag(
     Ok(Json(to_tag_response(&tag)))
 }
 
+/// DELETE /tags/:id — hard-delete a tag. Metadata/general only.
 async fn delete_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -184,6 +198,7 @@ async fn delete_tag(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// POST /tags/:id/approve — mark a tag as approved. Metadata/general only.
 async fn approve_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -194,6 +209,7 @@ async fn approve_tag(
     Ok(Json(to_tag_response(&tag)))
 }
 
+/// POST /tags/attach — attach an existing tag to an entity. Increments usage count.
 async fn attach_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
@@ -219,6 +235,7 @@ async fn attach_tag(
     ))
 }
 
+/// POST /tags/detach — remove a tag from an entity. Decrements usage count.
 async fn detach_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
@@ -237,6 +254,7 @@ async fn detach_tag(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// GET /tags/entity/:type/:id — list all tags attached to an entity.
 async fn list_entity_tags(
     State(state): State<SharedState>,
     Path((entity_type_str, entity_id_str)): Path<(String, String)>,
@@ -256,6 +274,7 @@ async fn list_entity_tags(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the tag router. Mounted at `/tags` in the main router.
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", post(create_tag))
@@ -270,6 +289,7 @@ pub fn router() -> Router<SharedState> {
 
 // --- Error mapping -----------------------------------------------------------
 
+/// Map `TagServiceError` to an HTTP status code and message for the client.
 fn map_tag_error(e: TagServiceError) -> (StatusCode, String) {
     match e {
         TagServiceError::NotFound => (StatusCode::NOT_FOUND, "Tag not found".into()),
@@ -294,6 +314,7 @@ fn map_tag_error(e: TagServiceError) -> (StatusCode, String) {
 
 // --- Helpers -----------------------------------------------------------------
 
+/// Parse a string into a `TaggableEntityType`, returning 400 on invalid input.
 fn parse_entity_type(s: &str) -> Result<TaggableEntityType, (StatusCode, String)> {
     TaggableEntityType::from_str(s).ok_or_else(|| {
         (

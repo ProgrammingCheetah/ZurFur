@@ -13,7 +13,12 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-/// What kind of tag this is. Stored as a PG ENUM.
+/// What kind of tag this is. Stored as a PostgreSQL ENUM (`tag_category`).
+///
+/// This is intrinsic to the tag — it describes what the tag IS, not how it's
+/// connected to entities. The enum grows slowly and intentionally; if faceted
+/// search later needs finer granularity (species, art_style), a new variant
+/// is added via `ALTER TYPE tag_category ADD VALUE`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TagCategory {
     /// Represents an organization's identity. Auto-created, immutable.
@@ -27,6 +32,7 @@ pub enum TagCategory {
 }
 
 impl TagCategory {
+    /// Returns the string representation matching the PostgreSQL ENUM value.
     pub fn as_str(&self) -> &'static str {
         match self {
             TagCategory::Organization => "organization",
@@ -36,6 +42,7 @@ impl TagCategory {
         }
     }
 
+    /// Parses a string into a `TagCategory`. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "organization" => Some(TagCategory::Organization),
@@ -66,6 +73,14 @@ impl TryFrom<&str> for TagCategory {
     }
 }
 
+/// A tag — root aggregate for typed identity and metadata.
+///
+/// Tags are fully decoupled: no `entity_id` field. The connection between
+/// a tag and any entity lives entirely in `entity_tag`. A tag doesn't know
+/// what it's attached to.
+///
+/// `usage_count` is denormalized for sorting/display performance. It is
+/// incremented/decremented when tags are attached/detached via `entity_tag`.
 #[derive(Debug, Clone)]
 pub struct Tag {
     pub id: Uuid,
@@ -89,8 +104,10 @@ pub enum TagError {
     Database(String),
 }
 
+/// Repository trait for tag persistence. Implementations live in the persistence crate.
 #[async_trait::async_trait]
 pub trait TagRepository: Send + Sync {
+    /// Create a new tag. Returns `NameTaken` if the (name, category) pair already exists.
     async fn create(
         &self,
         category: TagCategory,
@@ -98,14 +115,17 @@ pub trait TagRepository: Send + Sync {
         is_approved: bool,
     ) -> Result<Tag, TagError>;
 
+    /// Find a tag by its UUID. Returns `None` if not found.
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Tag>, TagError>;
 
+    /// Find a tag by its exact name within a category.
     async fn find_by_name_and_category(
         &self,
         name: &str,
         category: TagCategory,
     ) -> Result<Option<Tag>, TagError>;
 
+    /// List tags in a category, ordered by usage count descending. Paginated.
     async fn list_by_category(
         &self,
         category: TagCategory,
@@ -113,14 +133,18 @@ pub trait TagRepository: Send + Sync {
         offset: i64,
     ) -> Result<Vec<Tag>, TagError>;
 
+    /// Fetch multiple tags by their UUIDs in a single query.
     async fn list_by_ids(&self, ids: &[Uuid]) -> Result<Vec<Tag>, TagError>;
 
+    /// Prefix search on tag name (case-insensitive). Ordered by usage count descending.
     async fn search_by_name(
         &self,
         query: &str,
         limit: i64,
     ) -> Result<Vec<Tag>, TagError>;
 
+    /// Update a tag's name and approval status. Immutability is enforced at the
+    /// application layer (TagService), not here.
     async fn update(
         &self,
         id: Uuid,
@@ -128,10 +152,13 @@ pub trait TagRepository: Send + Sync {
         is_approved: bool,
     ) -> Result<Tag, TagError>;
 
+    /// Atomically increment the tag's usage count by 1. Called when a tag is attached.
     async fn increment_usage_count(&self, id: Uuid) -> Result<(), TagError>;
 
+    /// Atomically decrement the tag's usage count by 1 (floored at 0). Called when detached.
     async fn decrement_usage_count(&self, id: Uuid) -> Result<(), TagError>;
 
+    /// Hard-delete a tag. Immutability is enforced at the application layer.
     async fn delete(&self, id: Uuid) -> Result<(), TagError>;
 }
 
