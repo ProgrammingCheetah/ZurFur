@@ -21,8 +21,13 @@ use shared::JwtConfig;
 use uuid::Uuid;
 
 use super::mock_auth::{MockRefreshRepo, MockSessionRepo, MockStateStore};
+use application::tag::service::TagService;
+use domain::entity_tag::EntityTagRepository;
+use domain::tag::TagRepository;
+
 use super::mock_feeds::{MockEntityFeedRepo, MockFeedElementRepo, MockFeedItemRepo, MockFeedRepo};
 use super::mock_organizations::{MockMemberRepo, MockOrgRepo};
+use super::mock_tags::{MockEntityTagRepo, MockTagRepo};
 use super::mock_users::{MockPreferencesRepo, MockUserRepo};
 use crate::AppState;
 
@@ -101,12 +106,18 @@ pub fn test_app_state() -> AppState {
         member_repo,
     );
 
+    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::default());
+    let entity_tag_repo: Arc<dyn EntityTagRepository> = Arc::new(MockEntityTagRepo::default());
+
+    let tag_service = TagService::new(tag_repo, entity_tag_repo);
+
     AppState {
         auth_service,
         user_service,
         org_service,
         onboarding_service,
         feed_service,
+        tag_service,
     }
 }
 

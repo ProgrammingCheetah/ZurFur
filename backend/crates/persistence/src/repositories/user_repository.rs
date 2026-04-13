@@ -10,10 +10,12 @@ pub struct SqlxUserRepository {
 }
 
 impl SqlxUserRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn UserRepository> {
         Arc::new(Self::new(pool))
     }

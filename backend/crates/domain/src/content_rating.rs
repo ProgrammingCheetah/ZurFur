@@ -19,6 +19,7 @@ pub enum ContentRating {
 }
 
 impl ContentRating {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             ContentRating::Sfw => "sfw",
@@ -27,6 +28,7 @@ impl ContentRating {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "sfw" => Some(ContentRating::Sfw),

@@ -4,15 +4,18 @@ use domain::organization_member::Permissions;
 use sqlx::Row;
 use std::sync::Arc;
 
+/// SQLx implementation of `DefaultRoleRepository`.
 pub struct SqlxDefaultRoleRepository {
     pool: Pool,
 }
 
 impl SqlxDefaultRoleRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn DefaultRoleRepository> {
         Arc::new(Self::new(pool))
     }

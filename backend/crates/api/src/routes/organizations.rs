@@ -75,6 +75,28 @@ async fn create_org(
         .await
         .map_err(map_org_error)?;
 
+    // Orchestration: auto-create org tag + bio feed (best-effort)
+    if let Err(e) = state
+        .tag_service
+        .create_entity_tag(
+            domain::tag::TagCategory::Organization,
+            domain::entity_tag::TaggableEntityType::Org,
+            detail.org.id,
+            &body.slug,
+        )
+        .await
+    {
+        eprintln!("Failed to create org tag for {}: {e}", detail.org.id);
+    }
+
+    if let Err(e) = state
+        .feed_service
+        .create_system_feed(detail.org.id, "bio", "Bio")
+        .await
+    {
+        eprintln!("Failed to create bio feed for {}: {e}", detail.org.id);
+    }
+
     Ok((StatusCode::CREATED, Json(to_detail_response(detail))))
 }
 
@@ -233,6 +255,7 @@ async fn remove_member(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the organization route group (CRUD, members, feeds).
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", post(create_org))

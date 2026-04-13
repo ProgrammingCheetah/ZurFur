@@ -23,6 +23,7 @@ pub enum AuthorType {
 }
 
 impl AuthorType {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             AuthorType::User => "user",
@@ -31,6 +32,7 @@ impl AuthorType {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "user" => Some(AuthorType::User),
@@ -55,6 +57,7 @@ impl TryFrom<&str> for AuthorType {
     }
 }
 
+/// A single post or event within a feed, containing one or more elements.
 #[derive(Debug, Clone)]
 pub struct FeedItem {
     pub id: Uuid,
@@ -64,6 +67,7 @@ pub struct FeedItem {
     pub created_at: DateTime<Utc>,
 }
 
+/// Errors from feed item operations.
 #[derive(Debug, thiserror::Error)]
 pub enum FeedItemError {
     #[error("Feed item not found")]
@@ -72,6 +76,7 @@ pub enum FeedItemError {
     Database(String),
 }
 
+/// Repository trait for feed item persistence.
 #[async_trait::async_trait]
 pub trait FeedItemRepository: Send + Sync {
     async fn create(

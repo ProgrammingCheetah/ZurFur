@@ -247,6 +247,7 @@ pub(crate) async fn create_org_feed(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the feed route group (CRUD, items, elements).
 pub fn feed_router() -> Router<SharedState> {
     Router::new()
         .route("/{id}", get(get_feed).put(update_feed).delete(delete_feed))

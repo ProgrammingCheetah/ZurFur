@@ -17,6 +17,7 @@ pub struct InMemoryOAuthStateStore {
 }
 
 impl InMemoryOAuthStateStore {
+    /// Create a new in-memory store with a 10-minute entry TTL.
     pub fn new() -> Self {
         Self {
             inner: RwLock::new(HashMap::new()),

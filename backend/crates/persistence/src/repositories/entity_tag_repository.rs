@@ -1,3 +1,5 @@
+//! SQLx PostgreSQL implementation of `EntityTagRepository`.
+
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
 use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository, TaggableEntityType};
@@ -5,20 +7,28 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// PostgreSQL implementation of `EntityTagRepository`.
+///
+/// Operates on the `entity_tag` table — a polymorphic junction with composite
+/// PK (entity_type, entity_id, tag_id). Follows the same pattern as
+/// `SqlxEntityFeedRepository`.
 pub struct SqlxEntityTagRepository {
     pool: Pool,
 }
 
 impl SqlxEntityTagRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn EntityTagRepository> {
         Arc::new(Self::new(pool))
     }
 }
 
+/// Map a PostgreSQL row to an `EntityTag` domain entity.
 fn map_entity_tag(row: sqlx::postgres::PgRow) -> Result<EntityTag, EntityTagError> {
     let entity_type_str: String = row.get("entity_type");
     let entity_type = TaggableEntityType::from_str(&entity_type_str).ok_or_else(|| {

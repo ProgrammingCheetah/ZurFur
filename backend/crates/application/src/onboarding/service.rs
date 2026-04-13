@@ -7,6 +7,7 @@ use domain::organization::OrganizationRepository;
 use domain::user::UserRepository;
 use uuid::Uuid;
 
+/// Errors from onboarding operations.
 #[derive(Debug, thiserror::Error)]
 pub enum OnboardingError {
     #[error("User not found")]
@@ -17,12 +18,14 @@ pub enum OnboardingError {
     Internal(String),
 }
 
+/// Result of completing onboarding: feeds created and role selected.
 #[derive(Debug)]
 pub struct OnboardingResult {
     pub feeds_created: Vec<Feed>,
     pub onboarding_role: OnboardingRole,
 }
 
+/// Orchestrates first-login onboarding: creates system feeds based on selected role.
 pub struct OnboardingService {
     user_repo: Arc<dyn UserRepository>,
     org_repo: Arc<dyn OrganizationRepository>,
@@ -31,6 +34,7 @@ pub struct OnboardingService {
 }
 
 impl OnboardingService {
+    /// Create a new onboarding service with all required repositories.
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
         org_repo: Arc<dyn OrganizationRepository>,
@@ -45,6 +49,7 @@ impl OnboardingService {
         }
     }
 
+    /// Complete onboarding for a user: create system feeds on their personal org and mark done.
     pub async fn complete_onboarding(
         &self,
         user_id: Uuid,
@@ -97,6 +102,7 @@ impl OnboardingService {
 
         // 5. Create missing system feeds
         let mut desired_feeds = vec![
+            ("bio", "Bio"),
             ("updates", "Updates"),
             ("gallery", "Gallery"),
         ];
@@ -392,8 +398,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.feeds_created.len(), 3);
+        assert_eq!(result.feeds_created.len(), 4);
         let slugs: Vec<&str> = result.feeds_created.iter().map(|f| f.slug.as_str()).collect();
+        assert!(slugs.contains(&"bio"));
         assert!(slugs.contains(&"updates"));
         assert!(slugs.contains(&"gallery"));
         assert!(slugs.contains(&"commissions"));
@@ -420,8 +427,9 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(result.feeds_created.len(), 2);
+        assert_eq!(result.feeds_created.len(), 3);
         let slugs: Vec<&str> = result.feeds_created.iter().map(|f| f.slug.as_str()).collect();
+        assert!(slugs.contains(&"bio"));
         assert!(slugs.contains(&"updates"));
         assert!(slugs.contains(&"gallery"));
         assert!(!slugs.contains(&"commissions"));

@@ -6,6 +6,7 @@ use domain::user::{User, UserRepository};
 use domain::user_preferences::{UserPreferences, UserPreferencesRepository};
 use uuid::Uuid;
 
+/// Errors from user service operations.
 #[derive(Debug, thiserror::Error)]
 pub enum UserServiceError {
     #[error("User not found")]
@@ -22,6 +23,7 @@ pub struct UserProfile {
     pub memberships: Vec<OrganizationMember>,
 }
 
+/// Orchestrates user profile and preferences operations.
 pub struct UserService {
     user_repo: Arc<dyn UserRepository>,
     org_repo: Arc<dyn OrganizationRepository>,
@@ -30,6 +32,7 @@ pub struct UserService {
 }
 
 impl UserService {
+    /// Create a new user service with all required repositories.
     pub fn new(
         user_repo: Arc<dyn UserRepository>,
         org_repo: Arc<dyn OrganizationRepository>,
@@ -44,6 +47,7 @@ impl UserService {
         }
     }
 
+    /// Get the authenticated user's profile, personal org, and memberships.
     pub async fn get_my_profile(&self, user_id: Uuid) -> Result<UserProfile, UserServiceError> {
         let user = self
             .user_repo
@@ -71,6 +75,7 @@ impl UserService {
         })
     }
 
+    /// Get a user's preferences (returns empty defaults if none exist).
     pub async fn get_preferences(
         &self,
         user_id: Uuid,
@@ -81,6 +86,7 @@ impl UserService {
             .map_err(|e| UserServiceError::Internal(e.to_string()))
     }
 
+    /// Update a user's preferences with the given JSON settings.
     pub async fn set_preferences(
         &self,
         user_id: Uuid,

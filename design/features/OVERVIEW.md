@@ -22,7 +22,7 @@ Key architectural decisions reflected in this plan:
 |---|---------|--------|----------|
 | 1 | [AT Protocol Auth & Bluesky Integration](01-atproto-auth/README.md) | 1.1 Done | Critical |
 | 2 | [Identity & Profile Engine](02-identity-profile/README.md) | Phase 2 Done | Critical |
-| 3 | [Tag Taxonomy & Attribution](03-tag-taxonomy/README.md) | Not started | Critical |
+| 3 | [Tag Taxonomy & Attribution](03-tag-taxonomy/README.md) | Phase 1 Done | Critical |
 | 4 | [The Headless Commission Engine](04-commission-engine/README.md) | Not started | Critical |
 | 5 | [Financial & Payment Gateway](05-financial-gateway/README.md) | Not started | Critical |
 | 6 | [Omnichannel Communications](06-omnichannel-comms/README.md) | Not started | High |
