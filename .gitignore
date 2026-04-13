@@ -2,3 +2,4 @@
 .cursor
 **/target
 .env.claude/
+.env
