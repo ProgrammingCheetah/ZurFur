@@ -99,10 +99,8 @@ impl FeedService {
             .ok_or(FeedServiceError::FeedNotFound)
     }
 
-    /// Create a system feed and attach it to an org. No permission check —
-    /// called from orchestration layer (org creation, onboarding), not from users.
-    /// If attach fails, the created feed is cleaned up (compensating rollback).
-    // TODO(review): compensating rollback (soft_delete on failed attach) should be replaced by a DB transaction in Feature 3.5
+    /// Create a system feed and attach it to an org atomically.
+    /// No permission check — called from orchestration layer (org creation, onboarding).
     pub async fn create_system_feed(
         &self,
         org_id: Uuid,
@@ -111,27 +109,17 @@ impl FeedService {
     ) -> Result<Feed, FeedServiceError> {
         let feed = self
             .feed_repo
-            .create(slug, display_name, None, FeedType::System)
+            .create_and_attach(slug, display_name, None, FeedType::System, EntityType::Org, org_id)
             .await
             .map_err(|e| match e {
                 FeedError::SlugTaken(s) => FeedServiceError::SlugTaken(s),
                 other => FeedServiceError::Internal(other.to_string()),
             })?;
 
-        if let Err(e) = self
-            .entity_feed_repo
-            .attach(feed.id, EntityType::Org, org_id)
-            .await
-        {
-            let _ = self.feed_repo.soft_delete(feed.id).await;
-            return Err(FeedServiceError::Internal(e.to_string()));
-        }
-
         Ok(feed)
     }
 
-    /// Create a custom feed and attach it to an org.
-    // TODO(review): no compensating rollback if attach fails — orphan feed left in DB. Wrap in transaction (Feature 3.5)
+    /// Create a custom feed and attach it to an org atomically.
     pub async fn create_custom_feed(
         &self,
         org_id: Uuid,
@@ -145,17 +133,12 @@ impl FeedService {
 
         let feed = self
             .feed_repo
-            .create(slug, display_name, description, FeedType::Custom)
+            .create_and_attach(slug, display_name, description, FeedType::Custom, EntityType::Org, org_id)
             .await
             .map_err(|e| match e {
                 FeedError::SlugTaken(s) => FeedServiceError::SlugTaken(s),
                 other => FeedServiceError::Internal(other.to_string()),
             })?;
-
-        self.entity_feed_repo
-            .attach(feed.id, EntityType::Org, org_id)
-            .await
-            .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
 
         Ok(feed)
     }
