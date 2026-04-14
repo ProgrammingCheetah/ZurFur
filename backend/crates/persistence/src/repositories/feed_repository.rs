@@ -41,6 +41,58 @@ fn map_feed(row: sqlx::postgres::PgRow) -> Result<Feed, FeedError> {
     Ok(feed)
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+async fn create_feed<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    slug: &str,
+    display_name: &str,
+    description: Option<&str>,
+    feed_type: FeedType,
+) -> Result<Feed, FeedError> {
+    let row = sqlx::query(
+        "INSERT INTO feed (slug, display_name, description, feed_type) \
+         VALUES ($1, $2, $3, $4) \
+         RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
+    )
+    .bind(slug)
+    .bind(display_name)
+    .bind(description)
+    .bind(feed_type.as_str())
+    .fetch_one(executor)
+    .await
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            FeedError::SlugTaken(slug.to_string())
+        } else {
+            FeedError::Database(e.to_string())
+        }
+    })?;
+
+    map_feed(row)
+}
+
+async fn attach_entity_feed<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    feed_id: Uuid,
+    entity_type: EntityType,
+    entity_id: Uuid,
+) -> Result<(), FeedError> {
+    sqlx::query(
+        "INSERT INTO entity_feed (feed_id, entity_type, entity_id) VALUES ($1, $2, $3)",
+    )
+    .bind(feed_id)
+    .bind(entity_type.as_str())
+    .bind(entity_id)
+    .execute(executor)
+    .await
+    .map_err(|e| FeedError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl FeedRepository for SqlxFeedRepository {
     async fn create(
@@ -50,26 +102,7 @@ impl FeedRepository for SqlxFeedRepository {
         description: Option<&str>,
         feed_type: FeedType,
     ) -> Result<Feed, FeedError> {
-        let row = sqlx::query(
-            "INSERT INTO feed (slug, display_name, description, feed_type) \
-             VALUES ($1, $2, $3, $4) \
-             RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
-        )
-        .bind(slug)
-        .bind(display_name)
-        .bind(description)
-        .bind(feed_type.as_str())
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                FeedError::SlugTaken(slug.to_string())
-            } else {
-                FeedError::Database(e.to_string())
-            }
-        })?;
-
-        map_feed(row)
+        create_feed(&self.pool, slug, display_name, description, feed_type).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Feed>, FeedError> {
@@ -170,36 +203,8 @@ impl FeedRepository for SqlxFeedRepository {
         let mut tx = self.pool.begin().await
             .map_err(|e| FeedError::Database(e.to_string()))?;
 
-        let row = sqlx::query(
-            "INSERT INTO feed (slug, display_name, description, feed_type) \
-             VALUES ($1, $2, $3, $4) \
-             RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
-        )
-        .bind(slug)
-        .bind(display_name)
-        .bind(description)
-        .bind(feed_type.as_str())
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                FeedError::SlugTaken(slug.to_string())
-            } else {
-                FeedError::Database(e.to_string())
-            }
-        })?;
-
-        let feed = map_feed(row)?;
-
-        sqlx::query(
-            "INSERT INTO entity_feed (feed_id, entity_type, entity_id) VALUES ($1, $2, $3)",
-        )
-        .bind(feed.id)
-        .bind(entity_type.as_str())
-        .bind(entity_id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| FeedError::Database(e.to_string()))?;
+        let feed = create_feed(&mut *tx, slug, display_name, description, feed_type).await?;
+        attach_entity_feed(&mut *tx, feed.id, entity_type, entity_id).await?;
 
         tx.commit().await
             .map_err(|e| FeedError::Database(e.to_string()))?;

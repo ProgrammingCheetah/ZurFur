@@ -53,6 +53,70 @@ macro_rules! cols {
     };
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+// These accept any sqlx::Executor (pool connection OR transaction), allowing
+// reuse between standalone trait methods and transactional create_and_attach.
+
+async fn create_tag<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    category: TagCategory,
+    name: &str,
+    is_approved: bool,
+) -> Result<Tag, TagError> {
+    let row = sqlx::query(concat!(
+        "INSERT INTO tag (category, name, is_approved) ",
+        "VALUES ($1::tag_category, $2, $3) ",
+        "RETURNING ", cols!()
+    ))
+    .bind(category.as_str())
+    .bind(name)
+    .bind(is_approved)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            TagError::NameTaken(name.to_string())
+        } else {
+            TagError::Database(e.to_string())
+        }
+    })?;
+
+    map_tag(row)
+}
+
+async fn attach_entity_tag<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    entity_type: TaggableEntityType,
+    entity_id: Uuid,
+    tag_id: Uuid,
+) -> Result<(), TagError> {
+    sqlx::query(
+        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
+    )
+    .bind(entity_type.as_str())
+    .bind(entity_id)
+    .bind(tag_id)
+    .execute(executor)
+    .await
+    .map_err(|e| TagError::Database(e.to_string()))?;
+
+    Ok(())
+}
+
+async fn increment_usage_count<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    id: Uuid,
+) -> Result<(), TagError> {
+    sqlx::query("UPDATE tag SET usage_count = usage_count + 1 WHERE id = $1")
+        .bind(id)
+        .execute(executor)
+        .await
+        .map_err(|e| TagError::Database(e.to_string()))?;
+    Ok(())
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl TagRepository for SqlxTagRepository {
     async fn create(
@@ -61,25 +125,7 @@ impl TagRepository for SqlxTagRepository {
         name: &str,
         is_approved: bool,
     ) -> Result<Tag, TagError> {
-        let row = sqlx::query(concat!(
-            "INSERT INTO tag (category, name, is_approved) ",
-            "VALUES ($1::tag_category, $2, $3) ",
-            "RETURNING ", cols!()
-        ))
-        .bind(category.as_str())
-        .bind(name)
-        .bind(is_approved)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                TagError::NameTaken(name.to_string())
-            } else {
-                TagError::Database(e.to_string())
-            }
-        })?;
-
-        map_tag(row)
+        create_tag(&self.pool, category, name, is_approved).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Tag>, TagError> {
@@ -214,12 +260,7 @@ impl TagRepository for SqlxTagRepository {
     }
 
     async fn increment_usage_count(&self, id: Uuid) -> Result<(), TagError> {
-        sqlx::query("UPDATE tag SET usage_count = usage_count + 1 WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| TagError::Database(e.to_string()))?;
-        Ok(())
+        increment_usage_count(&self.pool, id).await
     }
 
     async fn decrement_usage_count(&self, id: Uuid) -> Result<(), TagError> {
@@ -257,41 +298,9 @@ impl TagRepository for SqlxTagRepository {
         let mut tx = self.pool.begin().await
             .map_err(|e| TagError::Database(e.to_string()))?;
 
-        let row = sqlx::query(concat!(
-            "INSERT INTO tag (category, name, is_approved) ",
-            "VALUES ($1::tag_category, $2, $3) ",
-            "RETURNING ", cols!()
-        ))
-        .bind(category.as_str())
-        .bind(name)
-        .bind(is_approved)
-        .fetch_one(&mut *tx)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                TagError::NameTaken(name.to_string())
-            } else {
-                TagError::Database(e.to_string())
-            }
-        })?;
-
-        let mut tag = map_tag(row)?;
-
-        sqlx::query(
-            "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
-        )
-        .bind(entity_type.as_str())
-        .bind(entity_id)
-        .bind(tag.id)
-        .execute(&mut *tx)
-        .await
-        .map_err(|e| TagError::Database(e.to_string()))?;
-
-        sqlx::query("UPDATE tag SET usage_count = usage_count + 1 WHERE id = $1")
-            .bind(tag.id)
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| TagError::Database(e.to_string()))?;
+        let mut tag = create_tag(&mut *tx, category, name, is_approved).await?;
+        attach_entity_tag(&mut *tx, entity_type, entity_id, tag.id).await?;
+        increment_usage_count(&mut *tx, tag.id).await?;
 
         tx.commit().await
             .map_err(|e| TagError::Database(e.to_string()))?;
