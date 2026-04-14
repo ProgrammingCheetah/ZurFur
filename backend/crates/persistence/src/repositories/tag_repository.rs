@@ -2,7 +2,7 @@
 
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
-use domain::entity_tag::TaggableEntityType;
+use domain::entity_tag::{EntityTag, EntityTagError, TaggableEntityType};
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 use sqlx::Row;
 use std::sync::Arc;
@@ -273,6 +273,58 @@ impl TagRepository for SqlxTagRepository {
         if result.rows_affected() == 0 {
             return Err(TagError::NotFound);
         }
+        Ok(())
+    }
+
+    async fn attach_and_increment(
+        &self,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+        tag_id: Uuid,
+    ) -> Result<EntityTag, TagError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        let entity_tag = super::entity_tag_repository::attach_entity_tag(
+            &mut *tx, entity_type, entity_id, tag_id,
+        )
+        .await
+        .map_err(|e| match e {
+            EntityTagError::AlreadyAttached => TagError::AlreadyAttached,
+            other => TagError::Database(other.to_string()),
+        })?;
+
+        increment_usage_count(&mut *tx, tag_id).await?;
+
+        tx.commit().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        Ok(entity_tag)
+    }
+
+    async fn detach_and_decrement(
+        &self,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+        tag_id: Uuid,
+    ) -> Result<(), TagError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        super::entity_tag_repository::detach_entity_tag(
+            &mut *tx, entity_type, entity_id, tag_id,
+        )
+        .await
+        .map_err(|e| match e {
+            EntityTagError::NotFound => TagError::NotFound,
+            other => TagError::Database(other.to_string()),
+        })?;
+
+        decrement_usage_count(&mut *tx, tag_id).await?;
+
+        tx.commit().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
         Ok(())
     }
 
