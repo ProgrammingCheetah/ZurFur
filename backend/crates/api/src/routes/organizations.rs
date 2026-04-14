@@ -1,4 +1,3 @@
-use application::organization::service::OrgServiceError;
 use axum::{
     Json, Router,
     extract::{Path, State},
@@ -7,6 +6,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
 use crate::middleware::AuthUser;
 use crate::state::SharedState;
 
@@ -66,14 +66,13 @@ async fn create_org(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
     Json(body): Json<CreateOrgRequest>,
-) -> Result<(StatusCode, Json<OrgDetailResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<OrgDetailResponse>), AppError> {
     let user_id = parse_user_id(&claims.sub)?;
 
     let detail = state
         .org_service
         .create_org(user_id, &body.slug, &body.display_name)
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     // TODO(review): org + member + tag + feed creation spans 4 separate DB operations with no transaction — partial failure leaves inconsistent state (Feature 3.5)
     // Orchestration: auto-create org tag + bio feed (best-effort)
@@ -105,13 +104,12 @@ async fn get_org(
     State(state): State<SharedState>,
     Path(id_or_slug): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<OrgDetailResponse>, (StatusCode, String)> {
+) -> Result<Json<OrgDetailResponse>, AppError> {
     let detail = if let Ok(id) = id_or_slug.parse::<uuid::Uuid>() {
         state.org_service.get_org_by_id(id).await
     } else {
         state.org_service.get_org(&id_or_slug).await
-    }
-    .map_err(map_org_error)?;
+    }?;
 
     Ok(Json(to_detail_response(detail)))
 }
@@ -121,15 +119,14 @@ async fn update_org(
     Path(id_or_slug): Path<String>,
     AuthUser(claims): AuthUser,
     Json(body): Json<UpdateOrgRequest>,
-) -> Result<Json<OrgResponse>, (StatusCode, String)> {
+) -> Result<Json<OrgResponse>, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let org_id = resolve_org_id(&state, &id_or_slug).await?;
 
     let org = state
         .org_service
         .update_org(org_id, user_id, body.display_name.as_deref())
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     Ok(Json(to_org_response(&org)))
 }
@@ -138,15 +135,14 @@ async fn delete_org(
     State(state): State<SharedState>,
     Path(id_or_slug): Path<String>,
     AuthUser(claims): AuthUser,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let org_id = resolve_org_id(&state, &id_or_slug).await?;
 
     state
         .org_service
         .delete_org(org_id, user_id)
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -155,14 +151,13 @@ async fn list_members(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<Vec<MemberResponse>>, (StatusCode, String)> {
+) -> Result<Json<Vec<MemberResponse>>, AppError> {
     let org_id = parse_uuid(&id)?;
 
     let detail = state
         .org_service
         .get_org_by_id(org_id)
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     Ok(Json(
         detail
@@ -178,23 +173,22 @@ async fn add_member(
     Path(id): Path<String>,
     AuthUser(claims): AuthUser,
     Json(body): Json<AddMemberRequest>,
-) -> Result<(StatusCode, Json<MemberResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<MemberResponse>), AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let org_id = parse_uuid(&id)?;
     let target_user_id = parse_uuid(&body.user_id)?;
 
     let role = domain::organization_member::Role::from_str(&body.role).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid role: '{}'. Must be 'owner', 'admin', 'mod', or 'member'", body.role),
-        )
+        AppError::BadRequest(format!(
+            "Invalid role: '{}'. Must be 'owner', 'admin', 'mod', or 'member'",
+            body.role,
+        ))
     })?;
 
     let member = state
         .org_service
         .add_member(org_id, user_id, target_user_id, role, body.title.as_deref())
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     Ok((StatusCode::CREATED, Json(to_member_response(&member))))
 }
@@ -204,16 +198,16 @@ async fn update_member(
     Path((id, target_user_id_str)): Path<(String, String)>,
     AuthUser(claims): AuthUser,
     Json(body): Json<UpdateMemberRequest>,
-) -> Result<Json<MemberResponse>, (StatusCode, String)> {
+) -> Result<Json<MemberResponse>, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let org_id = parse_uuid(&id)?;
     let target_user_id = parse_uuid(&target_user_id_str)?;
 
     let role = domain::organization_member::Role::from_str(&body.role).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!("Invalid role: '{}'. Must be 'owner', 'admin', 'mod', or 'member'", body.role),
-        )
+        AppError::BadRequest(format!(
+            "Invalid role: '{}'. Must be 'owner', 'admin', 'mod', or 'member'",
+            body.role,
+        ))
     })?;
 
     let permissions = body
@@ -230,8 +224,7 @@ async fn update_member(
             body.title.as_deref(),
             permissions,
         )
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     Ok(Json(to_member_response(&member)))
 }
@@ -240,7 +233,7 @@ async fn remove_member(
     State(state): State<SharedState>,
     Path((id, target_user_id_str)): Path<(String, String)>,
     AuthUser(claims): AuthUser,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let org_id = parse_uuid(&id)?;
     let target_user_id = parse_uuid(&target_user_id_str)?;
@@ -248,8 +241,7 @@ async fn remove_member(
     state
         .org_service
         .remove_member(org_id, user_id, target_user_id)
-        .await
-        .map_err(map_org_error)?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -302,31 +294,6 @@ fn to_detail_response(
     }
 }
 
-// --- Error mapping -----------------------------------------------------------
-
-fn map_org_error(e: OrgServiceError) -> (StatusCode, String) {
-    match e {
-        OrgServiceError::NotFound => (StatusCode::NOT_FOUND, "Organization not found".into()),
-        OrgServiceError::SlugTaken(s) => {
-            (StatusCode::CONFLICT, format!("Slug already taken: {s}"))
-        }
-        OrgServiceError::InvalidSlug(msg) => (StatusCode::BAD_REQUEST, msg),
-        OrgServiceError::Forbidden => (StatusCode::FORBIDDEN, "Permission denied".into()),
-        OrgServiceError::CannotDeletePersonal => (
-            StatusCode::FORBIDDEN,
-            "Cannot delete a personal organization".into(),
-        ),
-        OrgServiceError::CannotRemoveOwner => (
-            StatusCode::FORBIDDEN,
-            "Cannot remove the owner from an organization".into(),
-        ),
-        OrgServiceError::Internal(inner) => {
-            eprintln!("Internal org service error: {inner}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
-        }
-    }
-}
-
 // --- Helpers (re-exported from shared module) --------------------------------
 
 pub(super) use super::helpers::{parse_user_id, parse_uuid};
@@ -334,15 +301,14 @@ pub(super) use super::helpers::{parse_user_id, parse_uuid};
 async fn resolve_org_id(
     state: &SharedState,
     id_or_slug: &str,
-) -> Result<uuid::Uuid, (StatusCode, String)> {
+) -> Result<uuid::Uuid, AppError> {
     if let Ok(id) = id_or_slug.parse::<uuid::Uuid>() {
         Ok(id)
     } else {
         let detail = state
             .org_service
             .get_org(id_or_slug)
-            .await
-            .map_err(map_org_error)?;
+            .await?;
         Ok(detail.org.id)
     }
 }

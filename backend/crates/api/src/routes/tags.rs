@@ -3,7 +3,6 @@
 //! All routes require authentication. Authorization (role-gating approve/delete
 //! to admins/mods) is tracked for a future iteration.
 
-use application::tag::service::TagServiceError;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -14,6 +13,7 @@ use domain::entity_tag::TaggableEntityType;
 use domain::tag::TagCategory;
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
 use crate::state::SharedState;
 use super::helpers::parse_uuid;
 use crate::middleware::AuthUser;
@@ -92,29 +92,20 @@ fn default_limit() -> i64 {
 
 // --- Handlers ----------------------------------------------------------------
 
-/// POST /tags — create a user-submitted tag (metadata or general only).
 // TODO(review): no authorization check — any authenticated user can create tags. Gate behind admin/mod role when roles are wired.
+/// POST /tags — create a user-submitted tag (metadata or general only).
 async fn create_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
     Json(body): Json<CreateTagRequest>,
-) -> Result<(StatusCode, Json<TagResponse>), (StatusCode, String)> {
-    let category = TagCategory::try_from(body.category.as_str()).map_err(|_| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Invalid category: '{}'. Must be 'organization', 'character', 'metadata', or 'general'",
-                body.category
-            ),
-        )
-    })?;
+) -> Result<(StatusCode, Json<TagResponse>), AppError> {
+    let category = TagCategory::try_from(body.category.as_str())
+        .map_err(|_| AppError::BadRequest(format!(
+            "Invalid category: '{}'. Must be 'organization', 'character', 'metadata', or 'general'",
+            body.category
+        )))?;
 
-    let tag = state
-        .tag_service
-        .create_tag(category, &body.name)
-        .await
-        .map_err(map_tag_error)?;
-
+    let tag = state.tag_service.create_tag(category, &body.name).await?;
     Ok((StatusCode::CREATED, Json(TagResponse::from(&tag))))
 }
 
@@ -123,9 +114,9 @@ async fn get_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<TagResponse>, (StatusCode, String)> {
+) -> Result<Json<TagResponse>, AppError> {
     let tag_id = parse_uuid(&id)?;
-    let tag = state.tag_service.get_tag(tag_id).await.map_err(map_tag_error)?;
+    let tag = state.tag_service.get_tag(tag_id).await?;
     Ok(Json(TagResponse::from(&tag)))
 }
 
@@ -134,13 +125,8 @@ async fn search_tags(
     State(state): State<SharedState>,
     Query(params): Query<SearchQuery>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<Vec<TagResponse>>, (StatusCode, String)> {
-    let tags = state
-        .tag_service
-        .search_tags(&params.q, params.limit)
-        .await
-        .map_err(map_tag_error)?;
-
+) -> Result<Json<Vec<TagResponse>>, AppError> {
+    let tags = state.tag_service.search_tags(&params.q, params.limit).await?;
     Ok(Json(tags.iter().map(TagResponse::from).collect()))
 }
 
@@ -150,19 +136,12 @@ async fn list_by_category(
     Path(category_str): Path<String>,
     Query(params): Query<PaginationQuery>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<Vec<TagResponse>>, (StatusCode, String)> {
-    let category = TagCategory::try_from(category_str.as_str()).map_err(|_| {
-        (StatusCode::BAD_REQUEST, format!("Invalid category: '{category_str}'"))
-    })?;
+) -> Result<Json<Vec<TagResponse>>, AppError> {
+    let category = TagCategory::try_from(category_str.as_str())
+        .map_err(|_| AppError::BadRequest(format!("Invalid category: '{category_str}'")))?;
 
     let offset = params.offset.max(0);
-
-    let tags = state
-        .tag_service
-        .list_tags_by_category(category, params.limit, offset)
-        .await
-        .map_err(map_tag_error)?;
-
+    let tags = state.tag_service.list_tags_by_category(category, params.limit, offset).await?;
     Ok(Json(tags.iter().map(TagResponse::from).collect()))
 }
 
@@ -173,66 +152,57 @@ async fn update_tag(
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
     Json(body): Json<UpdateTagRequest>,
-) -> Result<Json<TagResponse>, (StatusCode, String)> {
+) -> Result<Json<TagResponse>, AppError> {
     let tag_id = parse_uuid(&id)?;
 
     let is_approved = match body.is_approved {
         Some(v) => v,
         None => {
-            let existing = state.tag_service.get_tag(tag_id).await.map_err(map_tag_error)?;
+            let existing = state.tag_service.get_tag(tag_id).await?;
             existing.is_approved
         }
     };
 
-    let tag = state
-        .tag_service
-        .update_tag(tag_id, &body.name, is_approved)
-        .await
-        .map_err(map_tag_error)?;
-
+    let tag = state.tag_service.update_tag(tag_id, &body.name, is_approved).await?;
     Ok(Json(TagResponse::from(&tag)))
 }
 
-/// DELETE /tags/:id — hard-delete a tag. Metadata/general only.
 // TODO(review): no authorization check — any authenticated user can delete tags. Gate behind admin/mod role when roles are wired.
+/// DELETE /tags/:id — hard-delete a tag. Metadata/general only.
 async fn delete_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let tag_id = parse_uuid(&id)?;
-    state.tag_service.delete_tag(tag_id).await.map_err(map_tag_error)?;
+    state.tag_service.delete_tag(tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// POST /tags/:id/approve — mark a tag as approved. Metadata/general only.
 // TODO(review): no authorization check — any authenticated user can approve tags. Must be admin/mod-only.
+/// POST /tags/:id/approve — mark a tag as approved. Metadata/general only.
 async fn approve_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<TagResponse>, (StatusCode, String)> {
+) -> Result<Json<TagResponse>, AppError> {
     let tag_id = parse_uuid(&id)?;
-    let tag = state.tag_service.approve_tag(tag_id).await.map_err(map_tag_error)?;
+    let tag = state.tag_service.approve_tag(tag_id).await?;
     Ok(Json(TagResponse::from(&tag)))
 }
 
-/// POST /tags/attach — attach an existing tag to an entity. Increments usage count.
 // TODO(review): no authorization check — any authenticated user can attach tags to any entity. Should verify entity ownership.
+/// POST /tags/attach — attach an existing tag to an entity. Increments usage count.
 async fn attach_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
     Json(body): Json<AttachTagRequest>,
-) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<serde_json::Value>), AppError> {
     let entity_type = parse_entity_type(&body.entity_type)?;
     let entity_id = parse_uuid(&body.entity_id)?;
     let tag_id = parse_uuid(&body.tag_id)?;
 
-    state
-        .tag_service
-        .attach_tag(entity_type, entity_id, tag_id)
-        .await
-        .map_err(map_tag_error)?;
+    state.tag_service.attach_tag(entity_type, entity_id, tag_id).await?;
 
     Ok((
         StatusCode::CREATED,
@@ -244,23 +214,18 @@ async fn attach_tag(
     ))
 }
 
-/// POST /tags/detach — remove a tag from an entity. Decrements usage count.
 // TODO(review): no authorization check — any authenticated user can detach tags from any entity. Should verify entity ownership.
+/// POST /tags/detach — remove a tag from an entity. Decrements usage count.
 async fn detach_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
     Json(body): Json<DetachTagRequest>,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let entity_type = parse_entity_type(&body.entity_type)?;
     let entity_id = parse_uuid(&body.entity_id)?;
     let tag_id = parse_uuid(&body.tag_id)?;
 
-    state
-        .tag_service
-        .detach_tag(entity_type, entity_id, tag_id)
-        .await
-        .map_err(map_tag_error)?;
-
+    state.tag_service.detach_tag(entity_type, entity_id, tag_id).await?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -269,16 +234,11 @@ async fn list_entity_tags(
     State(state): State<SharedState>,
     Path((entity_type_str, entity_id_str)): Path<(String, String)>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<Vec<TagResponse>>, (StatusCode, String)> {
+) -> Result<Json<Vec<TagResponse>>, AppError> {
     let entity_type = parse_entity_type(&entity_type_str)?;
     let entity_id = parse_uuid(&entity_id_str)?;
 
-    let tags = state
-        .tag_service
-        .list_tags_for_entity(entity_type, entity_id)
-        .await
-        .map_err(map_tag_error)?;
-
+    let tags = state.tag_service.list_tags_for_entity(entity_type, entity_id).await?;
     Ok(Json(tags.iter().map(TagResponse::from).collect()))
 }
 
@@ -297,49 +257,13 @@ pub fn router() -> Router<SharedState> {
         .route("/{id}/approve", post(approve_tag))
 }
 
-// --- Error mapping -----------------------------------------------------------
-
-/// Map `TagServiceError` to an HTTP status code and message for the client.
-fn map_tag_error(e: TagServiceError) -> (StatusCode, String) {
-    match e {
-        TagServiceError::NotFound => (StatusCode::NOT_FOUND, "Tag not found".into()),
-        TagServiceError::NotAttached => (
-            StatusCode::NOT_FOUND,
-            "Tag is not attached to this entity".into(),
-        ),
-        TagServiceError::NameTaken(s) => {
-            (StatusCode::CONFLICT, format!("Tag name already taken: {s}"))
-        }
-        TagServiceError::Immutable => (
-            StatusCode::FORBIDDEN,
-            "Entity-backed tags cannot be modified".into(),
-        ),
-        TagServiceError::InvalidCategory => (
-            StatusCode::BAD_REQUEST,
-            "This category cannot be used for user-created tags. Use 'metadata' or 'general'.".into(),
-        ),
-        TagServiceError::InvalidName(msg) => (StatusCode::BAD_REQUEST, msg),
-        TagServiceError::AlreadyAttached => (
-            StatusCode::CONFLICT,
-            "Tag is already attached to this entity".into(),
-        ),
-        TagServiceError::Internal(inner) => {
-            eprintln!("Internal tag service error: {inner}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
-        }
-    }
-}
-
 // --- Helpers -----------------------------------------------------------------
 
 /// Parse a string into a `TaggableEntityType`, returning 400 on invalid input.
-fn parse_entity_type(s: &str) -> Result<TaggableEntityType, (StatusCode, String)> {
+fn parse_entity_type(s: &str) -> Result<TaggableEntityType, AppError> {
     TaggableEntityType::from_str(s).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Invalid entity type: '{s}'. Must be 'org', 'commission', 'feed_item', 'character', or 'feed_element'"
-            ),
-        )
+        AppError::BadRequest(format!(
+            "Invalid entity type: '{s}'. Must be 'org', 'commission', 'feed_item', 'character', or 'feed_element'"
+        ))
     })
 }
