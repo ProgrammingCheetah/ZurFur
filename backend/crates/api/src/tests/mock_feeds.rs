@@ -175,6 +175,26 @@ impl FeedItemRepository for MockFeedItemRepo {
             Ok(())
         }
     }
+    async fn create_with_elements(
+        &self,
+        feed_id: Uuid,
+        author_type: AuthorType,
+        author_id: Uuid,
+        elements: &[domain::feed_item::NewFeedElementInput],
+    ) -> Result<(FeedItem, Vec<FeedElement>), FeedItemError> {
+        let item = self.create(feed_id, author_type, author_id).await?;
+        let created: Vec<FeedElement> = elements
+            .iter()
+            .map(|el| FeedElement {
+                id: Uuid::new_v4(),
+                feed_item_id: item.id,
+                element_type: el.element_type,
+                content_json: el.content_json.clone(),
+                position: el.position,
+            })
+            .collect();
+        Ok((item, created))
+    }
 }
 
 #[derive(Default)]

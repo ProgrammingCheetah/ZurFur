@@ -13,7 +13,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::entity_tag::TaggableEntityType;
+use crate::entity_tag::{EntityTag, TaggableEntityType};
 
 /// What kind of tag this is. Stored as a PostgreSQL ENUM (`tag_category`).
 ///
@@ -103,6 +103,10 @@ pub enum TagError {
     NameTaken(String),
     #[error("Entity-backed tags cannot be modified")]
     Immutable,
+    #[error("Tag already attached to this entity")]
+    AlreadyAttached,
+    #[error("Tag is not attached to this entity")]
+    NotAttached,
     #[error("Database error: {0}")]
     Database(String),
 }
@@ -163,6 +167,24 @@ pub trait TagRepository: Send + Sync {
 
     /// Hard-delete a tag. Immutability is enforced at the application layer.
     async fn delete(&self, id: Uuid) -> Result<(), TagError>;
+
+    /// Atomically attach a tag to an entity and increment usage_count.
+    /// Returns `AlreadyAttached` if the tag is already on this entity.
+    async fn attach_and_increment(
+        &self,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+        tag_id: Uuid,
+    ) -> Result<EntityTag, TagError>;
+
+    /// Atomically detach a tag from an entity and decrement usage_count.
+    /// Returns `NotAttached` if the tag is not attached to this entity.
+    async fn detach_and_decrement(
+        &self,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+        tag_id: Uuid,
+    ) -> Result<(), TagError>;
 
     /// Atomically create a tag, attach it to an entity, and set usage_count to 1.
     /// Implementations must perform all three operations in a single transaction.

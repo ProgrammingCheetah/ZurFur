@@ -1,5 +1,6 @@
 use crate::pool::Pool;
-use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
+use domain::feed_element::FeedElement;
+use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository, NewFeedElementInput};
 use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -36,6 +37,31 @@ fn map_feed_item(row: sqlx::postgres::PgRow) -> Result<FeedItem, FeedItemError> 
     Ok(item)
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn create_feed_item<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    feed_id: Uuid,
+    author_type: AuthorType,
+    author_id: Uuid,
+) -> Result<FeedItem, FeedItemError> {
+    let row = sqlx::query(
+        "INSERT INTO feed_item (feed_id, author_type, author_id) \
+         VALUES ($1, $2, $3) \
+         RETURNING id, feed_id, author_type, author_id, created_at",
+    )
+    .bind(feed_id)
+    .bind(author_type.as_str())
+    .bind(author_id)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| FeedItemError::Database(e.to_string()))?;
+
+    map_feed_item(row)
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl FeedItemRepository for SqlxFeedItemRepository {
     async fn create(
@@ -44,19 +70,7 @@ impl FeedItemRepository for SqlxFeedItemRepository {
         author_type: AuthorType,
         author_id: Uuid,
     ) -> Result<FeedItem, FeedItemError> {
-        let row = sqlx::query(
-            "INSERT INTO feed_item (feed_id, author_type, author_id) \
-             VALUES ($1, $2, $3) \
-             RETURNING id, feed_id, author_type, author_id, created_at",
-        )
-        .bind(feed_id)
-        .bind(author_type.as_str())
-        .bind(author_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| FeedItemError::Database(e.to_string()))?;
-
-        map_feed_item(row)
+        create_feed_item(&self.pool, feed_id, author_type, author_id).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<FeedItem>, FeedItemError> {
@@ -112,5 +126,37 @@ impl FeedItemRepository for SqlxFeedItemRepository {
             return Err(FeedItemError::NotFound);
         }
         Ok(())
+    }
+
+    async fn create_with_elements(
+        &self,
+        feed_id: Uuid,
+        author_type: AuthorType,
+        author_id: Uuid,
+        elements: &[NewFeedElementInput],
+    ) -> Result<(FeedItem, Vec<FeedElement>), FeedItemError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| FeedItemError::Database(e.to_string()))?;
+
+        let item = create_feed_item(&mut *tx, feed_id, author_type, author_id).await?;
+
+        let mut created_elements = Vec::with_capacity(elements.len());
+        for el in elements {
+            let element = super::feed_element_repository::create_feed_element(
+                &mut *tx,
+                item.id,
+                el.element_type,
+                &el.content_json,
+                el.position,
+            )
+            .await
+            .map_err(|e| FeedItemError::Database(e.to_string()))?;
+            created_elements.push(element);
+        }
+
+        tx.commit().await
+            .map_err(|e| FeedItemError::Database(e.to_string()))?;
+
+        Ok((item, created_elements))
     }
 }

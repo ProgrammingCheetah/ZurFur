@@ -63,4 +63,14 @@ pub trait OrganizationRepository: Send + Sync {
     ) -> Result<Organization, OrganizationError>;
 
     async fn soft_delete(&self, id: Uuid) -> Result<(), OrganizationError>;
+
+    /// Atomically create an organization and add the user as Owner with full permissions.
+    /// Implementations must perform both operations in a single transaction.
+    async fn create_with_owner(
+        &self,
+        slug: &str,
+        display_name: Option<&str>,
+        is_personal: bool,
+        owner_user_id: Uuid,
+    ) -> Result<Organization, OrganizationError>;
 }

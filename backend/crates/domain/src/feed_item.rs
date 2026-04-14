@@ -14,6 +14,8 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::feed_element::{FeedElement, FeedElementType};
+
 /// Who authored the feed item.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AuthorType {
@@ -96,6 +98,22 @@ pub trait FeedItemRepository: Send + Sync {
     ) -> Result<Vec<FeedItem>, FeedItemError>;
 
     async fn delete(&self, id: Uuid) -> Result<(), FeedItemError>;
+
+    /// Atomically create a feed item and all its elements in a single transaction.
+    async fn create_with_elements(
+        &self,
+        feed_id: Uuid,
+        author_type: AuthorType,
+        author_id: Uuid,
+        elements: &[NewFeedElementInput],
+    ) -> Result<(FeedItem, Vec<FeedElement>), FeedItemError>;
+}
+
+/// Input for creating a feed element as part of `create_with_elements`.
+pub struct NewFeedElementInput {
+    pub element_type: FeedElementType,
+    pub content_json: String,
+    pub position: i32,
 }
 
 #[cfg(test)]

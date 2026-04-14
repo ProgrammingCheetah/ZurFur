@@ -126,7 +126,7 @@ impl OnboardingService {
             feeds_created.push(feed);
         }
 
-        // TODO(Feature 3.5 Phase 2): the full loop (all feeds + mark onboarding complete) is still not atomic — needs UoW
+        // TODO(Feature 3.5 UoW): all feeds + mark onboarding complete should be one transaction. Recoverable via idempotency for now.
         // 6. Mark onboarding completed
         self.user_repo
             .mark_onboarding_completed(user_id)
@@ -234,6 +234,9 @@ mod tests {
         }
         async fn soft_delete(&self, _id: Uuid) -> Result<(), OrganizationError> {
             unimplemented!()
+        }
+        async fn create_with_owner(&self, slug: &str, display_name: Option<&str>, is_personal: bool, _owner_user_id: Uuid) -> Result<Organization, OrganizationError> {
+            self.create(slug, display_name, is_personal).await
         }
     }
 

@@ -6,14 +6,25 @@ use domain::organization::{Organization, OrganizationError, OrganizationReposito
 use domain::organization_member::{
     OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
 /// Maps user_id → org_id for personal orgs. Populated by test setup.
-#[derive(Default)]
 pub struct MockOrgRepo {
     pub orgs: Mutex<Vec<Organization>>,
     pub personal_org_owners: Mutex<Vec<(Uuid, Uuid)>>,
+    pub shared_members: Arc<Mutex<Vec<OrganizationMember>>>,
+}
+
+impl Default for MockOrgRepo {
+    fn default() -> Self {
+        Self {
+            orgs: Mutex::new(vec![]),
+            personal_org_owners: Mutex::new(vec![]),
+            shared_members: Arc::new(Mutex::new(vec![])),
+        }
+    }
 }
 
 #[async_trait]
@@ -87,11 +98,39 @@ impl OrganizationRepository for MockOrgRepo {
             Err(OrganizationError::NotFound)
         }
     }
+    async fn create_with_owner(
+        &self,
+        slug: &str,
+        display_name: Option<&str>,
+        is_personal: bool,
+        owner_user_id: Uuid,
+    ) -> Result<Organization, OrganizationError> {
+        let org = self.create(slug, display_name, is_personal).await?;
+        let member = OrganizationMember {
+            id: Uuid::new_v4(),
+            org_id: org.id,
+            user_id: owner_user_id,
+            role: Role::Owner,
+            title: None,
+            permissions: Permissions::new(Permissions::ALL),
+            joined_at: Utc::now(),
+            updated_at: Utc::now(),
+        };
+        self.shared_members.lock().await.push(member);
+        Ok(org)
+    }
 }
 
-#[derive(Default)]
 pub struct MockMemberRepo {
-    pub members: Mutex<Vec<OrganizationMember>>,
+    pub members: Arc<Mutex<Vec<OrganizationMember>>>,
+}
+
+impl Default for MockMemberRepo {
+    fn default() -> Self {
+        Self {
+            members: Arc::new(Mutex::new(vec![])),
+        }
+    }
 }
 
 #[async_trait]

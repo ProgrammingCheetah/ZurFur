@@ -1,14 +1,25 @@
 //! Mock implementations for tag-related repository traits.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository, TaggableEntityType};
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Default)]
 pub struct MockTagRepo {
     pub tags: Mutex<Vec<Tag>>,
+    pub entity_tags: Arc<Mutex<Vec<EntityTag>>>,
+}
+
+impl MockTagRepo {
+    pub fn new(entity_tags: Arc<Mutex<Vec<EntityTag>>>) -> Self {
+        Self {
+            tags: Mutex::new(vec![]),
+            entity_tags,
+        }
+    }
 }
 
 #[async_trait]
@@ -130,6 +141,46 @@ impl TagRepository for MockTagRepo {
         }
     }
 
+    async fn attach_and_increment(
+        &self,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+        tag_id: Uuid,
+    ) -> Result<EntityTag, TagError> {
+        let et = {
+            let mut ets = self.entity_tags.lock().await;
+            if ets.iter().any(|et| {
+                et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id
+            }) {
+                return Err(TagError::AlreadyAttached);
+            }
+            let et = EntityTag { entity_type, entity_id, tag_id };
+            ets.push(et.clone());
+            et
+        };
+        self.increment_usage_count(tag_id).await?;
+        Ok(et)
+    }
+
+    async fn detach_and_decrement(
+        &self,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+        tag_id: Uuid,
+    ) -> Result<(), TagError> {
+        {
+            let mut ets = self.entity_tags.lock().await;
+            let len = ets.len();
+            ets.retain(|et| {
+                !(et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id)
+            });
+            if ets.len() == len {
+                return Err(TagError::NotAttached);
+            }
+        }
+        self.decrement_usage_count(tag_id).await
+    }
+
     async fn create_and_attach(
         &self,
         category: TagCategory,
@@ -148,9 +199,14 @@ impl TagRepository for MockTagRepo {
     }
 }
 
-#[derive(Default)]
 pub struct MockEntityTagRepo {
-    pub entity_tags: Mutex<Vec<EntityTag>>,
+    pub entity_tags: Arc<Mutex<Vec<EntityTag>>>,
+}
+
+impl MockEntityTagRepo {
+    pub fn new(entity_tags: Arc<Mutex<Vec<EntityTag>>>) -> Self {
+        Self { entity_tags }
+    }
 }
 
 #[async_trait]

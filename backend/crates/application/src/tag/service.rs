@@ -173,55 +173,36 @@ impl TagService {
             .map_err(|e| TagServiceError::Internal(e.to_string()))
     }
 
-    /// Attach a tag to an entity and increment the tag's usage count.
-    // TODO(Feature 3.5 Phase 2): attach + increment are not atomic — count can drift if increment fails. Needs UoW.
+    /// Attach a tag to an entity and increment the tag's usage count atomically.
     pub async fn attach_tag(
         &self,
         entity_type: TaggableEntityType,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, TagServiceError> {
-        let entity_tag = self
-            .entity_tag_repo
-            .attach(entity_type, entity_id, tag_id)
+        self.tag_repo
+            .attach_and_increment(entity_type, entity_id, tag_id)
             .await
             .map_err(|e| match e {
-                domain::entity_tag::EntityTagError::AlreadyAttached => {
-                    TagServiceError::AlreadyAttached
-                }
+                domain::tag::TagError::AlreadyAttached => TagServiceError::AlreadyAttached,
                 other => TagServiceError::Internal(other.to_string()),
-            })?;
-
-        self.tag_repo
-            .increment_usage_count(tag_id)
-            .await
-            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
-
-        Ok(entity_tag)
+            })
     }
 
-    /// Detach a tag from an entity and decrement the tag's usage count.
-    // TODO(Feature 3.5 Phase 2): detach + decrement are not atomic — count can drift if decrement fails. Needs UoW.
+    /// Detach a tag from an entity and decrement the tag's usage count atomically.
     pub async fn detach_tag(
         &self,
         entity_type: TaggableEntityType,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), TagServiceError> {
-        self.entity_tag_repo
-            .detach(entity_type, entity_id, tag_id)
+        self.tag_repo
+            .detach_and_decrement(entity_type, entity_id, tag_id)
             .await
             .map_err(|e| match e {
-                domain::entity_tag::EntityTagError::NotFound => TagServiceError::NotAttached,
+                domain::tag::TagError::NotAttached => TagServiceError::NotAttached,
                 other => TagServiceError::Internal(other.to_string()),
-            })?;
-
-        self.tag_repo
-            .decrement_usage_count(tag_id)
-            .await
-            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
-
-        Ok(())
+            })
     }
 
     /// List all tags attached to an entity, returning full Tag objects.
@@ -280,9 +261,18 @@ mod tests {
     use domain::tag::{Tag, TagCategory, TagError, TagRepository};
     use tokio::sync::Mutex;
 
-    #[derive(Default)]
     struct MockTagRepo {
         tags: Mutex<Vec<Tag>>,
+        entity_tags: Arc<Mutex<Vec<EntityTag>>>,
+    }
+
+    impl MockTagRepo {
+        fn new(entity_tags: Arc<Mutex<Vec<EntityTag>>>) -> Self {
+            Self {
+                tags: Mutex::new(vec![]),
+                entity_tags,
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -404,6 +394,46 @@ mod tests {
             }
         }
 
+        async fn attach_and_increment(
+            &self,
+            entity_type: TaggableEntityType,
+            entity_id: Uuid,
+            tag_id: Uuid,
+        ) -> Result<EntityTag, TagError> {
+            let et = {
+                let mut ets = self.entity_tags.lock().await;
+                if ets.iter().any(|et| {
+                    et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id
+                }) {
+                    return Err(TagError::AlreadyAttached);
+                }
+                let et = EntityTag { entity_type, entity_id, tag_id };
+                ets.push(et.clone());
+                et
+            };
+            self.increment_usage_count(tag_id).await?;
+            Ok(et)
+        }
+
+        async fn detach_and_decrement(
+            &self,
+            entity_type: TaggableEntityType,
+            entity_id: Uuid,
+            tag_id: Uuid,
+        ) -> Result<(), TagError> {
+            {
+                let mut ets = self.entity_tags.lock().await;
+                let len = ets.len();
+                ets.retain(|et| {
+                    !(et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id)
+                });
+                if ets.len() == len {
+                    return Err(TagError::NotAttached);
+                }
+            }
+            self.decrement_usage_count(tag_id).await
+        }
+
         async fn create_and_attach(
             &self,
             category: TagCategory,
@@ -422,9 +452,14 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
     struct MockEntityTagRepo {
-        entity_tags: Mutex<Vec<EntityTag>>,
+        entity_tags: Arc<Mutex<Vec<EntityTag>>>,
+    }
+
+    impl MockEntityTagRepo {
+        fn new(entity_tags: Arc<Mutex<Vec<EntityTag>>>) -> Self {
+            Self { entity_tags }
+        }
     }
 
     #[async_trait::async_trait]
@@ -498,10 +533,10 @@ mod tests {
     }
 
     fn build_service() -> TagService {
-        TagService::new(
-            Arc::new(MockTagRepo::default()),
-            Arc::new(MockEntityTagRepo::default()),
-        )
+        let shared_entity_tags = Arc::new(Mutex::new(Vec::new()));
+        let tag_repo = MockTagRepo::new(shared_entity_tags.clone());
+        let entity_tag_repo = MockEntityTagRepo::new(shared_entity_tags);
+        TagService::new(Arc::new(tag_repo), Arc::new(entity_tag_repo))
     }
 
     #[tokio::test]

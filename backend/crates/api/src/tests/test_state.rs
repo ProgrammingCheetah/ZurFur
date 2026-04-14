@@ -56,8 +56,15 @@ pub fn test_app_state() -> AppState {
     let state_store = Arc::new(MockStateStore::default());
     let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(10).unwrap());
 
-    let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo::default());
-    let member_repo: Arc<dyn OrganizationMemberRepository> = Arc::new(MockMemberRepo::default());
+    let shared_members =
+        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo {
+        shared_members: shared_members.clone(),
+        ..MockOrgRepo::default()
+    });
+    let member_repo: Arc<dyn OrganizationMemberRepository> = Arc::new(MockMemberRepo {
+        members: shared_members,
+    });
     let preferences_repo: Arc<dyn UserPreferencesRepository> =
         Arc::new(MockPreferencesRepo::default());
 
@@ -106,8 +113,11 @@ pub fn test_app_state() -> AppState {
         member_repo,
     );
 
-    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::default());
-    let entity_tag_repo: Arc<dyn EntityTagRepository> = Arc::new(MockEntityTagRepo::default());
+    let shared_entity_tags =
+        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::new(shared_entity_tags.clone()));
+    let entity_tag_repo: Arc<dyn EntityTagRepository> =
+        Arc::new(MockEntityTagRepo::new(shared_entity_tags));
 
     let tag_service = TagService::new(tag_repo, entity_tag_repo);
 

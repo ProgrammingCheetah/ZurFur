@@ -33,6 +33,41 @@ fn map_organization(row: sqlx::postgres::PgRow) -> Organization {
     }
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn create_organization<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    slug: &str,
+    display_name: Option<&str>,
+    is_personal: bool,
+) -> Result<Organization, OrganizationError> {
+    sqlx::query(
+        "INSERT INTO organization (slug, display_name, is_personal) \
+         VALUES ($1, $2, $3) \
+         RETURNING id, slug, display_name, is_personal, created_at, updated_at",
+    )
+    .bind(slug)
+    .bind(display_name)
+    .bind(is_personal)
+    .fetch_one(executor)
+    .await
+    .map(map_organization)
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            match violated_constraint(&e) {
+                Some("uq_organizations_slug") => {
+                    OrganizationError::SlugTaken(slug.to_string())
+                }
+                _ => OrganizationError::Database(e.to_string()),
+            }
+        } else {
+            OrganizationError::Database(e.to_string())
+        }
+    })
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl OrganizationRepository for SqlxOrganizationRepository {
     async fn create(
@@ -41,29 +76,7 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         display_name: Option<&str>,
         is_personal: bool,
     ) -> Result<Organization, OrganizationError> {
-        sqlx::query(
-            "INSERT INTO organization (slug, display_name, is_personal) \
-             VALUES ($1, $2, $3) \
-             RETURNING id, slug, display_name, is_personal, created_at, updated_at",
-        )
-        .bind(slug)
-        .bind(display_name)
-        .bind(is_personal)
-        .fetch_one(&self.pool)
-        .await
-        .map(map_organization)
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                match violated_constraint(&e) {
-                    Some("uq_organizations_slug") => {
-                        OrganizationError::SlugTaken(slug.to_string())
-                    }
-                    _ => OrganizationError::Database(e.to_string()),
-                }
-            } else {
-                OrganizationError::Database(e.to_string())
-            }
-        })
+        create_organization(&self.pool, slug, display_name, is_personal).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Organization>, OrganizationError> {
@@ -141,5 +154,36 @@ impl OrganizationRepository for SqlxOrganizationRepository {
             return Err(OrganizationError::NotFound);
         }
         Ok(())
+    }
+
+    async fn create_with_owner(
+        &self,
+        slug: &str,
+        display_name: Option<&str>,
+        is_personal: bool,
+        owner_user_id: Uuid,
+    ) -> Result<Organization, OrganizationError> {
+        use domain::organization_member::{Permissions, Role};
+
+        let mut tx = self.pool.begin().await
+            .map_err(|e| OrganizationError::Database(e.to_string()))?;
+
+        let org = create_organization(&mut *tx, slug, display_name, is_personal).await?;
+
+        super::organization_member_repository::add_organization_member(
+            &mut *tx,
+            org.id,
+            owner_user_id,
+            Role::Owner,
+            None,
+            Permissions::new(Permissions::ALL),
+        )
+        .await
+        .map_err(|e| OrganizationError::Database(e.to_string()))?;
+
+        tx.commit().await
+            .map_err(|e| OrganizationError::Database(e.to_string()))?;
+
+        Ok(org)
     }
 }

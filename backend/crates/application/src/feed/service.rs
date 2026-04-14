@@ -181,33 +181,33 @@ impl FeedService {
         })
     }
 
-    /// Post a new item with elements to a feed.
-    // TODO(Feature 3.5 Phase 2): partial element creation is not rolled back if a later element fails — needs UoW.
+    /// Post a new item with elements to a feed atomically.
     pub async fn post_to_feed(
         &self,
         feed_id: Uuid,
         actor_id: Uuid,
         elements: Vec<NewFeedElement>,
     ) -> Result<FeedItemWithElements, FeedServiceError> {
+        use domain::feed_item::NewFeedElementInput;
+
         let org_id = self.resolve_feed_org(feed_id).await?;
         self.require_feed_permission_on_org(org_id, actor_id, Permissions::MANAGE_PROFILE)
             .await?;
 
-        let item = self
+        let inputs: Vec<NewFeedElementInput> = elements
+            .into_iter()
+            .map(|el| NewFeedElementInput {
+                element_type: el.element_type,
+                content_json: el.content_json,
+                position: el.position,
+            })
+            .collect();
+
+        let (item, created_elements) = self
             .feed_item_repo
-            .create(feed_id, AuthorType::User, actor_id)
+            .create_with_elements(feed_id, AuthorType::User, actor_id, &inputs)
             .await
             .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
-
-        let mut created_elements = Vec::with_capacity(elements.len());
-        for el in elements {
-            let element = self
-                .feed_element_repo
-                .create(item.id, el.element_type, &el.content_json, el.position)
-                .await
-                .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
-            created_elements.push(element);
-        }
 
         Ok(FeedItemWithElements {
             item,
@@ -493,6 +493,26 @@ mod tests {
             } else {
                 Ok(())
             }
+        }
+        async fn create_with_elements(
+            &self,
+            feed_id: Uuid,
+            author_type: AuthorType,
+            author_id: Uuid,
+            elements: &[domain::feed_item::NewFeedElementInput],
+        ) -> Result<(FeedItem, Vec<FeedElement>), FeedItemError> {
+            let item = self.create(feed_id, author_type, author_id).await?;
+            let created: Vec<FeedElement> = elements
+                .iter()
+                .map(|el| FeedElement {
+                    id: Uuid::new_v4(),
+                    feed_item_id: item.id,
+                    element_type: el.element_type,
+                    content_json: el.content_json.clone(),
+                    position: el.position,
+                })
+                .collect();
+            Ok((item, created))
         }
     }
 
