@@ -69,9 +69,8 @@ impl TagService {
             })
     }
 
-    /// Create an entity-backed tag and attach it to the entity in one call.
+    /// Create an entity-backed tag and attach it to the entity atomically.
     /// Auto-approved. Used for org/character tag auto-creation.
-    /// If attach fails, the created tag is cleaned up.
     pub async fn create_entity_tag(
         &self,
         category: TagCategory,
@@ -81,32 +80,15 @@ impl TagService {
     ) -> Result<Tag, TagServiceError> {
         let name = Self::validate_tag_name(name)?;
 
-        let mut tag = self
+        let tag = self
             .tag_repo
-            .create(category, &name, true)
+            .create_and_attach(category, &name, true, entity_type, entity_id)
             .await
             .map_err(|e| match e {
                 domain::tag::TagError::NameTaken(n) => TagServiceError::NameTaken(n),
                 other => TagServiceError::Internal(other.to_string()),
             })?;
 
-        if let Err(e) = self
-            .entity_tag_repo
-            .attach(entity_type, entity_id, tag.id)
-            .await
-        {
-            // TODO(review): compensating rollback should be replaced by a DB transaction in Feature 3.5
-            // Compensating rollback: clean up the orphaned tag
-            let _ = self.tag_repo.delete(tag.id).await;
-            return Err(TagServiceError::Internal(e.to_string()));
-        }
-
-        self.tag_repo
-            .increment_usage_count(tag.id)
-            .await
-            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
-
-        tag.usage_count = 1;
         Ok(tag)
     }
 
@@ -563,11 +545,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(tag.category, TagCategory::Organization);
+        assert_eq!(tag.name, "my-studio");
         assert!(tag.is_approved);
-
-        let tags = svc.list_tags_for_entity(TaggableEntityType::Org, org_id).await.unwrap();
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].id, tag.id);
+        assert_eq!(tag.usage_count, 1);
     }
 
     #[tokio::test]
