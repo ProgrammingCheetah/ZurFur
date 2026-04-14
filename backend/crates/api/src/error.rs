@@ -5,8 +5,10 @@
 //! Service-layer errors implement `From` into `AppError`, enabling the
 //! `?` operator throughout handlers without explicit `.map_err()` calls.
 
+use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
+use serde::Serialize;
 
 use application::auth::login::LoginError;
 use application::feed::service::FeedServiceError;
@@ -33,21 +35,28 @@ pub enum AppError {
     BadGateway(String),
 }
 
+/// JSON envelope for error responses. Every error returns this shape.
+#[derive(Serialize)]
+struct ErrorBody {
+    error: String,
+    code: &'static str,
+}
+
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
-        let (status, message) = match self {
-            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg),
-            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg),
-            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
-            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
-            AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
+        let (status, code, message) = match self {
+            AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, "bad_request", msg),
+            AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, "unauthorized", msg),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, "forbidden", msg),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, "not_found", msg),
+            AppError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", msg),
             AppError::Internal(msg) => {
                 tracing::error!("Internal error: {msg}");
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+                (StatusCode::INTERNAL_SERVER_ERROR, "internal_error", "Internal server error".into())
             }
-            AppError::BadGateway(msg) => (StatusCode::BAD_GATEWAY, msg),
+            AppError::BadGateway(msg) => (StatusCode::BAD_GATEWAY, "bad_gateway", msg),
         };
-        (status, message).into_response()
+        (status, Json(ErrorBody { error: message, code })).into_response()
     }
 }
 
