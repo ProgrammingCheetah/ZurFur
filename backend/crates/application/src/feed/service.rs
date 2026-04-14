@@ -3,7 +3,7 @@ use std::sync::Arc;
 use domain::entity_feed::{EntityFeedRepository, EntityType};
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use domain::feed_element::{FeedElement, FeedElementRepository, FeedElementType};
-use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository};
+use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository, NewFeedElementInput};
 use domain::organization_member::{OrganizationMemberRepository, Permissions};
 use uuid::Uuid;
 
@@ -24,12 +24,8 @@ pub enum FeedServiceError {
     Internal(String),
 }
 
-/// Input for creating a new feed element within a post.
-pub struct NewFeedElement {
-    pub element_type: FeedElementType,
-    pub content_json: String,
-    pub position: i32,
-}
+/// Re-export domain input type for feed element creation.
+pub use domain::feed_item::NewFeedElementInput as NewFeedElement;
 
 /// A feed item together with its content elements.
 pub struct FeedItemWithElements {
@@ -188,24 +184,13 @@ impl FeedService {
         actor_id: Uuid,
         elements: Vec<NewFeedElement>,
     ) -> Result<FeedItemWithElements, FeedServiceError> {
-        use domain::feed_item::NewFeedElementInput;
-
         let org_id = self.resolve_feed_org(feed_id).await?;
         self.require_feed_permission_on_org(org_id, actor_id, Permissions::MANAGE_PROFILE)
             .await?;
 
-        let inputs: Vec<NewFeedElementInput> = elements
-            .into_iter()
-            .map(|el| NewFeedElementInput {
-                element_type: el.element_type,
-                content_json: el.content_json,
-                position: el.position,
-            })
-            .collect();
-
         let (item, created_elements) = self
             .feed_item_repo
-            .create_with_elements(feed_id, AuthorType::User, actor_id, &inputs)
+            .create_with_elements(feed_id, AuthorType::User, actor_id, &elements)
             .await
             .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
 
