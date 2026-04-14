@@ -32,6 +32,7 @@ pub struct CallbackQuery {
     pub state: String,
     /// Issuer identifier from the authorization server.
     /// TODO: validate against expected issuer to prevent mix-up attacks.
+    #[allow(dead_code)]
     pub iss: Option<String>,
 }
 

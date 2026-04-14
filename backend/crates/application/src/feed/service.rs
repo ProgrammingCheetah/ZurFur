@@ -102,6 +102,7 @@ impl FeedService {
     /// Create a system feed and attach it to an org. No permission check —
     /// called from orchestration layer (org creation, onboarding), not from users.
     /// If attach fails, the created feed is cleaned up (compensating rollback).
+    // TODO(review): compensating rollback (soft_delete on failed attach) should be replaced by a DB transaction in Feature 3.5
     pub async fn create_system_feed(
         &self,
         org_id: Uuid,
@@ -130,6 +131,7 @@ impl FeedService {
     }
 
     /// Create a custom feed and attach it to an org.
+    // TODO(review): no compensating rollback if attach fails — orphan feed left in DB. Wrap in transaction (Feature 3.5)
     pub async fn create_custom_feed(
         &self,
         org_id: Uuid,
@@ -197,6 +199,7 @@ impl FeedService {
     }
 
     /// Post a new item with elements to a feed.
+    // TODO(review): partial element creation is not rolled back if a later element fails — needs transaction (Feature 3.5)
     pub async fn post_to_feed(
         &self,
         feed_id: Uuid,

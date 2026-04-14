@@ -95,6 +95,7 @@ impl TagService {
             .attach(entity_type, entity_id, tag.id)
             .await
         {
+            // TODO(review): compensating rollback should be replaced by a DB transaction in Feature 3.5
             // Compensating rollback: clean up the orphaned tag
             let _ = self.tag_repo.delete(tag.id).await;
             return Err(TagServiceError::Internal(e.to_string()));
@@ -191,6 +192,7 @@ impl TagService {
     }
 
     /// Attach a tag to an entity and increment the tag's usage count.
+    // TODO(review): attach + increment_usage_count are not atomic — count can drift if increment fails. Needs transaction (Feature 3.5)
     pub async fn attach_tag(
         &self,
         entity_type: TaggableEntityType,
@@ -217,6 +219,7 @@ impl TagService {
     }
 
     /// Detach a tag from an entity and decrement the tag's usage count.
+    // TODO(review): detach + decrement_usage_count are not atomic — count can drift if decrement fails. Needs transaction (Feature 3.5)
     pub async fn detach_tag(
         &self,
         entity_type: TaggableEntityType,

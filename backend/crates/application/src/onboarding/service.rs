@@ -100,6 +100,7 @@ impl OnboardingService {
             }
         };
 
+        // TODO(review): feed slugs are hardcoded; should be a shared constant or config if these evolve
         // 5. Create missing system feeds
         let mut desired_feeds = vec![
             ("bio", "Bio"),
@@ -130,6 +131,7 @@ impl OnboardingService {
             feeds_created.push(feed);
         }
 
+        // TODO(review): feed creation + onboarding mark are not atomic — crash between them leaves feeds created but onboarding incomplete (Feature 3.5)
         // 6. Mark onboarding completed
         self.user_repo
             .mark_onboarding_completed(user_id)

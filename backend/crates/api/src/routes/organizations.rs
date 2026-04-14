@@ -75,6 +75,7 @@ async fn create_org(
         .await
         .map_err(map_org_error)?;
 
+    // TODO(review): org + member + tag + feed creation spans 4 separate DB operations with no transaction — partial failure leaves inconsistent state (Feature 3.5)
     // Orchestration: auto-create org tag + bio feed (best-effort)
     if let Err(e) = state
         .tag_service
@@ -326,17 +327,9 @@ fn map_org_error(e: OrgServiceError) -> (StatusCode, String) {
     }
 }
 
-// --- Helpers -----------------------------------------------------------------
+// --- Helpers (re-exported from shared module) --------------------------------
 
-pub(super) fn parse_user_id(sub: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
-    sub.parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))
-}
-
-pub(super) fn parse_uuid(s: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
-    s.parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid UUID: {s}")))
-}
+pub(super) use super::helpers::{parse_user_id, parse_uuid};
 
 async fn resolve_org_id(
     state: &SharedState,

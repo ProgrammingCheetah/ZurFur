@@ -242,6 +242,7 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                         self.org_repo.clone(),
                         self.member_repo.clone(),
                     );
+                    // TODO(review): silent error swallowing — failed self-healing org creation is only logged
                     if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
                         eprintln!(
                             "Failed to create personal org for returning user {}: {e}",
@@ -414,6 +415,7 @@ impl<S: OAuthRequestStorage> AuthService<S> {
     }
 
     async fn create_refresh_token(&self, user_id: Uuid) -> Result<String, LoginError> {
+        // TODO(review): UUID v4 provides 122 bits of randomness; consider using a CSPRNG for refresh tokens
         let raw_token = Uuid::new_v4().to_string();
         let token_hash = hash_token(&raw_token);
         let expires_at =

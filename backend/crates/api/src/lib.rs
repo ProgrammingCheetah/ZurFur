@@ -14,6 +14,7 @@ pub fn router(state: AppState) -> axum::Router {
     // Derive tunnel origin from OAUTH_CLIENT_ID so CORS works through cloudflared.
     // The client_id is a URL like "https://tunnel.trycloudflare.com/client-metadata.json"
     // — we extract the origin (scheme + host).
+    // TODO(review): CORS origins are hardcoded; should be configurable via env var for different deployments
     let mut origins: Vec<HeaderValue> = vec![
         "http://localhost:5173".parse().unwrap(),
         "https://auth.zurfur.app".parse().unwrap(),

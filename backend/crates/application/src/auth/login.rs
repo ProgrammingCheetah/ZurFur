@@ -96,6 +96,7 @@ async fn get_identity_resolver(plc_hostname: &str) -> Result<SharedIdentityResol
     let http_client = build_http_client().await?;
     // Explicit nameservers: systemd-resolved (127.0.0.53) fails with HickoryDns.
     // Use public resolvers directly.
+    // TODO(review): DNS server IPs are hardcoded; should be configurable or use system defaults
     let dns_resolver = Arc::new(HickoryDnsResolver::create_resolver(&[
         "1.1.1.1".parse().unwrap(),
         "8.8.8.8".parse().unwrap(),
@@ -303,6 +304,7 @@ pub async fn complete_oauth_login(
     })?;
     eprintln!("[auth] Token exchange succeeded, sub={:?}", token_response.sub);
 
+    // TODO(review): silent error swallowing — cleanup failure leaves stale OAuth state in storage
     // Delete OAuth request only after successful exchange (allows retry on transient failure)
     if let Err(e) = storage.delete_oauth_request_by_state(state).await {
         eprintln!("Failed to clean up OAuth request for state: {e}");

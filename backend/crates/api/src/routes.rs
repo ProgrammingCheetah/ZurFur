@@ -1,5 +1,9 @@
+// TODO(review): all handlers return Result<T, (StatusCode, String)>. The Axum best practice is to
+// define an AppError enum that implements IntoResponse, enabling the ? operator throughout handlers
+// instead of .map_err(map_*_error) on every call. This is a cross-cutting refactor for a future PR.
 mod auth;
 mod feeds;
+mod helpers;
 mod onboarding;
 mod organizations;
 mod tags;

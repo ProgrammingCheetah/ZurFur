@@ -15,7 +15,7 @@ use domain::tag::TagCategory;
 use serde::{Deserialize, Serialize};
 
 use crate::state::SharedState;
-use super::organizations::parse_uuid;
+use super::helpers::parse_uuid;
 use crate::middleware::AuthUser;
 
 /// Default page size for paginated tag queries.
@@ -93,6 +93,7 @@ fn default_limit() -> i64 {
 // --- Handlers ----------------------------------------------------------------
 
 /// POST /tags — create a user-submitted tag (metadata or general only).
+// TODO(review): no authorization check — any authenticated user can create tags. Gate behind admin/mod role when roles are wired.
 async fn create_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
@@ -193,6 +194,7 @@ async fn update_tag(
 }
 
 /// DELETE /tags/:id — hard-delete a tag. Metadata/general only.
+// TODO(review): no authorization check — any authenticated user can delete tags. Gate behind admin/mod role when roles are wired.
 async fn delete_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -204,6 +206,7 @@ async fn delete_tag(
 }
 
 /// POST /tags/:id/approve — mark a tag as approved. Metadata/general only.
+// TODO(review): no authorization check — any authenticated user can approve tags. Must be admin/mod-only.
 async fn approve_tag(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -215,6 +218,7 @@ async fn approve_tag(
 }
 
 /// POST /tags/attach — attach an existing tag to an entity. Increments usage count.
+// TODO(review): no authorization check — any authenticated user can attach tags to any entity. Should verify entity ownership.
 async fn attach_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,
@@ -241,6 +245,7 @@ async fn attach_tag(
 }
 
 /// POST /tags/detach — remove a tag from an entity. Decrements usage count.
+// TODO(review): no authorization check — any authenticated user can detach tags from any entity. Should verify entity ownership.
 async fn detach_tag(
     State(state): State<SharedState>,
     AuthUser(_claims): AuthUser,

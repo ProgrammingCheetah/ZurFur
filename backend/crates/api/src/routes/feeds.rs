@@ -310,5 +310,5 @@ fn map_feed_error(e: FeedServiceError) -> (StatusCode, String) {
     }
 }
 
-// Reuse shared helpers from organizations module.
-use super::organizations::{parse_user_id, parse_uuid};
+// Shared helpers.
+use super::helpers::{parse_user_id, parse_uuid};

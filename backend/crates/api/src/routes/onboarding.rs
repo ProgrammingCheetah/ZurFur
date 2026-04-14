@@ -4,7 +4,7 @@ use domain::onboarding_role::OnboardingRole;
 use serde::{Deserialize, Serialize};
 
 use super::feeds::{FeedResponse, to_feed_response};
-use super::organizations::parse_user_id;
+use super::helpers::parse_user_id;
 use crate::middleware::AuthUser;
 use crate::state::SharedState;
 

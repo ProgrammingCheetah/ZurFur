@@ -100,6 +100,7 @@ async fn main() {
     };
 
     let app = router(state);
+    // TODO(review): bind address and port are hardcoded; should be configurable via env var
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
     println!("Zurfur API listening on 0.0.0.0:3000");
     axum::serve(listener, app).await.unwrap();
@@ -118,6 +119,7 @@ fn load_signing_key() -> atproto_identity::key::KeyData {
         .decode(&key_b64)
         .expect("OAUTH_PRIVATE_KEY is not valid base64");
 
+    // TODO(review): assert! panics at runtime; should return a Result instead
     assert_eq!(
         bytes.len(),
         32,
