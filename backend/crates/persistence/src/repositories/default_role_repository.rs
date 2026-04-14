@@ -4,15 +4,18 @@ use domain::organization_member::Permissions;
 use sqlx::Row;
 use std::sync::Arc;
 
+/// SQLx implementation of `DefaultRoleRepository`.
 pub struct SqlxDefaultRoleRepository {
     pool: Pool,
 }
 
 impl SqlxDefaultRoleRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn DefaultRoleRepository> {
         Arc::new(Self::new(pool))
     }
@@ -39,7 +42,7 @@ impl DefaultRoleRepository for SqlxDefaultRoleRepository {
     async fn find_by_name(&self, name: &str) -> Result<Option<DefaultRole>, DefaultRoleError> {
         let row = sqlx::query(
             "SELECT id, name, default_permissions, hierarchy_level \
-             FROM default_roles WHERE name = $1",
+             FROM default_role WHERE name = $1",
         )
         .bind(name)
         .fetch_optional(&self.pool)
@@ -53,7 +56,7 @@ impl DefaultRoleRepository for SqlxDefaultRoleRepository {
     async fn list_all(&self) -> Result<Vec<DefaultRole>, DefaultRoleError> {
         let rows = sqlx::query(
             "SELECT id, name, default_permissions, hierarchy_level \
-             FROM default_roles ORDER BY hierarchy_level ASC",
+             FROM default_role ORDER BY hierarchy_level ASC",
         )
         .fetch_all(&self.pool)
         .await

@@ -61,7 +61,7 @@ The foundational authentication and social layer of Zurfur. Users authenticate e
 
 ### Requires (must be built first)
 - None — this is the foundational feature
-- 1.2 soft-depends on [Feature 3](../03-commission-engine/README.md) — commission entities needed to cross-post commission-specific content
+- 1.2 soft-depends on [Feature 4](../04-commission-engine/README.md) — commission entities needed to cross-post commission-specific content
 - 1.3 and 1.4 depend on 1.1 being complete (need stored AT Protocol tokens)
 
 ### Enables (unlocked after this is built)

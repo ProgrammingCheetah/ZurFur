@@ -12,17 +12,20 @@ use uuid::Uuid;
 ///   `display_name` is nullable. For personal orgs, NULL means "resolve from the
 ///   owner's username/handle" at the API layer. This avoids duplicating the user's
 ///   handle (which syncs from Bluesky) and prevents stale-data drift.
+///
+///   No `created_by` — creator is the owner member in organization_member.
+///   Aggregates never reference each other in the schema.
 #[derive(Debug, Clone)]
 pub struct Organization {
     pub id: Uuid,
     pub slug: String,
     pub display_name: Option<String>,
     pub is_personal: bool,
-    pub created_by: Uuid,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
+/// Errors from organization operations.
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationError {
     #[error("Organization not found")]
@@ -33,6 +36,7 @@ pub enum OrganizationError {
     Database(String),
 }
 
+/// Repository trait for organization persistence.
 #[async_trait::async_trait]
 pub trait OrganizationRepository: Send + Sync {
     async fn create(
@@ -40,7 +44,6 @@ pub trait OrganizationRepository: Send + Sync {
         slug: &str,
         display_name: Option<&str>,
         is_personal: bool,
-        created_by: Uuid,
     ) -> Result<Organization, OrganizationError>;
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Organization>, OrganizationError>;

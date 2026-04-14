@@ -18,6 +18,7 @@ impl Config {
     }
 }
 
+/// Errors from persistence configuration.
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
     #[error("DATABASE_URL environment variable is not set")]

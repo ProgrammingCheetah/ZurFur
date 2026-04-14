@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
     routing::get,
 };
-use domain::content_rating::ContentRating;
 use serde::{Deserialize, Serialize};
 
 use crate::middleware::AuthUser;
@@ -21,17 +20,10 @@ struct MembershipResponse {
 }
 
 #[derive(Serialize)]
-struct OrgProfileResponse {
-    bio: Option<String>,
-    commission_status: String,
-}
-
-#[derive(Serialize)]
 struct PersonalOrgResponse {
     id: String,
     slug: String,
     display_name: Option<String>,
-    profile: Option<OrgProfileResponse>,
 }
 
 #[derive(Serialize)]
@@ -46,17 +38,16 @@ struct UserProfileResponse {
 
 #[derive(Serialize)]
 struct PreferencesResponse {
-    max_content_rating: String,
+    settings: serde_json::Value,
 }
 
 #[derive(Deserialize)]
 struct UpdatePreferencesRequest {
-    max_content_rating: String,
+    settings: serde_json::Value,
 }
 
 // --- Handlers ----------------------------------------------------------------
 
-/// GET /users/me — user identity + personal org profile + all org memberships.
 async fn get_me(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
@@ -73,20 +64,13 @@ async fn get_me(
         .map_err(map_user_error)?;
 
     let personal_org = profile.personal_org.map(|org| {
-        let org_profile = profile.personal_org_profile.map(|p| OrgProfileResponse {
-            bio: p.bio,
-            commission_status: p.commission_status.as_str().to_string(),
-        });
-
         PersonalOrgResponse {
             id: org.id.to_string(),
             slug: org.slug,
-            // Resolve NULL display_name from owner's handle/username
             display_name: org
                 .display_name
                 .or_else(|| profile.user.handle.clone())
                 .or_else(|| Some(profile.user.username.clone())),
-            profile: org_profile,
         }
     });
 
@@ -110,7 +94,6 @@ async fn get_me(
     }))
 }
 
-/// GET /users/me/preferences
 async fn get_preferences(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
@@ -126,12 +109,15 @@ async fn get_preferences(
         .await
         .map_err(map_user_error)?;
 
-    Ok(Json(PreferencesResponse {
-        max_content_rating: prefs.max_content_rating.as_str().to_string(),
-    }))
+    let settings: serde_json::Value = serde_json::from_str(&prefs.settings)
+        .map_err(|e| {
+            eprintln!("Corrupt preferences JSON for user {user_id}: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+        })?;
+
+    Ok(Json(PreferencesResponse { settings }))
 }
 
-/// PUT /users/me/preferences
 async fn update_preferences(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
@@ -142,29 +128,26 @@ async fn update_preferences(
         .parse()
         .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
 
-    let rating = ContentRating::from_str(&body.max_content_rating).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Invalid content rating: '{}'. Must be 'sfw', 'questionable', or 'nsfw'",
-                body.max_content_rating
-            ),
-        )
-    })?;
+    let settings_str = body.settings.to_string();
 
     let prefs = state
         .user_service
-        .set_max_content_rating(user_id, rating)
+        .set_preferences(user_id, &settings_str)
         .await
         .map_err(map_user_error)?;
 
-    Ok(Json(PreferencesResponse {
-        max_content_rating: prefs.max_content_rating.as_str().to_string(),
-    }))
+    let settings: serde_json::Value = serde_json::from_str(&prefs.settings)
+        .map_err(|e| {
+            eprintln!("Corrupt preferences JSON for user {user_id}: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+        })?;
+
+    Ok(Json(PreferencesResponse { settings }))
 }
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the user route group (profile, preferences).
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/me", get(get_me))
@@ -179,9 +162,6 @@ pub fn router() -> Router<SharedState> {
 fn map_user_error(e: UserServiceError) -> (StatusCode, String) {
     match e {
         UserServiceError::NotFound => (StatusCode::NOT_FOUND, "User not found".into()),
-        UserServiceError::InvalidRating(r) => {
-            (StatusCode::BAD_REQUEST, format!("Invalid content rating: {r}"))
-        }
         UserServiceError::Internal(inner) => {
             eprintln!("Internal user service error: {inner}");
             (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())

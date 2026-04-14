@@ -5,7 +5,6 @@ use axum::{
     http::StatusCode,
     routing::{get, post, put},
 };
-use domain::organization_profile::CommissionStatus;
 use serde::{Deserialize, Serialize};
 
 use crate::middleware::AuthUser;
@@ -31,16 +30,9 @@ struct MemberResponse {
 }
 
 #[derive(Serialize)]
-struct OrgProfileResponse {
-    bio: Option<String>,
-    commission_status: String,
-}
-
-#[derive(Serialize)]
 struct OrgDetailResponse {
     org: OrgResponse,
     members: Vec<MemberResponse>,
-    profile: Option<OrgProfileResponse>,
 }
 
 #[derive(Deserialize)]
@@ -52,12 +44,6 @@ struct CreateOrgRequest {
 #[derive(Deserialize)]
 struct UpdateOrgRequest {
     display_name: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct UpdateProfileRequest {
-    bio: Option<String>,
-    commission_status: String,
 }
 
 #[derive(Deserialize)]
@@ -76,7 +62,6 @@ struct UpdateMemberRequest {
 
 // --- Handlers ----------------------------------------------------------------
 
-/// POST /organizations — create a new org (creator = owner).
 async fn create_org(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
@@ -90,11 +75,31 @@ async fn create_org(
         .await
         .map_err(map_org_error)?;
 
+    // Orchestration: auto-create org tag + bio feed (best-effort)
+    if let Err(e) = state
+        .tag_service
+        .create_entity_tag(
+            domain::tag::TagCategory::Organization,
+            domain::entity_tag::TaggableEntityType::Org,
+            detail.org.id,
+            &body.slug,
+        )
+        .await
+    {
+        eprintln!("Failed to create org tag for {}: {e}", detail.org.id);
+    }
+
+    if let Err(e) = state
+        .feed_service
+        .create_system_feed(detail.org.id, "bio", "Bio")
+        .await
+    {
+        eprintln!("Failed to create bio feed for {}: {e}", detail.org.id);
+    }
+
     Ok((StatusCode::CREATED, Json(to_detail_response(detail))))
 }
 
-/// GET /organizations/:id_or_slug — org details + members + profile.
-/// Accepts either a UUID (org id) or a slug string.
 async fn get_org(
     State(state): State<SharedState>,
     Path(id_or_slug): Path<String>,
@@ -110,7 +115,6 @@ async fn get_org(
     Ok(Json(to_detail_response(detail)))
 }
 
-/// PUT /organizations/:id_or_slug — update display_name (owner only).
 async fn update_org(
     State(state): State<SharedState>,
     Path(id_or_slug): Path<String>,
@@ -129,7 +133,6 @@ async fn update_org(
     Ok(Json(to_org_response(&org)))
 }
 
-/// DELETE /organizations/:id_or_slug — soft-delete org (owner only, personal orgs rejected).
 async fn delete_org(
     State(state): State<SharedState>,
     Path(id_or_slug): Path<String>,
@@ -147,39 +150,6 @@ async fn delete_org(
     Ok(StatusCode::NO_CONTENT)
 }
 
-/// PUT /organizations/:id/profile — update bio/commission_status (MANAGE_PROFILE perm).
-async fn update_profile(
-    State(state): State<SharedState>,
-    Path(id): Path<String>,
-    AuthUser(claims): AuthUser,
-    Json(body): Json<UpdateProfileRequest>,
-) -> Result<Json<OrgProfileResponse>, (StatusCode, String)> {
-    let user_id = parse_user_id(&claims.sub)?;
-    let org_id = parse_uuid(&id)?;
-
-    let status = CommissionStatus::from_str(&body.commission_status).ok_or_else(|| {
-        (
-            StatusCode::BAD_REQUEST,
-            format!(
-                "Invalid commission status: '{}'. Must be 'open', 'closed', or 'waitlist'",
-                body.commission_status
-            ),
-        )
-    })?;
-
-    let profile = state
-        .org_service
-        .update_profile(org_id, user_id, body.bio.as_deref(), status)
-        .await
-        .map_err(map_org_error)?;
-
-    Ok(Json(OrgProfileResponse {
-        bio: profile.bio,
-        commission_status: profile.commission_status.as_str().to_string(),
-    }))
-}
-
-/// GET /organizations/:id/members — list members.
 async fn list_members(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -187,7 +157,6 @@ async fn list_members(
 ) -> Result<Json<Vec<MemberResponse>>, (StatusCode, String)> {
     let org_id = parse_uuid(&id)?;
 
-    // Verify org exists by fetching it
     let detail = state
         .org_service
         .get_org_by_id(org_id)
@@ -203,7 +172,6 @@ async fn list_members(
     ))
 }
 
-/// POST /organizations/:id/members — add member (MANAGE_MEMBERS perm).
 async fn add_member(
     State(state): State<SharedState>,
     Path(id): Path<String>,
@@ -230,7 +198,6 @@ async fn add_member(
     Ok((StatusCode::CREATED, Json(to_member_response(&member))))
 }
 
-/// PUT /organizations/:id/members/:user_id — update role/title/permissions.
 async fn update_member(
     State(state): State<SharedState>,
     Path((id, target_user_id_str)): Path<(String, String)>,
@@ -268,7 +235,6 @@ async fn update_member(
     Ok(Json(to_member_response(&member)))
 }
 
-/// DELETE /organizations/:id/members/:user_id — remove member.
 async fn remove_member(
     State(state): State<SharedState>,
     Path((id, target_user_id_str)): Path<(String, String)>,
@@ -289,14 +255,11 @@ async fn remove_member(
 
 // --- Router ------------------------------------------------------------------
 
+/// Build the organization route group (CRUD, members, feeds).
 pub fn router() -> Router<SharedState> {
-    // All sub-resource routes use /{id}/... where id is a UUID.
-    // The GET by slug route shares the same /{param} pattern —
-    // the handler disambiguates by trying UUID parse first, then slug lookup.
     Router::new()
         .route("/", post(create_org))
         .route("/{id_or_slug}", get(get_org).put(update_org).delete(delete_org))
-        .route("/{id}/profile", put(update_profile))
         .route("/{id}/members", get(list_members).post(add_member))
         .route(
             "/{id}/members/{user_id}",
@@ -332,15 +295,9 @@ fn to_member_response(m: &domain::organization_member::OrganizationMember) -> Me
 fn to_detail_response(
     detail: application::organization::service::OrgDetail,
 ) -> OrgDetailResponse {
-    let profile = detail.profile.map(|p| OrgProfileResponse {
-        bio: p.bio,
-        commission_status: p.commission_status.as_str().to_string(),
-    });
-
     OrgDetailResponse {
         org: to_org_response(&detail.org),
         members: detail.members.iter().map(to_member_response).collect(),
-        profile,
     }
 }
 
@@ -362,9 +319,6 @@ fn map_org_error(e: OrgServiceError) -> (StatusCode, String) {
             StatusCode::FORBIDDEN,
             "Cannot remove the owner from an organization".into(),
         ),
-        OrgServiceError::InvalidStatus(s) => {
-            (StatusCode::BAD_REQUEST, format!("Invalid commission status: {s}"))
-        }
         OrgServiceError::Internal(inner) => {
             eprintln!("Internal org service error: {inner}");
             (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
@@ -384,8 +338,6 @@ pub(super) fn parse_uuid(s: &str) -> Result<uuid::Uuid, (StatusCode, String)> {
         .map_err(|_| (StatusCode::BAD_REQUEST, format!("Invalid UUID: {s}")))
 }
 
-/// Resolve an org ID from either a UUID string or a slug.
-/// Tries UUID parse first; falls back to slug lookup.
 async fn resolve_org_id(
     state: &SharedState,
     id_or_slug: &str,

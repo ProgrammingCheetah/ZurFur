@@ -67,7 +67,7 @@ These are the factors that will determine whether Zurfur succeeds or fails:
 
 ### Critical Risks
 
-6. **Scope creep.** The design document describes a "super app" with 13+ features, a plugin ecosystem, AI analytics, and AT Protocol federation. Building all of this before validating the core commission flow is a path to failure. The critical path (auth → orgs → tags → feeds → TOS → commissions → payments) must be completed and validated before anything else.
+6. **Scope creep.** The design document describes a "super app" with 14 features, a plugin ecosystem, AI analytics, and AT Protocol federation. Building all of this before validating the core commission flow is a path to failure. The critical path (auth → orgs → tags → feeds → TOS → commissions → payments) must be completed and validated before anything else.
 
 7. **AT Protocol maturity.** The AT Protocol is still evolving. Building on it provides long-term advantages but introduces short-term risk: API changes, missing features, and a small ecosystem. The two-tier architecture mitigates this by keeping private data in PostgreSQL regardless.
 

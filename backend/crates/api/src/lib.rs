@@ -9,6 +9,7 @@ pub use state::{AppState, SharedState};
 use axum::http::{HeaderValue, Method, header};
 use tower_http::cors::CorsLayer;
 
+/// Build the top-level Axum router with CORS and all route modules.
 pub fn router(state: AppState) -> axum::Router {
     // Derive tunnel origin from OAUTH_CLIENT_ID so CORS works through cloudflared.
     // The client_id is a URL like "https://tunnel.trycloudflare.com/client-metadata.json"

@@ -2,12 +2,14 @@ mod auth;
 mod feeds;
 mod onboarding;
 mod organizations;
+mod tags;
 mod users;
 
 use axum::{Router, routing::get};
 
 use crate::state::SharedState;
 
+/// Build the aggregated route tree for all API modules.
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/", get(|| async { "Hello, World!" }))
@@ -17,6 +19,7 @@ pub fn router() -> Router<SharedState> {
         .nest("/organizations", organizations::router())
         .nest("/onboarding", onboarding::router())
         .nest("/feeds", feeds::feed_router())
+        .nest("/tags", tags::router())
 }
 
 /// Serve OAuth client metadata so Bluesky's auth server can verify our identity.

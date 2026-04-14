@@ -14,7 +14,7 @@
 
 ### What Needs Scrutiny
 
-**The "super app" framing is a risk.** The design document describes 13 features, a plugin ecosystem, AI analytics, federated data hosting, and community wikis. This is a 5-year vision presented as a 1-year roadmap. The critical path (auth → orgs → tags → feeds → TOS → commissions → payments) is already 7+ features deep before a single commission can be completed. Every feature added to the critical path delays the moment of truth: does anyone actually use this to commission art?
+**The "super app" framing is a risk.** The design document describes 14 features, a plugin ecosystem, AI analytics, federated data hosting, and community wikis. This is a 5-year vision presented as a 1-year roadmap. The critical path (auth → orgs → tags → feeds → TOS → commissions → payments) is already 7+ features deep before a single commission can be completed. Every feature added to the critical path delays the moment of truth: does anyone actually use this to commission art?
 
 **Recommendation:** Treat the critical path as the only path until end-to-end commissions work. Features like profile customization (CSS injection), character repositories, gamification (XP/badges), and the wiki are growth features, not foundation features. They should be explicitly deprioritized.
 
@@ -166,14 +166,14 @@ The tag domain + persistence layer should be built as the next Tier 1 infrastruc
 ### Immediate (This Development Cycle)
 
 1. Finish Feature 2 Phase 2 application layer (onboarding + feed creation on org setup)
-2. Build Tag Taxonomy domain + persistence (Feature 8.2) — it's needed by almost everything downstream
+2. Build Tag Taxonomy domain + persistence (Feature 3) — it's needed by almost everything downstream
 3. Switch feed pagination from offset to cursor before the API solidifies
 
 ### Next Cycle
 
-4. Feature 10 (Org TOS) — blocking commissions
-5. Feature 3 (Commission Engine) — the product's reason to exist
-6. Feature 4 (Financial Gateway) — Stripe Connect integration
+4. Feature 11 (Org TOS) — blocking commissions
+5. Feature 4 (Commission Engine) — the product's reason to exist
+6. Feature 5 (Financial Gateway) — Stripe Connect integration
 
 ### Defer
 

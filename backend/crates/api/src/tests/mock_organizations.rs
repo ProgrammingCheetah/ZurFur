@@ -6,15 +6,14 @@ use domain::organization::{Organization, OrganizationError, OrganizationReposito
 use domain::organization_member::{
     OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
-use domain::organization_profile::{
-    CommissionStatus, OrganizationProfile, OrganizationProfileError, OrganizationProfileRepository,
-};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+/// Maps user_id → org_id for personal orgs. Populated by test setup.
 #[derive(Default)]
 pub struct MockOrgRepo {
     pub orgs: Mutex<Vec<Organization>>,
+    pub personal_org_owners: Mutex<Vec<(Uuid, Uuid)>>,
 }
 
 #[async_trait]
@@ -24,7 +23,6 @@ impl OrganizationRepository for MockOrgRepo {
         slug: &str,
         display_name: Option<&str>,
         is_personal: bool,
-        created_by: Uuid,
     ) -> Result<Organization, OrganizationError> {
         let mut orgs = self.orgs.lock().await;
         if orgs.iter().any(|o| o.slug == slug) {
@@ -35,7 +33,6 @@ impl OrganizationRepository for MockOrgRepo {
             slug: slug.into(),
             display_name: display_name.map(String::from),
             is_personal,
-            created_by,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
@@ -59,12 +56,15 @@ impl OrganizationRepository for MockOrgRepo {
         &self,
         user_id: Uuid,
     ) -> Result<Option<Organization>, OrganizationError> {
-        let orgs = self.orgs.lock().await;
-        let org = orgs
-            .iter()
-            .find(|o| o.created_by == user_id && o.is_personal)
-            .cloned();
-        Ok(org)
+        let owners = self.personal_org_owners.lock().await;
+        let org_id = owners.iter().find(|(uid, _)| *uid == user_id).map(|(_, oid)| *oid);
+        match org_id {
+            Some(id) => {
+                let orgs = self.orgs.lock().await;
+                Ok(orgs.iter().find(|o| o.id == id).cloned())
+            }
+            None => Ok(None),
+        }
     }
     async fn update_display_name(
         &self,
@@ -199,40 +199,5 @@ impl OrganizationMemberRepository for MockMemberRepo {
         } else {
             Ok(())
         }
-    }
-}
-
-#[derive(Default)]
-pub struct MockOrgProfileRepo {
-    pub profiles: Mutex<Vec<OrganizationProfile>>,
-}
-
-#[async_trait]
-impl OrganizationProfileRepository for MockOrgProfileRepo {
-    async fn upsert(
-        &self,
-        org_id: Uuid,
-        bio: Option<&str>,
-        commission_status: CommissionStatus,
-    ) -> Result<OrganizationProfile, OrganizationProfileError> {
-        let mut profiles = self.profiles.lock().await;
-        profiles.retain(|p| p.org_id != org_id);
-        let profile = OrganizationProfile {
-            org_id,
-            bio: bio.map(String::from),
-            commission_status,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-        profiles.push(profile.clone());
-        Ok(profile)
-    }
-    async fn find_by_org_id(
-        &self,
-        org_id: Uuid,
-    ) -> Result<Option<OrganizationProfile>, OrganizationProfileError> {
-        let profiles = self.profiles.lock().await;
-        let profile = profiles.iter().find(|p| p.org_id == org_id).cloned();
-        Ok(profile)
     }
 }

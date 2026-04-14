@@ -1899,6 +1899,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "domain",
+ "serde_json",
  "shared",
  "sqlx",
  "thiserror 2.0.18",

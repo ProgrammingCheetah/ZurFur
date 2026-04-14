@@ -6,15 +6,18 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// SQLx implementation of `RefreshTokenRepository`.
 pub struct SqlxRefreshTokenRepository {
     pool: Pool,
 }
 
 impl SqlxRefreshTokenRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn RefreshTokenRepository> {
         Arc::new(Self::new(pool))
     }
@@ -38,7 +41,7 @@ impl RefreshTokenRepository for SqlxRefreshTokenRepository {
         token_hash: &str,
         expires_at: DateTime<Utc>,
     ) -> Result<(), UserError> {
-        sqlx::query("INSERT INTO refresh_tokens (user_id, token_hash, expires_at) VALUES ($1, $2, $3)")
+        sqlx::query("INSERT INTO refresh_token (user_id, token_hash, expires_at) VALUES ($1, $2, $3)")
             .bind(user_id)
             .bind(token_hash)
             .bind(expires_at)
@@ -52,7 +55,7 @@ impl RefreshTokenRepository for SqlxRefreshTokenRepository {
         &self,
         token_hash: &str,
     ) -> Result<Option<RefreshTokenEntity>, UserError> {
-        sqlx::query("SELECT id, user_id, token_hash, expires_at, created_at FROM refresh_tokens WHERE token_hash = $1")
+        sqlx::query("SELECT id, user_id, token_hash, expires_at, created_at FROM refresh_token WHERE token_hash = $1")
             .bind(token_hash)
             .fetch_optional(&self.pool)
             .await
@@ -64,7 +67,7 @@ impl RefreshTokenRepository for SqlxRefreshTokenRepository {
         &self,
         token_hash: &str,
     ) -> Result<Option<RefreshTokenEntity>, UserError> {
-        sqlx::query("DELETE FROM refresh_tokens WHERE token_hash = $1 RETURNING id, user_id, token_hash, expires_at, created_at")
+        sqlx::query("DELETE FROM refresh_token WHERE token_hash = $1 RETURNING id, user_id, token_hash, expires_at, created_at")
             .bind(token_hash)
             .fetch_optional(&self.pool)
             .await
@@ -73,7 +76,7 @@ impl RefreshTokenRepository for SqlxRefreshTokenRepository {
     }
 
     async fn delete_all_for_user(&self, user_id: Uuid) -> Result<(), UserError> {
-        sqlx::query("DELETE FROM refresh_tokens WHERE user_id = $1")
+        sqlx::query("DELETE FROM refresh_token WHERE user_id = $1")
             .bind(user_id)
             .execute(&self.pool)
             .await

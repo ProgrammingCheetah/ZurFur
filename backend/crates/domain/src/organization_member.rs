@@ -25,18 +25,22 @@ impl Permissions {
     pub const MANAGE_PAYMENTS: u64 = 1 << 5;
     pub const ALL: u64 = u64::MAX;
 
+    /// Create a new permission set from raw bits.
     pub fn new(bits: u64) -> Self {
         Self(bits)
     }
 
+    /// Check whether the given permission bit(s) are all set.
     pub fn has(&self, permission: u64) -> bool {
         self.0 & permission == permission
     }
 
+    /// Return a new permission set with the given bit(s) added.
     pub fn add(&self, permission: u64) -> Self {
         Self(self.0 | permission)
     }
 
+    /// Return a new permission set with the given bit(s) removed.
     pub fn remove(&self, permission: u64) -> Self {
         Self(self.0 & !permission)
     }
@@ -61,6 +65,7 @@ pub enum Role {
 }
 
 impl Role {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             Role::Owner => "owner",
@@ -70,6 +75,7 @@ impl Role {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "owner" => Some(Role::Owner),
@@ -117,11 +123,13 @@ pub struct OrganizationMember {
 }
 
 impl OrganizationMember {
+    /// Whether this member has the Owner role.
     pub fn is_owner(&self) -> bool {
         self.role == Role::Owner
     }
 }
 
+/// Errors from organization member operations.
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationMemberError {
     #[error("Member not found")]
@@ -132,6 +140,7 @@ pub enum OrganizationMemberError {
     Database(String),
 }
 
+/// Repository trait for organization member persistence.
 #[async_trait::async_trait]
 pub trait OrganizationMemberRepository: Send + Sync {
     async fn add(

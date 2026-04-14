@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+/// Errors from configuration loading.
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("Missing environment variable: {0}")]
@@ -19,6 +20,7 @@ pub struct JwtConfig {
 }
 
 impl JwtConfig {
+    /// Load JWT configuration from environment variables with defaults.
     pub fn from_env() -> Result<Self, ConfigError> {
         let secret = std::env::var("JWT_SECRET")
             .map_err(|_| ConfigError::Missing("JWT_SECRET"))?;

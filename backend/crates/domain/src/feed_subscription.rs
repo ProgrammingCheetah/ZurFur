@@ -21,6 +21,7 @@ pub enum SubscriptionPermission {
 }
 
 impl SubscriptionPermission {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             SubscriptionPermission::Read => "read",
@@ -29,6 +30,7 @@ impl SubscriptionPermission {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "read" => Some(SubscriptionPermission::Read),
@@ -53,6 +55,7 @@ impl TryFrom<&str> for SubscriptionPermission {
     }
 }
 
+/// An org's subscription to a feed, with a permission level and granting user.
 #[derive(Debug, Clone)]
 pub struct FeedSubscription {
     pub id: Uuid,
@@ -63,6 +66,7 @@ pub struct FeedSubscription {
     pub granted_by_user_id: Uuid,
 }
 
+/// Errors from feed subscription operations.
 #[derive(Debug, thiserror::Error)]
 pub enum FeedSubscriptionError {
     #[error("Subscription not found")]
@@ -73,6 +77,7 @@ pub enum FeedSubscriptionError {
     Database(String),
 }
 
+/// Repository trait for feed subscription persistence.
 #[async_trait::async_trait]
 pub trait FeedSubscriptionRepository: Send + Sync {
     async fn create(

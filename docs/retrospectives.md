@@ -6,7 +6,8 @@
 - Read `CLAUDE.md` at repo root for architecture, commands, and conventions.
 - Read `design/features/OVERVIEW.md` for the feature dependency map and build order.
 - Read the specific feature's `design/features/XX-name/README.md` before starting work.
-- The critical path is: Auth (1) → Identity/Profile (2) → Artist TOS (10) → Commission Engine (3) → Financial (4) → Notifications (9).
+- The critical path is: Auth (1) → Identity/Profile (2) → Tags (3) → TOS (11) → Commission Engine (4) → Financial (5) → Notifications (10).
+- Read `design/glossary.md` for domain concepts, architectural principles, and schema conventions.
 
 ### Branching & PR Workflow
 - Branch structure: `main` ← `feature/auth` ← `feature/auth_submodule-name`
@@ -142,3 +143,75 @@ Automated reviewers re-review the full diff on every push, regenerating comments
 - Org focus tags (art, fursuits, coding)
 - UoW/transaction pattern for multi-repo operations
 - Shared test-utils crate for mock repositories
+
+---
+
+## Feature 2: Identity & Profile Engine (Phase 2)
+
+**PR #10** — `feature/identity-profile_application-api`: Role enum refactor, OnboardingService, FeedService, API routes
+
+### Key Changes
+1. **Role enum refactor**: Replaced free-text `role` + `is_owner: bool` with `Role` enum (Owner/Admin/Mod/Member). `is_owner()` is a derived method. "Artist" is a title, not a role.
+2. **OnboardingService**: Idempotent "what are you?" wizard creating system feeds (updates, gallery, [commissions]) on personal org. Separate from org creation.
+3. **FeedService**: Feed CRUD with permission checks via org membership. Post to feed creates item + elements.
+4. **`NoOpProfileRepo` removed** in Feature 3 (was a code smell flagged in retrospective above).
+
+---
+
+## Feature 3: Tag Taxonomy & Attribution
+
+**PR #13** — `feature/tag-taxonomy_schema-cleanup`: Schema cleanup (singular tables, drop profile, JSONB prefs)
+**PR #14** — `feature/tag-taxonomy_domain-persistence`: Tag + EntityTag domain and persistence
+**PR #15** — `feature/tag-taxonomy_application-api`: TagService, API routes, org tag auto-creation
+
+### Key Architectural Decisions
+
+1. **Aggregates are decoupled at the database level.** No aggregate table references another. All cross-aggregate relationships live in junction tables (`entity_feed`, `entity_tag`, `organization_member`, `feed_subscription`). Application code composes them freely. This is the platform's most important architectural constraint.
+
+2. **Tag is fully decoupled.** No `entity_id` field — a tag doesn't know what it's attached to. The connection lives entirely in `entity_tag`. An org's identity tag is just a tag that happens to be auto-created and attached via `entity_tag`.
+
+3. **Tag category is a PG ENUM** (organization, character, metadata, general). Describes what the tag IS, not how it's connected. Defaults to general. If faceted search later needs finer granularity (species, art_style), the enum gains a new value.
+
+4. **Bio is a feed.** `organization_profiles` table dropped. The org's bio lives in a "bio" system feed — edits are new feed items, giving version history for free.
+
+5. **User preferences as JSONB.** Single `settings` column instead of typed columns. Extensible without migration.
+
+6. **`created_by` dropped from organization.** Creator = owner member in `organization_member`. Aggregates don't reference each other.
+
+7. **Singular table names.** Convention going forward. All tables renamed except `users` (PG reserved word).
+
+8. **Attribution follows the artist, not the org.** Primary attribution = personal org tag (permanent, 1:1 with user). Studio org tag is supplementary. If artist leaves studio, their personal org tag stays.
+
+9. **Org tag auto-creation at orchestration layer.** OrganizationService does NOT create tags. The API handler (create_org) and OnboardingService call TagService — same way OnboardingService creates feeds.
+
+10. **`TaggableEntityType` is separate from `EntityType`.** `entity_feed` supports org/character/commission/user. `entity_tag` supports org/commission/feed_item/character/feed_element. Different sets, no coupling.
+
+### What Went Well
+- Design discussion before implementation led to significant simplifications: Tag went from 8 fields (`id, tag_type, entity_id, name, category, parent_id, usage_count, is_approved`) to 5 (`id, category, name, usage_count, is_approved`).
+- The "no aggregate references another" principle emerged from iterative discussion and now governs all future design decisions. This is the most impactful outcome of the session.
+- Glossary (`design/glossary.md`) created as a single reference document for domain concepts and conventions. Replaces scattered memory files for architectural knowledge.
+- Domain relationship chart (`design/domain_relationships.md`) with ER diagram makes the architecture scannable.
+- Schema cleanup (table renames, profile drop, JSONB prefs) was bundled with tag work — one migration covers both, avoiding two separate schema-breaking changes.
+- Review feedback from Copilot was substantive and all 9 comments were valid. Fixed in one commit.
+
+### What Didn't Go Well
+- **Schema cleanup commit was massive.** 33 files changed — every SQL query in every repository needed a table name update. Mechanically simple but high blast radius. Could have been a separate PR, but bundling avoided two rounds of schema migration pain.
+- **`find_personal_org` lost its DB constraint.** Dropping `created_by` eliminated the `uq_organizations_personal` unique index. The one-personal-org-per-user rule is now application-layer only. A bug could create duplicates.
+- **Mock repository duplication continues.** MockOrgRepo exists in 4 files (org service tests, auth service tests, onboarding service tests, API test mocks). Each copy has to be updated when the trait changes. A shared test-utils crate would fix this.
+- **No authorization on tag routes.** All tag endpoints accept any authenticated user. Update/delete/approve should be role-gated. Noted for when the permission system matures.
+- **Org tag auto-creation not in auth flow.** Personal org tags are only created during onboarding or when a non-personal org is created via API. Personal orgs created during the auth `complete_login` flow don't get their org tag yet — needs a follow-up.
+
+### Breaking Changes (API)
+- `PUT /organizations/:id/profile` removed (bio is a feed now)
+- `PUT /users/me/preferences` body changed from `{max_content_rating: "sfw"}` to `{settings: {...}}`
+- `OrganizationService::new()` signature: 3→2 args (dropped `profile_repo`)
+- `UserService::new()` signature: 5→4 args (dropped `org_profile_repo`)
+- `OrganizationRepository::create()` signature: dropped `created_by` parameter
+
+### Tracked for Future (Not This PR)
+- Org tag auto-creation in AuthService `complete_login` (personal org flow)
+- Authorization checks on tag routes (role-gated approve/update/delete)
+- Character tag auto-creation (when Character entity is built, Feature 2 Phase 3)
+- Tag synonyms/aliases for search (Phase 2)
+- Shared test-utils crate for mock repositories (systemic issue since Feature 1)
+- `find_personal_org` DB-level uniqueness (consider partial unique index on `organization_member`)

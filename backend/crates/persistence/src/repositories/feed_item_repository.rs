@@ -4,15 +4,18 @@ use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
 
+/// SQLx implementation of `FeedItemRepository`.
 pub struct SqlxFeedItemRepository {
     pool: Pool,
 }
 
 impl SqlxFeedItemRepository {
+    /// Create a new repository instance.
     pub fn new(pool: Pool) -> Self {
         Self { pool }
     }
 
+    /// Create a new repository instance wrapped as a trait object.
     pub fn from_pool(pool: Pool) -> Arc<dyn FeedItemRepository> {
         Arc::new(Self::new(pool))
     }
@@ -42,7 +45,7 @@ impl FeedItemRepository for SqlxFeedItemRepository {
         author_id: Uuid,
     ) -> Result<FeedItem, FeedItemError> {
         let row = sqlx::query(
-            "INSERT INTO feed_items (feed_id, author_type, author_id) \
+            "INSERT INTO feed_item (feed_id, author_type, author_id) \
              VALUES ($1, $2, $3) \
              RETURNING id, feed_id, author_type, author_id, created_at",
         )
@@ -59,7 +62,7 @@ impl FeedItemRepository for SqlxFeedItemRepository {
     async fn find_by_id(&self, id: Uuid) -> Result<Option<FeedItem>, FeedItemError> {
         let row = sqlx::query(
             "SELECT id, feed_id, author_type, author_id, created_at \
-             FROM feed_items WHERE id = $1",
+             FROM feed_item WHERE id = $1",
         )
         .bind(id)
         .fetch_optional(&self.pool)
@@ -80,7 +83,7 @@ impl FeedItemRepository for SqlxFeedItemRepository {
     ) -> Result<Vec<FeedItem>, FeedItemError> {
         let rows = sqlx::query(
             "SELECT id, feed_id, author_type, author_id, created_at \
-             FROM feed_items WHERE feed_id = $1 \
+             FROM feed_item WHERE feed_id = $1 \
              ORDER BY created_at DESC \
              LIMIT $2 OFFSET $3",
         )
@@ -99,7 +102,7 @@ impl FeedItemRepository for SqlxFeedItemRepository {
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), FeedItemError> {
-        let result = sqlx::query("DELETE FROM feed_items WHERE id = $1")
+        let result = sqlx::query("DELETE FROM feed_item WHERE id = $1")
             .bind(id)
             .execute(&self.pool)
             .await

@@ -85,7 +85,7 @@ Manages user identity, org membership, profile customization, content rating con
 - `content_rating` enum on all displayable content: `sfw`, `questionable`, `nsfw`
 - Viewer preference stored in `user_preferences` table: `user_id`, `max_content_rating` (default `sfw`)
 - All content queries include `WHERE content_rating <= $viewer_rating`
-- Content creators tag their own content; community flagging (Feature 11) catches mis-tagged content
+- Content creators tag their own content; community flagging (Feature 12) catches mis-tagged content
 - API returns content rating metadata so frontend can pre-filter
 
 ### 2.7 Character Repositories
@@ -95,13 +95,13 @@ Manages user identity, org membership, profile customization, content rating con
 **Implementation approach:**
 - `characters` table: `id`, `org_id` (FK orgs), `name`, `description`, `content_rating`, `is_public`, `created_at`
 - Species, hex codes, art style, and other structured data stored as **tags** (not columns). Only `description` is free-text.
-- Tags use the shared Tag infrastructure defined in [Feature 8.2](../08-search-discovery/README.md). Characters and orgs are tagged via the `entity_tags` junction table with `entity_type` values including `character`, `org`, `commission`, and `feed_item`.
+- Tags use the shared Tag infrastructure defined in [Feature 3](../03-tag-taxonomy/README.md). Characters and orgs are tagged via the `entity_tags` junction table with `entity_type` values including `character`, `org`, `commission`, and `feed_item`.
 - On character creation, auto-create a `gallery` feed and a `ref_sheets` feed attached via `entity_feeds`
 - Reference sheets are feed items in the character's `ref_sheets` feed, tagged with `ref_sheet` namespace
 - Gallery items are feed items in the character's `gallery` feed
 - File storage for images: S3-compatible storage (MinIO for dev, AWS S3 for prod)
 - API: full CRUD on `/orgs/:id/characters`, feed management on `/characters/:id/feeds`
-- Characters can be attached to commission requests (Feature 3)
+- Characters can be attached to commission requests (Feature 4)
 
 ## Dependencies
 
@@ -110,9 +110,9 @@ Manages user identity, org membership, profile customization, content rating con
 - File storage solution (S3/MinIO) for reference sheets and gallery images
 
 ### Enables (unlocked after this is built)
-- [Feature 3](../03-commission-engine/README.md) — commissions reference character profiles and org roles
-- [Feature 8](../08-search-discovery/README.md) — org profiles and tags are searchable
-- [Feature 10](../10-artist-tos/README.md) — TOS is attached to org profiles
+- [Feature 4](../04-commission-engine/README.md) — commissions reference character profiles and org roles
+- [Feature 9](../09-search-discovery/README.md) — org profiles and tags are searchable
+- [Feature 11](../11-artist-tos/README.md) — TOS is attached to org profiles
 
 ## Implementation Phases
 
@@ -166,6 +166,6 @@ Manages user identity, org membership, profile customization, content rating con
 - **Character ownership transfer** not addressed (e.g., transferring an OC between orgs)
 - **No collaborative characters** across orgs (shared between multiple orgs)
 - **Tag taxonomy governance** not formalized — who creates canonical tags, how to handle duplicates/synonyms
-- **No profile analytics** (view counts, engagement) — deferred to Feature 7
+- **No profile analytics** (view counts, engagement) — deferred to Feature 8
 - **Org member permissions** beyond role are not granular — no per-feed or per-character access control yet
 - **Feed pagination and performance** at scale not yet addressed

@@ -20,6 +20,7 @@ pub enum FeedType {
 }
 
 impl FeedType {
+    /// Returns the string representation matching the database value.
     pub fn as_str(&self) -> &'static str {
         match self {
             FeedType::System => "system",
@@ -27,6 +28,7 @@ impl FeedType {
         }
     }
 
+    /// Parse from a database string value. Returns `None` for unknown values.
     pub fn from_str(s: &str) -> Option<Self> {
         match s {
             "system" => Some(FeedType::System),
@@ -50,6 +52,7 @@ impl TryFrom<&str> for FeedType {
     }
 }
 
+/// A feed -- the universal content container for activity streams, galleries, and more.
 #[derive(Debug, Clone)]
 pub struct Feed {
     pub id: Uuid,
@@ -62,6 +65,7 @@ pub struct Feed {
     pub deleted_at: Option<DateTime<Utc>>,
 }
 
+/// Errors from feed operations.
 #[derive(Debug, thiserror::Error)]
 pub enum FeedError {
     #[error("Feed not found")]
@@ -74,6 +78,7 @@ pub enum FeedError {
     Database(String),
 }
 
+/// Repository trait for feed persistence.
 #[async_trait::async_trait]
 pub trait FeedRepository: Send + Sync {
     async fn create(

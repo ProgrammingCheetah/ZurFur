@@ -15,15 +15,19 @@ use domain::feed_element::FeedElementRepository;
 use domain::feed_item::FeedItemRepository;
 use domain::organization::OrganizationRepository;
 use domain::organization_member::OrganizationMemberRepository;
-use domain::organization_profile::OrganizationProfileRepository;
 use domain::user::UserRepository;
 use domain::user_preferences::UserPreferencesRepository;
 use shared::JwtConfig;
 use uuid::Uuid;
 
 use super::mock_auth::{MockRefreshRepo, MockSessionRepo, MockStateStore};
+use application::tag::service::TagService;
+use domain::entity_tag::EntityTagRepository;
+use domain::tag::TagRepository;
+
 use super::mock_feeds::{MockEntityFeedRepo, MockFeedElementRepo, MockFeedItemRepo, MockFeedRepo};
-use super::mock_organizations::{MockMemberRepo, MockOrgProfileRepo, MockOrgRepo};
+use super::mock_organizations::{MockMemberRepo, MockOrgRepo};
+use super::mock_tags::{MockEntityTagRepo, MockTagRepo};
 use super::mock_users::{MockPreferencesRepo, MockUserRepo};
 use crate::AppState;
 
@@ -54,8 +58,6 @@ pub fn test_app_state() -> AppState {
 
     let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo::default());
     let member_repo: Arc<dyn OrganizationMemberRepository> = Arc::new(MockMemberRepo::default());
-    let org_profile_repo: Arc<dyn OrganizationProfileRepository> =
-        Arc::new(MockOrgProfileRepo::default());
     let preferences_repo: Arc<dyn UserPreferencesRepository> =
         Arc::new(MockPreferencesRepo::default());
 
@@ -74,7 +76,6 @@ pub fn test_app_state() -> AppState {
     let user_service = UserService::new(
         user_repo.clone(),
         org_repo.clone(),
-        org_profile_repo.clone(),
         member_repo.clone(),
         preferences_repo,
     );
@@ -82,7 +83,6 @@ pub fn test_app_state() -> AppState {
     let org_service = OrganizationService::new(
         org_repo.clone(),
         member_repo.clone(),
-        org_profile_repo,
     );
 
     let feed_repo: Arc<dyn FeedRepository> = Arc::new(MockFeedRepo::default());
@@ -106,12 +106,18 @@ pub fn test_app_state() -> AppState {
         member_repo,
     );
 
+    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::default());
+    let entity_tag_repo: Arc<dyn EntityTagRepository> = Arc::new(MockEntityTagRepo::default());
+
+    let tag_service = TagService::new(tag_repo, entity_tag_repo);
+
     AppState {
         auth_service,
         user_service,
         org_service,
         onboarding_service,
         feed_service,
+        tag_service,
     }
 }
 

@@ -7,6 +7,7 @@ use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository};
 use domain::organization_member::{OrganizationMemberRepository, Permissions};
 use uuid::Uuid;
 
+/// Errors from feed service operations.
 #[derive(Debug, thiserror::Error)]
 pub enum FeedServiceError {
     #[error("Feed not found")]
@@ -23,17 +24,20 @@ pub enum FeedServiceError {
     Internal(String),
 }
 
+/// Input for creating a new feed element within a post.
 pub struct NewFeedElement {
     pub element_type: FeedElementType,
     pub content_json: String,
     pub position: i32,
 }
 
+/// A feed item together with its content elements.
 pub struct FeedItemWithElements {
     pub item: FeedItem,
     pub elements: Vec<FeedElement>,
 }
 
+/// Orchestrates feed CRUD, posting, and permission checks.
 pub struct FeedService {
     feed_repo: Arc<dyn FeedRepository>,
     entity_feed_repo: Arc<dyn EntityFeedRepository>,
@@ -43,6 +47,7 @@ pub struct FeedService {
 }
 
 impl FeedService {
+    /// Create a new feed service with all required repositories.
     pub fn new(
         feed_repo: Arc<dyn FeedRepository>,
         entity_feed_repo: Arc<dyn EntityFeedRepository>,
@@ -92,6 +97,36 @@ impl FeedService {
             .await
             .map_err(|e| FeedServiceError::Internal(e.to_string()))?
             .ok_or(FeedServiceError::FeedNotFound)
+    }
+
+    /// Create a system feed and attach it to an org. No permission check —
+    /// called from orchestration layer (org creation, onboarding), not from users.
+    /// If attach fails, the created feed is cleaned up (compensating rollback).
+    pub async fn create_system_feed(
+        &self,
+        org_id: Uuid,
+        slug: &str,
+        display_name: &str,
+    ) -> Result<Feed, FeedServiceError> {
+        let feed = self
+            .feed_repo
+            .create(slug, display_name, None, FeedType::System)
+            .await
+            .map_err(|e| match e {
+                FeedError::SlugTaken(s) => FeedServiceError::SlugTaken(s),
+                other => FeedServiceError::Internal(other.to_string()),
+            })?;
+
+        if let Err(e) = self
+            .entity_feed_repo
+            .attach(feed.id, EntityType::Org, org_id)
+            .await
+        {
+            let _ = self.feed_repo.soft_delete(feed.id).await;
+            return Err(FeedServiceError::Internal(e.to_string()));
+        }
+
+        Ok(feed)
     }
 
     /// Create a custom feed and attach it to an org.
