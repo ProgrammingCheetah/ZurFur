@@ -395,6 +395,17 @@ mod tests {
                 .collect();
             Ok(result)
         }
+        async fn create_and_attach(
+            &self,
+            slug: &str,
+            display_name: &str,
+            description: Option<&str>,
+            feed_type: FeedType,
+            _entity_type: domain::entity_feed::EntityType,
+            _entity_id: Uuid,
+        ) -> Result<Feed, FeedError> {
+            self.create(slug, display_name, description, feed_type).await
+        }
     }
 
     #[derive(Default)]

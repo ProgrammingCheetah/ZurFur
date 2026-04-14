@@ -1,5 +1,6 @@
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
+use domain::entity_feed::EntityType;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use sqlx::Row;
 use std::sync::Arc;
@@ -155,5 +156,54 @@ impl FeedRepository for SqlxFeedRepository {
             feeds.push(map_feed(row)?);
         }
         Ok(feeds)
+    }
+
+    async fn create_and_attach(
+        &self,
+        slug: &str,
+        display_name: &str,
+        description: Option<&str>,
+        feed_type: FeedType,
+        entity_type: EntityType,
+        entity_id: Uuid,
+    ) -> Result<Feed, FeedError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        let row = sqlx::query(
+            "INSERT INTO feed (slug, display_name, description, feed_type) \
+             VALUES ($1, $2, $3, $4) \
+             RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
+        )
+        .bind(slug)
+        .bind(display_name)
+        .bind(description)
+        .bind(feed_type.as_str())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                FeedError::SlugTaken(slug.to_string())
+            } else {
+                FeedError::Database(e.to_string())
+            }
+        })?;
+
+        let feed = map_feed(row)?;
+
+        sqlx::query(
+            "INSERT INTO entity_feed (feed_id, entity_type, entity_id) VALUES ($1, $2, $3)",
+        )
+        .bind(feed.id)
+        .bind(entity_type.as_str())
+        .bind(entity_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        tx.commit().await
+            .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        Ok(feed)
     }
 }
