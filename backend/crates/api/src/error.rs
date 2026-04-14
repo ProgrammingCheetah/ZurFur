@@ -156,7 +156,10 @@ impl From<LoginError> for AppError {
             LoginError::PdsNotFound => {
                 AppError::NotFound("No PDS found for account".into())
             }
-            LoginError::OAuth(msg) => AppError::Internal(format!("OAuth error: {msg}")),
+            LoginError::OAuth(msg) => {
+                tracing::error!("OAuth error: {msg}");
+                AppError::BadGateway("OAuth provider failure".into())
+            }
             LoginError::InvalidState => {
                 AppError::BadRequest("Invalid or expired session state".into())
             }

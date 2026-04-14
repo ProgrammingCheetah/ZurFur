@@ -158,9 +158,10 @@ async fn list_feed_items(
     let feed_id = parse_uuid(&id)?;
 
     let limit = pagination.limit.clamp(1, 100);
+    let offset = pagination.offset.max(0);
     let items = state
         .feed_service
-        .list_feed_items(feed_id, limit, pagination.offset)
+        .list_feed_items(feed_id, limit, offset)
         .await?;
 
     let response: Vec<FeedItemResponse> = items.iter().map(FeedItemResponse::from).collect();
