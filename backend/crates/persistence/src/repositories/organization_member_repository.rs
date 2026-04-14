@@ -48,6 +48,40 @@ macro_rules! cols {
     };
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn add_organization_member<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    org_id: Uuid,
+    user_id: Uuid,
+    role: Role,
+    title: Option<&str>,
+    permissions: Permissions,
+) -> Result<OrganizationMember, OrganizationMemberError> {
+    sqlx::query(concat!(
+        "INSERT INTO organization_member (org_id, user_id, role, title, permissions) ",
+        "VALUES ($1, $2, $3, $4, $5) ",
+        "RETURNING ", cols!()
+    ))
+    .bind(org_id)
+    .bind(user_id)
+    .bind(role.as_str())
+    .bind(title)
+    .bind(permissions.0 as i64)
+    .fetch_one(executor)
+    .await
+    .map(map_member)
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            OrganizationMemberError::AlreadyMember
+        } else {
+            OrganizationMemberError::Database(e.to_string())
+        }
+    })
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
     async fn add(
@@ -58,26 +92,7 @@ impl OrganizationMemberRepository for SqlxOrganizationMemberRepository {
         title: Option<&str>,
         permissions: Permissions,
     ) -> Result<OrganizationMember, OrganizationMemberError> {
-        sqlx::query(concat!(
-            "INSERT INTO organization_member (org_id, user_id, role, title, permissions) ",
-            "VALUES ($1, $2, $3, $4, $5) ",
-            "RETURNING ", cols!()
-        ))
-        .bind(org_id)
-        .bind(user_id)
-        .bind(role.as_str())
-        .bind(title)
-        .bind(permissions.0 as i64)
-        .fetch_one(&self.pool)
-        .await
-        .map(map_member)
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                OrganizationMemberError::AlreadyMember
-            } else {
-                OrganizationMemberError::Database(e.to_string())
-            }
-        })
+        add_organization_member(&self.pool, org_id, user_id, role, title, permissions).await
     }
 
     async fn find_by_org_and_user(

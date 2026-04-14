@@ -71,6 +71,29 @@ pub(super) async fn attach_entity_tag<'e>(
     map_entity_tag(row)
 }
 
+pub(super) async fn detach_entity_tag<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    entity_type: TaggableEntityType,
+    entity_id: Uuid,
+    tag_id: Uuid,
+) -> Result<(), EntityTagError> {
+    let result = sqlx::query(
+        "DELETE FROM entity_tag \
+         WHERE entity_type = $1 AND entity_id = $2 AND tag_id = $3",
+    )
+    .bind(entity_type.as_str())
+    .bind(entity_id)
+    .bind(tag_id)
+    .execute(executor)
+    .await
+    .map_err(|e| EntityTagError::Database(e.to_string()))?;
+
+    if result.rows_affected() == 0 {
+        return Err(EntityTagError::NotFound);
+    }
+    Ok(())
+}
+
 // --- Trait implementation ----------------------------------------------------
 
 #[async_trait::async_trait]
@@ -90,21 +113,7 @@ impl EntityTagRepository for SqlxEntityTagRepository {
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), EntityTagError> {
-        let result = sqlx::query(
-            "DELETE FROM entity_tag \
-             WHERE entity_type = $1 AND entity_id = $2 AND tag_id = $3",
-        )
-        .bind(entity_type.as_str())
-        .bind(entity_id)
-        .bind(tag_id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| EntityTagError::Database(e.to_string()))?;
-
-        if result.rows_affected() == 0 {
-            return Err(EntityTagError::NotFound);
-        }
-        Ok(())
+        detach_entity_tag(&self.pool, entity_type, entity_id, tag_id).await
     }
 
     async fn list_by_entity(

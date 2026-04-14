@@ -97,6 +97,20 @@ async fn increment_usage_count<'e>(
     Ok(())
 }
 
+async fn decrement_usage_count<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    id: Uuid,
+) -> Result<(), TagError> {
+    sqlx::query(
+        "UPDATE tag SET usage_count = GREATEST(usage_count - 1, 0) WHERE id = $1",
+    )
+    .bind(id)
+    .execute(executor)
+    .await
+    .map_err(|e| TagError::Database(e.to_string()))?;
+    Ok(())
+}
+
 // --- Trait implementation ----------------------------------------------------
 
 #[async_trait::async_trait]
@@ -246,14 +260,7 @@ impl TagRepository for SqlxTagRepository {
     }
 
     async fn decrement_usage_count(&self, id: Uuid) -> Result<(), TagError> {
-        sqlx::query(
-            "UPDATE tag SET usage_count = GREATEST(usage_count - 1, 0) WHERE id = $1",
-        )
-        .bind(id)
-        .execute(&self.pool)
-        .await
-        .map_err(|e| TagError::Database(e.to_string()))?;
-        Ok(())
+        decrement_usage_count(&self.pool, id).await
     }
 
     async fn delete(&self, id: Uuid) -> Result<(), TagError> {

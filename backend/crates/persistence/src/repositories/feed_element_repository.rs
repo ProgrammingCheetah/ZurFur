@@ -36,6 +36,33 @@ fn map_feed_element(row: sqlx::postgres::PgRow) -> Result<FeedElement, FeedEleme
     Ok(element)
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn create_feed_element<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    feed_item_id: Uuid,
+    element_type: FeedElementType,
+    content_json: &str,
+    position: i32,
+) -> Result<FeedElement, FeedElementError> {
+    let row = sqlx::query(
+        "INSERT INTO feed_element (feed_item_id, element_type, content_json, position) \
+         VALUES ($1, $2, $3, $4) \
+         RETURNING id, feed_item_id, element_type, content_json, position",
+    )
+    .bind(feed_item_id)
+    .bind(element_type.as_str())
+    .bind(content_json)
+    .bind(position)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| FeedElementError::Database(e.to_string()))?;
+
+    map_feed_element(row)
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl FeedElementRepository for SqlxFeedElementRepository {
     async fn create(
@@ -45,20 +72,7 @@ impl FeedElementRepository for SqlxFeedElementRepository {
         content_json: &str,
         position: i32,
     ) -> Result<FeedElement, FeedElementError> {
-        let row = sqlx::query(
-            "INSERT INTO feed_element (feed_item_id, element_type, content_json, position) \
-             VALUES ($1, $2, $3, $4) \
-             RETURNING id, feed_item_id, element_type, content_json, position",
-        )
-        .bind(feed_item_id)
-        .bind(element_type.as_str())
-        .bind(content_json)
-        .bind(position)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| FeedElementError::Database(e.to_string()))?;
-
-        map_feed_element(row)
+        create_feed_element(&self.pool, feed_item_id, element_type, content_json, position).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<FeedElement>, FeedElementError> {

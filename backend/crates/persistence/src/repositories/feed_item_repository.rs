@@ -36,6 +36,31 @@ fn map_feed_item(row: sqlx::postgres::PgRow) -> Result<FeedItem, FeedItemError> 
     Ok(item)
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn create_feed_item<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    feed_id: Uuid,
+    author_type: AuthorType,
+    author_id: Uuid,
+) -> Result<FeedItem, FeedItemError> {
+    let row = sqlx::query(
+        "INSERT INTO feed_item (feed_id, author_type, author_id) \
+         VALUES ($1, $2, $3) \
+         RETURNING id, feed_id, author_type, author_id, created_at",
+    )
+    .bind(feed_id)
+    .bind(author_type.as_str())
+    .bind(author_id)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| FeedItemError::Database(e.to_string()))?;
+
+    map_feed_item(row)
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl FeedItemRepository for SqlxFeedItemRepository {
     async fn create(
@@ -44,19 +69,7 @@ impl FeedItemRepository for SqlxFeedItemRepository {
         author_type: AuthorType,
         author_id: Uuid,
     ) -> Result<FeedItem, FeedItemError> {
-        let row = sqlx::query(
-            "INSERT INTO feed_item (feed_id, author_type, author_id) \
-             VALUES ($1, $2, $3) \
-             RETURNING id, feed_id, author_type, author_id, created_at",
-        )
-        .bind(feed_id)
-        .bind(author_type.as_str())
-        .bind(author_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| FeedItemError::Database(e.to_string()))?;
-
-        map_feed_item(row)
+        create_feed_item(&self.pool, feed_id, author_type, author_id).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<FeedItem>, FeedItemError> {
