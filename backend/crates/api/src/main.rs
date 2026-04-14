@@ -108,9 +108,10 @@ async fn main() {
     };
 
     let app = router(state);
-    // TODO(review): bind address and port are hardcoded; should be configurable via env var
-    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    tracing::info!("Zurfur API listening on 0.0.0.0:3000");
+    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into());
+    let listener = TcpListener::bind(&bind_addr).await
+        .expect("Failed to bind to address");
+    tracing::info!("Zurfur API listening on {bind_addr}");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -127,13 +128,12 @@ fn load_signing_key() -> atproto_identity::key::KeyData {
         .decode(&key_b64)
         .expect("OAUTH_PRIVATE_KEY is not valid base64");
 
-    // TODO(review): assert! panics at runtime; should return a Result instead
-    assert_eq!(
-        bytes.len(),
-        32,
-        "OAUTH_PRIVATE_KEY must decode to exactly 32 bytes (P-256 private scalar), got {}",
-        bytes.len()
-    );
+    if bytes.len() != 32 {
+        panic!(
+            "OAUTH_PRIVATE_KEY must decode to exactly 32 bytes (P-256 private scalar), got {}",
+            bytes.len()
+        );
+    }
 
     atproto_identity::key::KeyData::new(atproto_identity::key::KeyType::P256Private, bytes)
 }
