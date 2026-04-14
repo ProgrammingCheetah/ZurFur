@@ -119,19 +119,14 @@ impl OnboardingService {
 
             let feed = self
                 .feed_repo
-                .create(slug, display_name, None, FeedType::System)
-                .await
-                .map_err(|e| OnboardingError::Internal(e.to_string()))?;
-
-            self.entity_feed_repo
-                .attach(feed.id, EntityType::Org, org.id)
+                .create_and_attach(slug, display_name, None, FeedType::System, EntityType::Org, org.id)
                 .await
                 .map_err(|e| OnboardingError::Internal(e.to_string()))?;
 
             feeds_created.push(feed);
         }
 
-        // TODO(review): feed creation + onboarding mark are not atomic — crash between them leaves feeds created but onboarding incomplete (Feature 3.5)
+        // TODO(Feature 3.5 Phase 2): the full loop (all feeds + mark onboarding complete) is still not atomic — needs UoW
         // 6. Mark onboarding completed
         self.user_repo
             .mark_onboarding_completed(user_id)
@@ -291,6 +286,17 @@ mod tests {
                 .cloned()
                 .collect();
             Ok(result)
+        }
+        async fn create_and_attach(
+            &self,
+            slug: &str,
+            display_name: &str,
+            description: Option<&str>,
+            feed_type: FeedType,
+            _entity_type: domain::entity_feed::EntityType,
+            _entity_id: Uuid,
+        ) -> Result<Feed, FeedError> {
+            self.create(slug, display_name, description, feed_type).await
         }
     }
 

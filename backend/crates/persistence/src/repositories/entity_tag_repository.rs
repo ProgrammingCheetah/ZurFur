@@ -42,6 +42,37 @@ fn map_entity_tag(row: sqlx::postgres::PgRow) -> Result<EntityTag, EntityTagErro
     })
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn attach_entity_tag<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    entity_type: TaggableEntityType,
+    entity_id: Uuid,
+    tag_id: Uuid,
+) -> Result<EntityTag, EntityTagError> {
+    let row = sqlx::query(
+        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) \
+         VALUES ($1, $2, $3) \
+         RETURNING entity_type, entity_id, tag_id",
+    )
+    .bind(entity_type.as_str())
+    .bind(entity_id)
+    .bind(tag_id)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            EntityTagError::AlreadyAttached
+        } else {
+            EntityTagError::Database(e.to_string())
+        }
+    })?;
+
+    map_entity_tag(row)
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl EntityTagRepository for SqlxEntityTagRepository {
     async fn attach(
@@ -50,25 +81,7 @@ impl EntityTagRepository for SqlxEntityTagRepository {
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, EntityTagError> {
-        let row = sqlx::query(
-            "INSERT INTO entity_tag (entity_type, entity_id, tag_id) \
-             VALUES ($1, $2, $3) \
-             RETURNING entity_type, entity_id, tag_id",
-        )
-        .bind(entity_type.as_str())
-        .bind(entity_id)
-        .bind(tag_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                EntityTagError::AlreadyAttached
-            } else {
-                EntityTagError::Database(e.to_string())
-            }
-        })?;
-
-        map_entity_tag(row)
+        attach_entity_tag(&self.pool, entity_type, entity_id, tag_id).await
     }
 
     async fn detach(

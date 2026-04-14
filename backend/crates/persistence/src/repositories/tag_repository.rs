@@ -2,6 +2,7 @@
 
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
+use domain::entity_tag::TaggableEntityType;
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 use sqlx::Row;
 use std::sync::Arc;
@@ -52,6 +53,52 @@ macro_rules! cols {
     };
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+// These accept any sqlx::Executor (pool connection OR transaction), allowing
+// reuse between standalone trait methods and transactional create_and_attach.
+
+async fn create_tag<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    category: TagCategory,
+    name: &str,
+    is_approved: bool,
+) -> Result<Tag, TagError> {
+    let row = sqlx::query(concat!(
+        "INSERT INTO tag (category, name, is_approved) ",
+        "VALUES ($1::tag_category, $2, $3) ",
+        "RETURNING ", cols!()
+    ))
+    .bind(category.as_str())
+    .bind(name)
+    .bind(is_approved)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            TagError::NameTaken(name.to_string())
+        } else {
+            TagError::Database(e.to_string())
+        }
+    })?;
+
+    map_tag(row)
+}
+
+
+async fn increment_usage_count<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    id: Uuid,
+) -> Result<(), TagError> {
+    sqlx::query("UPDATE tag SET usage_count = usage_count + 1 WHERE id = $1")
+        .bind(id)
+        .execute(executor)
+        .await
+        .map_err(|e| TagError::Database(e.to_string()))?;
+    Ok(())
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl TagRepository for SqlxTagRepository {
     async fn create(
@@ -60,25 +107,7 @@ impl TagRepository for SqlxTagRepository {
         name: &str,
         is_approved: bool,
     ) -> Result<Tag, TagError> {
-        let row = sqlx::query(concat!(
-            "INSERT INTO tag (category, name, is_approved) ",
-            "VALUES ($1::tag_category, $2, $3) ",
-            "RETURNING ", cols!()
-        ))
-        .bind(category.as_str())
-        .bind(name)
-        .bind(is_approved)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                TagError::NameTaken(name.to_string())
-            } else {
-                TagError::Database(e.to_string())
-            }
-        })?;
-
-        map_tag(row)
+        create_tag(&self.pool, category, name, is_approved).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Tag>, TagError> {
@@ -213,12 +242,7 @@ impl TagRepository for SqlxTagRepository {
     }
 
     async fn increment_usage_count(&self, id: Uuid) -> Result<(), TagError> {
-        sqlx::query("UPDATE tag SET usage_count = usage_count + 1 WHERE id = $1")
-            .bind(id)
-            .execute(&self.pool)
-            .await
-            .map_err(|e| TagError::Database(e.to_string()))?;
-        Ok(())
+        increment_usage_count(&self.pool, id).await
     }
 
     async fn decrement_usage_count(&self, id: Uuid) -> Result<(), TagError> {
@@ -243,5 +267,29 @@ impl TagRepository for SqlxTagRepository {
             return Err(TagError::NotFound);
         }
         Ok(())
+    }
+
+    async fn create_and_attach(
+        &self,
+        category: TagCategory,
+        name: &str,
+        is_approved: bool,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+    ) -> Result<Tag, TagError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        let mut tag = create_tag(&mut *tx, category, name, is_approved).await?;
+        super::entity_tag_repository::attach_entity_tag(&mut *tx, entity_type, entity_id, tag.id)
+            .await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+        increment_usage_count(&mut *tx, tag.id).await?;
+
+        tx.commit().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        tag.usage_count = 1;
+        Ok(tag)
     }
 }

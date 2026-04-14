@@ -10,6 +10,8 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::entity_feed::EntityType;
+
 /// Whether a feed is system-managed or user-created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FeedType {
@@ -101,6 +103,18 @@ pub trait FeedRepository: Send + Sync {
     async fn soft_delete(&self, id: Uuid) -> Result<(), FeedError>;
 
     async fn list_by_ids(&self, ids: &[Uuid]) -> Result<Vec<Feed>, FeedError>;
+
+    /// Atomically create a feed and attach it to an entity via entity_feed.
+    /// Implementations must perform both operations in a single transaction.
+    async fn create_and_attach(
+        &self,
+        slug: &str,
+        display_name: &str,
+        description: Option<&str>,
+        feed_type: FeedType,
+        entity_type: EntityType,
+        entity_id: Uuid,
+    ) -> Result<Feed, FeedError>;
 }
 
 #[cfg(test)]

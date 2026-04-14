@@ -30,8 +30,8 @@ pub enum TagServiceError {
 /// Enforces business rules:
 /// - Organization/character tags are immutable (cannot update/delete)
 /// - Tag names are trimmed, lowercased, and validated (1-100 chars)
-/// - Usage count is maintained atomically on attach/detach
-/// - `create_entity_tag` performs compensating rollback on failure
+/// - Usage count is maintained on attach/detach
+/// - `create_entity_tag` uses transactional `create_and_attach`
 pub struct TagService {
     tag_repo: Arc<dyn TagRepository>,
     entity_tag_repo: Arc<dyn EntityTagRepository>,
@@ -69,9 +69,8 @@ impl TagService {
             })
     }
 
-    /// Create an entity-backed tag and attach it to the entity in one call.
+    /// Create an entity-backed tag and attach it to the entity atomically.
     /// Auto-approved. Used for org/character tag auto-creation.
-    /// If attach fails, the created tag is cleaned up.
     pub async fn create_entity_tag(
         &self,
         category: TagCategory,
@@ -81,32 +80,15 @@ impl TagService {
     ) -> Result<Tag, TagServiceError> {
         let name = Self::validate_tag_name(name)?;
 
-        let mut tag = self
+        let tag = self
             .tag_repo
-            .create(category, &name, true)
+            .create_and_attach(category, &name, true, entity_type, entity_id)
             .await
             .map_err(|e| match e {
                 domain::tag::TagError::NameTaken(n) => TagServiceError::NameTaken(n),
                 other => TagServiceError::Internal(other.to_string()),
             })?;
 
-        if let Err(e) = self
-            .entity_tag_repo
-            .attach(entity_type, entity_id, tag.id)
-            .await
-        {
-            // TODO(review): compensating rollback should be replaced by a DB transaction in Feature 3.5
-            // Compensating rollback: clean up the orphaned tag
-            let _ = self.tag_repo.delete(tag.id).await;
-            return Err(TagServiceError::Internal(e.to_string()));
-        }
-
-        self.tag_repo
-            .increment_usage_count(tag.id)
-            .await
-            .map_err(|e| TagServiceError::Internal(e.to_string()))?;
-
-        tag.usage_count = 1;
         Ok(tag)
     }
 
@@ -192,7 +174,7 @@ impl TagService {
     }
 
     /// Attach a tag to an entity and increment the tag's usage count.
-    // TODO(review): attach + increment_usage_count are not atomic — count can drift if increment fails. Needs transaction (Feature 3.5)
+    // TODO(Feature 3.5 Phase 2): attach + increment are not atomic — count can drift if increment fails. Needs UoW.
     pub async fn attach_tag(
         &self,
         entity_type: TaggableEntityType,
@@ -219,7 +201,7 @@ impl TagService {
     }
 
     /// Detach a tag from an entity and decrement the tag's usage count.
-    // TODO(review): detach + decrement_usage_count are not atomic — count can drift if decrement fails. Needs transaction (Feature 3.5)
+    // TODO(Feature 3.5 Phase 2): detach + decrement are not atomic — count can drift if decrement fails. Needs UoW.
     pub async fn detach_tag(
         &self,
         entity_type: TaggableEntityType,
@@ -421,6 +403,23 @@ mod tests {
                 Ok(())
             }
         }
+
+        async fn create_and_attach(
+            &self,
+            category: TagCategory,
+            name: &str,
+            is_approved: bool,
+            _entity_type: TaggableEntityType,
+            _entity_id: Uuid,
+        ) -> Result<Tag, TagError> {
+            let mut tag = self.create(category, name, is_approved).await?;
+            tag.usage_count = 1;
+            let mut tags = self.tags.lock().await;
+            if let Some(t) = tags.iter_mut().find(|t| t.id == tag.id) {
+                t.usage_count = 1;
+            }
+            Ok(tag)
+        }
     }
 
     #[derive(Default)]
@@ -546,11 +545,9 @@ mod tests {
             .unwrap();
 
         assert_eq!(tag.category, TagCategory::Organization);
+        assert_eq!(tag.name, "my-studio");
         assert!(tag.is_approved);
-
-        let tags = svc.list_tags_for_entity(TaggableEntityType::Org, org_id).await.unwrap();
-        assert_eq!(tags.len(), 1);
-        assert_eq!(tags[0].id, tag.id);
+        assert_eq!(tag.usage_count, 1);
     }
 
     #[tokio::test]

@@ -74,7 +74,7 @@ async fn create_org(
         .create_org(user_id, &body.slug, &body.display_name)
         .await?;
 
-    // TODO(review): org + member + tag + feed creation spans 4 separate DB operations with no transaction — partial failure leaves inconsistent state (Feature 3.5)
+    // TODO(Feature 3.5 Phase 2): org + member + tag + feed creation spans 4 separate DB operations — partial failure leaves inconsistent state. Needs UoW.
     // Orchestration: auto-create org tag + bio feed (best-effort)
     if let Err(e) = state
         .tag_service

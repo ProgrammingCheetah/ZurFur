@@ -1,5 +1,6 @@
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
+use domain::entity_feed::EntityType;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use sqlx::Row;
 use std::sync::Arc;
@@ -40,6 +41,40 @@ fn map_feed(row: sqlx::postgres::PgRow) -> Result<Feed, FeedError> {
     Ok(feed)
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+async fn create_feed<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    slug: &str,
+    display_name: &str,
+    description: Option<&str>,
+    feed_type: FeedType,
+) -> Result<Feed, FeedError> {
+    let row = sqlx::query(
+        "INSERT INTO feed (slug, display_name, description, feed_type) \
+         VALUES ($1, $2, $3, $4) \
+         RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
+    )
+    .bind(slug)
+    .bind(display_name)
+    .bind(description)
+    .bind(feed_type.as_str())
+    .fetch_one(executor)
+    .await
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            FeedError::SlugTaken(slug.to_string())
+        } else {
+            FeedError::Database(e.to_string())
+        }
+    })?;
+
+    map_feed(row)
+}
+
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl FeedRepository for SqlxFeedRepository {
     async fn create(
@@ -49,26 +84,7 @@ impl FeedRepository for SqlxFeedRepository {
         description: Option<&str>,
         feed_type: FeedType,
     ) -> Result<Feed, FeedError> {
-        let row = sqlx::query(
-            "INSERT INTO feed (slug, display_name, description, feed_type) \
-             VALUES ($1, $2, $3, $4) \
-             RETURNING id, slug, display_name, description, feed_type, created_at, updated_at, deleted_at",
-        )
-        .bind(slug)
-        .bind(display_name)
-        .bind(description)
-        .bind(feed_type.as_str())
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                FeedError::SlugTaken(slug.to_string())
-            } else {
-                FeedError::Database(e.to_string())
-            }
-        })?;
-
-        map_feed(row)
+        create_feed(&self.pool, slug, display_name, description, feed_type).await
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Feed>, FeedError> {
@@ -155,5 +171,28 @@ impl FeedRepository for SqlxFeedRepository {
             feeds.push(map_feed(row)?);
         }
         Ok(feeds)
+    }
+
+    async fn create_and_attach(
+        &self,
+        slug: &str,
+        display_name: &str,
+        description: Option<&str>,
+        feed_type: FeedType,
+        entity_type: EntityType,
+        entity_id: Uuid,
+    ) -> Result<Feed, FeedError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        let feed = create_feed(&mut *tx, slug, display_name, description, feed_type).await?;
+        super::entity_feed_repository::attach_entity_feed(&mut *tx, feed.id, entity_type, entity_id)
+            .await
+            .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        tx.commit().await
+            .map_err(|e| FeedError::Database(e.to_string()))?;
+
+        Ok(feed)
     }
 }
