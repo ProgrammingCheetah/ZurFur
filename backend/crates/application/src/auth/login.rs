@@ -96,6 +96,7 @@ async fn get_identity_resolver(plc_hostname: &str) -> Result<SharedIdentityResol
     let http_client = build_http_client().await?;
     // Explicit nameservers: systemd-resolved (127.0.0.53) fails with HickoryDns.
     // Use public resolvers directly.
+    // TODO(review): DNS server IPs are hardcoded; should be configurable or use system defaults
     let dns_resolver = Arc::new(HickoryDnsResolver::create_resolver(&[
         "1.1.1.1".parse().unwrap(),
         "8.8.8.8".parse().unwrap(),
@@ -109,15 +110,15 @@ async fn get_identity_resolver(plc_hostname: &str) -> Result<SharedIdentityResol
 }
 
 async fn resolve_identity(handle_or_did: &str, plc_hostname: &str) -> Result<Document, LoginError> {
-    eprintln!("[auth] Resolving identity for: {handle_or_did}");
+    tracing::info!(handle_or_did, "Resolving identity");
     let resolver = get_identity_resolver(plc_hostname).await?;
     match resolver.resolve(handle_or_did).await {
         Ok(doc) => {
-            eprintln!("[auth] Identity resolved: did={}", doc.id);
+            tracing::info!(did = %doc.id, "Identity resolved");
             Ok(doc)
         }
         Err(e) => {
-            eprintln!("[auth] Identity resolution FAILED for {handle_or_did}: {e:?}");
+            tracing::error!(handle_or_did, error = ?e, "Identity resolution failed");
             Err(LoginError::IdentityResolverFailed)
         }
     }
@@ -158,17 +159,17 @@ pub async fn start_oauth_login(
     config: &OAuthConfig,
     storage: &impl OAuthRequestStorage,
 ) -> Result<OAuthStartResult, LoginError> {
-    eprintln!("[auth] Starting OAuth login for: {handle_or_did}");
+    tracing::info!(handle_or_did, "Starting OAuth login");
     let http_client = build_http_client().await?;
     let pds = pds_from_document(document)?;
-    eprintln!("[auth] PDS endpoint: {pds}");
+    tracing::debug!(pds, "PDS endpoint");
     let (_resource, auth_server) = pds_resources(&http_client, pds)
         .await
         .map_err(|e| {
-            eprintln!("[auth] PDS resource discovery FAILED: {e}");
+            tracing::error!(pds, error = %e, "PDS resource discovery failed");
             LoginError::OAuth(e.to_string())
         })?;
-    eprintln!("[auth] Auth server issuer: {}", auth_server.issuer);
+    tracing::debug!(issuer = %auth_server.issuer, "Auth server discovered");
 
     let (pkce_verifier, code_challenge) = pkce::generate();
     let state = uuid::Uuid::new_v4().to_string();
@@ -193,7 +194,7 @@ pub async fn start_oauth_login(
     };
 
     let login_hint = Some(handle_or_did);
-    eprintln!("[auth] Sending PAR request to auth server...");
+    tracing::debug!("Sending PAR request");
     let par_response: ParResponse = oauth_init(
         &http_client,
         &oauth_client,
@@ -204,10 +205,10 @@ pub async fn start_oauth_login(
     )
     .await
     .map_err(|e: OAuthClientError| {
-        eprintln!("[auth] PAR request FAILED: {e}");
+        tracing::error!(error = %e, "PAR request failed");
         LoginError::OAuth(e.to_string())
     })?;
-    eprintln!("[auth] PAR succeeded, state={state}");
+    tracing::info!(state = %state, "PAR succeeded");
 
     let now = Utc::now();
     let expires_at = now + Duration::minutes(10);
@@ -256,26 +257,26 @@ pub async fn complete_oauth_login(
     config: &OAuthConfig,
     storage: &impl OAuthRequestStorage,
 ) -> Result<AtprotoSession, LoginError> {
-    eprintln!("[auth] Completing OAuth login: state={state}, expected_did={expected_did}");
+    tracing::info!(state, expected_did, "Completing OAuth login");
     let http_client = build_http_client().await?;
 
     let oauth_request = storage
         .get_oauth_request_by_state(state)
         .await
         .map_err(|e| {
-            eprintln!("[auth] Failed to get OAuth request by state: {e}");
+            tracing::error!(state, error = %e, "Failed to get OAuth request by state");
             LoginError::InternalError(e.to_string())
         })?
         .ok_or_else(|| {
-            eprintln!("[auth] OAuth state not found (expired or already used)");
+            tracing::warn!(state, "OAuth state not found (expired or already used)");
             LoginError::InvalidState
         })?;
 
-    eprintln!("[auth] Found stored OAuth request, issuer={}", oauth_request.issuer);
+    tracing::debug!(issuer = %oauth_request.issuer, "Found stored OAuth request");
     let auth_server = oauth_authorization_server(&http_client, &oauth_request.issuer)
         .await
         .map_err(|e| {
-            eprintln!("[auth] Auth server discovery FAILED: {e}");
+            tracing::error!(issuer = %oauth_request.issuer, error = %e, "Auth server discovery failed");
             LoginError::OAuth(e.to_string())
         })?;
 
@@ -287,7 +288,7 @@ pub async fn complete_oauth_login(
         private_signing_key_data: config.private_signing_key_data.clone(),
     };
 
-    eprintln!("[auth] Exchanging code for tokens...");
+    tracing::debug!("Exchanging code for tokens");
     let token_response = oauth_complete(
         &http_client,
         &oauth_client,
@@ -298,14 +299,15 @@ pub async fn complete_oauth_login(
     )
     .await
     .map_err(|e: OAuthClientError| {
-        eprintln!("[auth] Token exchange FAILED: {e}");
+        tracing::error!(error = %e, "Token exchange failed");
         LoginError::OAuth(e.to_string())
     })?;
-    eprintln!("[auth] Token exchange succeeded, sub={:?}", token_response.sub);
+    tracing::info!(sub = ?token_response.sub, "Token exchange succeeded");
 
+    // TODO(review): silent error swallowing — cleanup failure leaves stale OAuth state in storage
     // Delete OAuth request only after successful exchange (allows retry on transient failure)
     if let Err(e) = storage.delete_oauth_request_by_state(state).await {
-        eprintln!("Failed to clean up OAuth request for state: {e}");
+        tracing::warn!(state, error = %e, "Failed to clean up OAuth request");
     }
 
     let sub = token_response

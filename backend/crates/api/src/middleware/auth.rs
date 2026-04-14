@@ -1,10 +1,11 @@
 use axum::{
     extract::FromRequestParts,
-    http::{StatusCode, request::Parts},
+    http::request::Parts,
 };
 
 use application::auth::service::ZurfurClaims;
 
+use crate::error::AppError;
 use crate::state::SharedState;
 
 /// Axum extractor that validates a JWT from the `Authorization: Bearer <token>` header
@@ -12,7 +13,7 @@ use crate::state::SharedState;
 pub struct AuthUser(pub ZurfurClaims);
 
 impl FromRequestParts<SharedState> for AuthUser {
-    type Rejection = (StatusCode, String);
+    type Rejection = AppError;
 
     async fn from_request_parts(
         parts: &mut Parts,
@@ -31,14 +32,10 @@ impl FromRequestParts<SharedState> for AuthUser {
                     None
                 }
             })
-            .ok_or((StatusCode::UNAUTHORIZED, "Missing or invalid Authorization header".into()))?;
+            .ok_or(AppError::Unauthorized("Missing or invalid Authorization header".into()))?;
 
-        let claims = state.auth_service.verify_access_token(token).map_err(|_| {
-            (
-                StatusCode::UNAUTHORIZED,
-                "Invalid or expired token".into(),
-            )
-        })?;
+        let claims = state.auth_service.verify_access_token(token)
+            .map_err(|_| AppError::Unauthorized("Invalid or expired token".into()))?;
 
         Ok(AuthUser(claims))
     }

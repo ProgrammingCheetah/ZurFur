@@ -1,14 +1,15 @@
-use application::user::service::UserServiceError;
 use axum::{
     Json, Router,
     extract::State,
-    http::StatusCode,
     routing::get,
 };
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
 use crate::middleware::AuthUser;
 use crate::state::SharedState;
+
+use super::helpers::parse_user_id;
 
 // --- Response types ----------------------------------------------------------
 
@@ -51,17 +52,13 @@ struct UpdatePreferencesRequest {
 async fn get_me(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
-) -> Result<Json<UserProfileResponse>, (StatusCode, String)> {
-    let user_id: uuid::Uuid = claims
-        .sub
-        .parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
+) -> Result<Json<UserProfileResponse>, AppError> {
+    let user_id = parse_user_id(&claims.sub)?;
 
     let profile = state
         .user_service
         .get_my_profile(user_id)
-        .await
-        .map_err(map_user_error)?;
+        .await?;
 
     let personal_org = profile.personal_org.map(|org| {
         PersonalOrgResponse {
@@ -97,22 +94,17 @@ async fn get_me(
 async fn get_preferences(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
-) -> Result<Json<PreferencesResponse>, (StatusCode, String)> {
-    let user_id: uuid::Uuid = claims
-        .sub
-        .parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
+) -> Result<Json<PreferencesResponse>, AppError> {
+    let user_id = parse_user_id(&claims.sub)?;
 
     let prefs = state
         .user_service
         .get_preferences(user_id)
-        .await
-        .map_err(map_user_error)?;
+        .await?;
 
     let settings: serde_json::Value = serde_json::from_str(&prefs.settings)
         .map_err(|e| {
-            eprintln!("Corrupt preferences JSON for user {user_id}: {e}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+            AppError::Internal(format!("Corrupt preferences JSON for user {user_id}: {e}"))
         })?;
 
     Ok(Json(PreferencesResponse { settings }))
@@ -122,24 +114,19 @@ async fn update_preferences(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
     Json(body): Json<UpdatePreferencesRequest>,
-) -> Result<Json<PreferencesResponse>, (StatusCode, String)> {
-    let user_id: uuid::Uuid = claims
-        .sub
-        .parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
+) -> Result<Json<PreferencesResponse>, AppError> {
+    let user_id = parse_user_id(&claims.sub)?;
 
     let settings_str = body.settings.to_string();
 
     let prefs = state
         .user_service
         .set_preferences(user_id, &settings_str)
-        .await
-        .map_err(map_user_error)?;
+        .await?;
 
     let settings: serde_json::Value = serde_json::from_str(&prefs.settings)
         .map_err(|e| {
-            eprintln!("Corrupt preferences JSON for user {user_id}: {e}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+            AppError::Internal(format!("Corrupt preferences JSON for user {user_id}: {e}"))
         })?;
 
     Ok(Json(PreferencesResponse { settings }))
@@ -157,14 +144,3 @@ pub fn router() -> Router<SharedState> {
         )
 }
 
-// --- Error mapping -----------------------------------------------------------
-
-fn map_user_error(e: UserServiceError) -> (StatusCode, String) {
-    match e {
-        UserServiceError::NotFound => (StatusCode::NOT_FOUND, "User not found".into()),
-        UserServiceError::Internal(inner) => {
-            eprintln!("Internal user service error: {inner}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
-        }
-    }
-}

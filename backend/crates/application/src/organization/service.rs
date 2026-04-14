@@ -156,6 +156,7 @@ impl OrganizationService {
     }
 
     /// Create a personal organization for a user (auto-created on signup).
+    // TODO(review): org creation + member addition are not atomic — crash between leaves an ownerless org (Feature 3.5)
     pub async fn create_personal_org(
         &self,
         user_id: Uuid,

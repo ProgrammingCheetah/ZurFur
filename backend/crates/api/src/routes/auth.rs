@@ -1,4 +1,3 @@
-use application::auth::login::LoginError;
 use axum::{
     Json, Router,
     extract::State,
@@ -7,8 +6,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
 use crate::middleware::AuthUser;
 use crate::state::SharedState;
+
+use super::helpers::parse_user_id;
 
 // --- Request / Response types ------------------------------------------------
 
@@ -32,6 +34,7 @@ pub struct CallbackQuery {
     pub state: String,
     /// Issuer identifier from the authorization server.
     /// TODO: validate against expected issuer to prevent mix-up attacks.
+    #[allow(dead_code)]
     pub iss: Option<String>,
 }
 
@@ -72,24 +75,24 @@ pub struct MeResponse {
 async fn start_login(
     State(state): State<SharedState>,
     Json(body): Json<StartLoginRequest>,
-) -> Result<Json<StartLoginResponse>, (StatusCode, String)> {
+) -> Result<Json<StartLoginResponse>, AppError> {
     let handle = body.handle.trim();
     if handle.is_empty() {
-        return Err((StatusCode::BAD_REQUEST, "Handle is required".into()));
+        return Err(AppError::BadRequest("Handle is required".into()));
     }
     // Basic format validation: handles are domain-like or DIDs
     if !handle.starts_with("did:") && (!handle.contains('.') || handle.len() > 253) {
-        return Err((StatusCode::BAD_REQUEST, "Invalid handle format".into()));
+        return Err(AppError::BadRequest("Invalid handle format".into()));
     }
 
-    eprintln!("[api] POST /auth/start handle={handle}");
+    tracing::info!(handle, "POST /auth/start");
     let result = state
         .auth_service
         .start_login(handle)
         .await
         .map_err(|e| {
-            eprintln!("[api] POST /auth/start FAILED: {e}");
-            map_login_error(e)
+            tracing::error!(handle, error = %e, "POST /auth/start failed");
+            AppError::from(e)
         })?;
 
     Ok(Json(StartLoginResponse {
@@ -101,17 +104,17 @@ async fn start_login(
 async fn callback(
     State(state): State<SharedState>,
     Json(params): Json<CallbackQuery>,
-) -> Result<Json<CallbackResponse>, (StatusCode, String)> {
-    eprintln!("[api] POST /auth/callback state={}", params.state);
+) -> Result<Json<CallbackResponse>, AppError> {
+    tracing::info!(state = %params.state, "POST /auth/callback");
     let result = state
         .auth_service
         .complete_login(&params.code, &params.state)
         .await
         .map_err(|e| {
-            eprintln!("[api] POST /auth/callback FAILED: {e}");
-            map_login_error(e)
+            tracing::error!(state = %params.state, error = %e, "POST /auth/callback failed");
+            AppError::from(e)
         })?;
-    eprintln!("[api] POST /auth/callback succeeded, user_id={}, is_new={}", result.user_id, result.is_new_user);
+    tracing::info!(user_id = %result.user_id, is_new = result.is_new_user, "POST /auth/callback succeeded");
 
     Ok(Json(CallbackResponse {
         access_token: result.access_token,
@@ -126,12 +129,11 @@ async fn callback(
 async fn refresh(
     State(state): State<SharedState>,
     Json(body): Json<RefreshRequest>,
-) -> Result<Json<RefreshResponse>, (StatusCode, String)> {
+) -> Result<Json<RefreshResponse>, AppError> {
     let result = state
         .auth_service
         .refresh_session(&body.refresh_token)
-        .await
-        .map_err(map_login_error)?;
+        .await?;
 
     Ok(Json(RefreshResponse {
         access_token: result.access_token,
@@ -150,17 +152,13 @@ async fn me(AuthUser(claims): AuthUser) -> Json<MeResponse> {
 async fn logout(
     State(state): State<SharedState>,
     AuthUser(claims): AuthUser,
-) -> Result<StatusCode, (StatusCode, String)> {
-    let user_id: uuid::Uuid = claims
-        .sub
-        .parse()
-        .map_err(|_| (StatusCode::BAD_REQUEST, "Invalid user ID in token".into()))?;
+) -> Result<StatusCode, AppError> {
+    let user_id = parse_user_id(&claims.sub)?;
 
     state
         .auth_service
         .logout(user_id)
-        .await
-        .map_err(map_login_error)?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -180,31 +178,3 @@ pub fn router() -> Router<SharedState> {
         .route("/logout", post(logout))
 }
 
-// --- Error mapping -----------------------------------------------------------
-// Internal details are logged server-side and never exposed to clients.
-// Uses eprintln! for now; will migrate to `tracing` when structured logging is added.
-
-fn map_login_error(e: LoginError) -> (StatusCode, String) {
-    match e {
-        LoginError::InvalidEmail => (StatusCode::BAD_REQUEST, "Invalid email".into()),
-        LoginError::UserNotFound => (StatusCode::UNAUTHORIZED, "User not found".into()),
-        LoginError::InternalError(inner) => {
-            eprintln!("Internal login error: {inner}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
-        }
-        LoginError::IdentityResolverFailed => {
-            (StatusCode::BAD_GATEWAY, "Failed to resolve identity".into())
-        }
-        LoginError::PdsNotFound => (StatusCode::NOT_FOUND, "No PDS found for account".into()),
-        LoginError::OAuth(inner) => {
-            eprintln!("OAuth error: {inner}");
-            (StatusCode::BAD_GATEWAY, "OAuth provider error".into())
-        }
-        LoginError::InvalidState => {
-            (StatusCode::BAD_REQUEST, "Invalid or expired session state".into())
-        }
-        LoginError::DidMismatch => {
-            (StatusCode::BAD_GATEWAY, "Identity mismatch with OAuth provider".into())
-        }
-    }
-}

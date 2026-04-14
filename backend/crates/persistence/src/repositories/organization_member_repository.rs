@@ -26,7 +26,9 @@ impl SqlxOrganizationMemberRepository {
 
 fn map_member(row: sqlx::postgres::PgRow) -> OrganizationMember {
     let permissions_raw: i64 = row.get("permissions");
+    // TODO(review): i64-to-u64 cast wraps negative values; correct by design but fragile if DB stores unexpected values
     let role_str: String = row.get("role");
+    // TODO(review): silently defaults to Member on unknown role string — could mask DB corruption
     let role = Role::from_str(&role_str).unwrap_or(Role::Member);
     OrganizationMember {
         id: row.get("id"),

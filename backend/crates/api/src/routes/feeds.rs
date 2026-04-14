@@ -1,4 +1,4 @@
-use application::feed::service::{FeedServiceError, NewFeedElement};
+use application::feed::service::NewFeedElement;
 use axum::{
     Json, Router,
     extract::{Path, Query, State},
@@ -8,8 +8,10 @@ use axum::{
 use domain::feed_element::FeedElementType;
 use serde::{Deserialize, Serialize};
 
+use crate::error::AppError;
 use crate::middleware::AuthUser;
 use crate::state::SharedState;
+use super::helpers::{PaginationQuery, parse_user_id, parse_uuid};
 
 // --- Request / Response types ------------------------------------------------
 
@@ -65,34 +67,21 @@ struct NewElementRequest {
     position: i32,
 }
 
-#[derive(Deserialize)]
-struct PaginationQuery {
-    #[serde(default = "default_limit")]
-    limit: i64,
-    #[serde(default)]
-    offset: i64,
-}
-
-fn default_limit() -> i64 {
-    20
-}
-
 // --- Feed CRUD routes (mounted at /feeds) ------------------------------------
 
 async fn get_feed(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<FeedResponse>, (StatusCode, String)> {
+) -> Result<Json<FeedResponse>, AppError> {
     let feed_id = parse_uuid(&id)?;
 
     let feed = state
         .feed_service
         .get_feed(feed_id)
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
-    Ok(Json(to_feed_response(&feed)))
+    Ok(Json(FeedResponse::from(&feed)))
 }
 
 async fn update_feed(
@@ -100,32 +89,30 @@ async fn update_feed(
     Path(id): Path<String>,
     AuthUser(claims): AuthUser,
     Json(body): Json<UpdateFeedRequest>,
-) -> Result<Json<FeedResponse>, (StatusCode, String)> {
+) -> Result<Json<FeedResponse>, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let feed_id = parse_uuid(&id)?;
 
     let feed = state
         .feed_service
         .update_feed(feed_id, user_id, &body.display_name, body.description.as_deref())
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
-    Ok(Json(to_feed_response(&feed)))
+    Ok(Json(FeedResponse::from(&feed)))
 }
 
 async fn delete_feed(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(claims): AuthUser,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let feed_id = parse_uuid(&id)?;
 
     state
         .feed_service
         .delete_feed(feed_id, user_id)
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -135,7 +122,7 @@ async fn post_to_feed(
     Path(id): Path<String>,
     AuthUser(claims): AuthUser,
     Json(body): Json<PostToFeedRequest>,
-) -> Result<(StatusCode, Json<FeedItemResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<FeedItemResponse>), AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let feed_id = parse_uuid(&id)?;
 
@@ -144,10 +131,7 @@ async fn post_to_feed(
         .into_iter()
         .map(|e| {
             let element_type = FeedElementType::from_str(&e.element_type).ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    format!("Invalid element type: '{}'", e.element_type),
-                )
+                AppError::BadRequest(format!("Invalid element type: '{}'", e.element_type))
             })?;
             Ok(NewFeedElement {
                 element_type,
@@ -155,15 +139,14 @@ async fn post_to_feed(
                 position: e.position,
             })
         })
-        .collect::<Result<Vec<_>, (StatusCode, String)>>()?;
+        .collect::<Result<Vec<_>, AppError>>()?;
 
     let result = state
         .feed_service
         .post_to_feed(feed_id, user_id, elements)
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
-    Ok((StatusCode::CREATED, Json(to_item_response(&result))))
+    Ok((StatusCode::CREATED, Json(FeedItemResponse::from(&result))))
 }
 
 async fn list_feed_items(
@@ -171,17 +154,17 @@ async fn list_feed_items(
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
     Query(pagination): Query<PaginationQuery>,
-) -> Result<Json<Vec<FeedItemResponse>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FeedItemResponse>>, AppError> {
     let feed_id = parse_uuid(&id)?;
 
     let limit = pagination.limit.clamp(1, 100);
+    let offset = pagination.offset.max(0);
     let items = state
         .feed_service
-        .list_feed_items(feed_id, limit, pagination.offset)
-        .await
-        .map_err(map_feed_error)?;
+        .list_feed_items(feed_id, limit, offset)
+        .await?;
 
-    let response: Vec<FeedItemResponse> = items.iter().map(to_item_response).collect();
+    let response: Vec<FeedItemResponse> = items.iter().map(FeedItemResponse::from).collect();
     Ok(Json(response))
 }
 
@@ -189,15 +172,14 @@ async fn delete_feed_item(
     State(state): State<SharedState>,
     Path((_, item_id_str)): Path<(String, String)>,
     AuthUser(claims): AuthUser,
-) -> Result<StatusCode, (StatusCode, String)> {
+) -> Result<StatusCode, AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let item_id = parse_uuid(&item_id_str)?;
 
     state
         .feed_service
         .delete_feed_item(item_id, user_id)
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -208,16 +190,15 @@ pub(crate) async fn list_org_feeds(
     State(state): State<SharedState>,
     Path(id): Path<String>,
     AuthUser(_claims): AuthUser,
-) -> Result<Json<Vec<FeedResponse>>, (StatusCode, String)> {
+) -> Result<Json<Vec<FeedResponse>>, AppError> {
     let org_id = parse_uuid(&id)?;
 
     let feeds = state
         .feed_service
         .list_feeds_for_entity(domain::entity_feed::EntityType::Org, org_id)
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
-    let response: Vec<FeedResponse> = feeds.iter().map(to_feed_response).collect();
+    let response: Vec<FeedResponse> = feeds.iter().map(FeedResponse::from).collect();
     Ok(Json(response))
 }
 
@@ -226,7 +207,7 @@ pub(crate) async fn create_org_feed(
     Path(id): Path<String>,
     AuthUser(claims): AuthUser,
     Json(body): Json<CreateFeedRequest>,
-) -> Result<(StatusCode, Json<FeedResponse>), (StatusCode, String)> {
+) -> Result<(StatusCode, Json<FeedResponse>), AppError> {
     let user_id = parse_user_id(&claims.sub)?;
     let org_id = parse_uuid(&id)?;
 
@@ -239,10 +220,9 @@ pub(crate) async fn create_org_feed(
             &body.display_name,
             body.description.as_deref(),
         )
-        .await
-        .map_err(map_feed_error)?;
+        .await?;
 
-    Ok((StatusCode::CREATED, Json(to_feed_response(&feed))))
+    Ok((StatusCode::CREATED, Json(FeedResponse::from(&feed))))
 }
 
 // --- Router ------------------------------------------------------------------
@@ -257,58 +237,43 @@ pub fn feed_router() -> Router<SharedState> {
 
 // --- Response mapping --------------------------------------------------------
 
-pub(super) fn to_feed_response(f: &domain::feed::Feed) -> FeedResponse {
-    FeedResponse {
-        id: f.id.to_string(),
-        slug: f.slug.clone(),
-        display_name: f.display_name.clone(),
-        description: f.description.clone(),
-        feed_type: f.feed_type.as_str().to_string(),
-    }
-}
-
-fn to_item_response(
-    item_with_elements: &application::feed::service::FeedItemWithElements,
-) -> FeedItemResponse {
-    FeedItemResponse {
-        id: item_with_elements.item.id.to_string(),
-        feed_id: item_with_elements.item.feed_id.to_string(),
-        author_type: item_with_elements.item.author_type.as_str().to_string(),
-        author_id: item_with_elements.item.author_id.to_string(),
-        created_at: item_with_elements.item.created_at.to_rfc3339(),
-        elements: item_with_elements
-            .elements
-            .iter()
-            .map(|e| FeedElementResponse {
-                id: e.id.to_string(),
-                element_type: e.element_type.as_str().to_string(),
-                content_json: e.content_json.clone(),
-                position: e.position,
-            })
-            .collect(),
-    }
-}
-
-// --- Error mapping -----------------------------------------------------------
-
-fn map_feed_error(e: FeedServiceError) -> (StatusCode, String) {
-    match e {
-        FeedServiceError::FeedNotFound => (StatusCode::NOT_FOUND, "Feed not found".into()),
-        FeedServiceError::ItemNotFound => (StatusCode::NOT_FOUND, "Feed item not found".into()),
-        FeedServiceError::SystemFeedUndeletable => (
-            StatusCode::FORBIDDEN,
-            "System feeds cannot be deleted".into(),
-        ),
-        FeedServiceError::Forbidden => (StatusCode::FORBIDDEN, "Permission denied".into()),
-        FeedServiceError::SlugTaken(s) => {
-            (StatusCode::CONFLICT, format!("Feed slug already taken: {s}"))
-        }
-        FeedServiceError::Internal(inner) => {
-            eprintln!("Internal feed service error: {inner}");
-            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+impl From<&domain::feed::Feed> for FeedResponse {
+    fn from(f: &domain::feed::Feed) -> Self {
+        Self {
+            id: f.id.to_string(),
+            slug: f.slug.clone(),
+            display_name: f.display_name.clone(),
+            description: f.description.clone(),
+            feed_type: f.feed_type.as_str().to_string(),
         }
     }
 }
 
-// Reuse shared helpers from organizations module.
-use super::organizations::{parse_user_id, parse_uuid};
+impl From<&application::feed::service::FeedItemWithElements> for FeedItemResponse {
+    fn from(item_with_elements: &application::feed::service::FeedItemWithElements) -> Self {
+        Self {
+            id: item_with_elements.item.id.to_string(),
+            feed_id: item_with_elements.item.feed_id.to_string(),
+            author_type: item_with_elements.item.author_type.as_str().to_string(),
+            author_id: item_with_elements.item.author_id.to_string(),
+            created_at: item_with_elements.item.created_at.to_rfc3339(),
+            elements: item_with_elements
+                .elements
+                .iter()
+                .map(FeedElementResponse::from)
+                .collect(),
+        }
+    }
+}
+
+impl From<&domain::feed_element::FeedElement> for FeedElementResponse {
+    fn from(e: &domain::feed_element::FeedElement) -> Self {
+        Self {
+            id: e.id.to_string(),
+            element_type: e.element_type.as_str().to_string(),
+            content_json: e.content_json.clone(),
+            position: e.position,
+        }
+    }
+}
+

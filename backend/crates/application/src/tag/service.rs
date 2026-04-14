@@ -95,6 +95,7 @@ impl TagService {
             .attach(entity_type, entity_id, tag.id)
             .await
         {
+            // TODO(review): compensating rollback should be replaced by a DB transaction in Feature 3.5
             // Compensating rollback: clean up the orphaned tag
             let _ = self.tag_repo.delete(tag.id).await;
             return Err(TagServiceError::Internal(e.to_string()));
@@ -191,6 +192,7 @@ impl TagService {
     }
 
     /// Attach a tag to an entity and increment the tag's usage count.
+    // TODO(review): attach + increment_usage_count are not atomic — count can drift if increment fails. Needs transaction (Feature 3.5)
     pub async fn attach_tag(
         &self,
         entity_type: TaggableEntityType,
@@ -217,6 +219,7 @@ impl TagService {
     }
 
     /// Detach a tag from an entity and decrement the tag's usage count.
+    // TODO(review): detach + decrement_usage_count are not atomic — count can drift if decrement fails. Needs transaction (Feature 3.5)
     pub async fn detach_tag(
         &self,
         entity_type: TaggableEntityType,
@@ -578,6 +581,7 @@ mod tests {
     async fn attach_and_detach_tag() {
         let svc = build_service();
         let tag = svc.create_tag(TagCategory::Metadata, "canine").await.unwrap();
+        assert_eq!(tag.usage_count, 0);
         let org_id = Uuid::new_v4();
 
         svc.attach_tag(TaggableEntityType::Org, org_id, tag.id).await.unwrap();
@@ -585,10 +589,16 @@ mod tests {
         let tags = svc.list_tags_for_entity(TaggableEntityType::Org, org_id).await.unwrap();
         assert_eq!(tags.len(), 1);
 
+        let attached = svc.get_tag(tag.id).await.unwrap();
+        assert_eq!(attached.usage_count, 1);
+
         svc.detach_tag(TaggableEntityType::Org, org_id, tag.id).await.unwrap();
 
         let tags = svc.list_tags_for_entity(TaggableEntityType::Org, org_id).await.unwrap();
         assert!(tags.is_empty());
+
+        let detached = svc.get_tag(tag.id).await.unwrap();
+        assert_eq!(detached.usage_count, 0);
     }
 
     #[tokio::test]

@@ -1,5 +1,6 @@
 mod auth;
 mod feeds;
+mod helpers;
 mod onboarding;
 mod organizations;
 mod tags;
@@ -27,13 +28,9 @@ pub fn router() -> Router<SharedState> {
 /// must resolve to this JSON document.
 async fn client_metadata(
     axum::extract::State(state): axum::extract::State<SharedState>,
-) -> Result<axum::Json<serde_json::Value>, (axum::http::StatusCode, String)> {
+) -> Result<axum::Json<serde_json::Value>, crate::error::AppError> {
     let jwk = state.auth_service.public_jwk().map_err(|e| {
-        eprintln!("Failed to derive public JWK: {e}");
-        (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            "Internal server error".to_string(),
-        )
+        crate::error::AppError::Internal(format!("Failed to derive public JWK: {e}"))
     })?;
 
     Ok(axum::Json(serde_json::json!({

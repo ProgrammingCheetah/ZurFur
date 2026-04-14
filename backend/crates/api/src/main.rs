@@ -10,6 +10,14 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
+    // Structured logging: configure via RUST_LOG env var (e.g. RUST_LOG=info,api=debug)
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
     // Database
     let db_config = persistence::Config::from_env().expect("DATABASE_URL must be set");
     let pool = persistence::connect(&db_config)
@@ -100,8 +108,10 @@ async fn main() {
     };
 
     let app = router(state);
-    let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("Zurfur API listening on 0.0.0.0:3000");
+    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".into());
+    let listener = TcpListener::bind(&bind_addr).await
+        .expect("Failed to bind to address");
+    tracing::info!("Zurfur API listening on {bind_addr}");
     axum::serve(listener, app).await.unwrap();
 }
 
@@ -118,12 +128,12 @@ fn load_signing_key() -> atproto_identity::key::KeyData {
         .decode(&key_b64)
         .expect("OAUTH_PRIVATE_KEY is not valid base64");
 
-    assert_eq!(
-        bytes.len(),
-        32,
-        "OAUTH_PRIVATE_KEY must decode to exactly 32 bytes (P-256 private scalar), got {}",
-        bytes.len()
-    );
+    if bytes.len() != 32 {
+        panic!(
+            "OAUTH_PRIVATE_KEY must decode to exactly 32 bytes (P-256 private scalar), got {}",
+            bytes.len()
+        );
+    }
 
     atproto_identity::key::KeyData::new(atproto_identity::key::KeyType::P256Private, bytes)
 }
