@@ -105,6 +105,8 @@ pub enum TagError {
     Immutable,
     #[error("Tag already attached to this entity")]
     AlreadyAttached,
+    #[error("Tag is not attached to this entity")]
+    NotAttached,
     #[error("Database error: {0}")]
     Database(String),
 }
@@ -176,7 +178,7 @@ pub trait TagRepository: Send + Sync {
     ) -> Result<EntityTag, TagError>;
 
     /// Atomically detach a tag from an entity and decrement usage_count.
-    /// Returns `NotFound` if the tag is not attached to this entity.
+    /// Returns `NotAttached` if the tag is not attached to this entity.
     async fn detach_and_decrement(
         &self,
         entity_type: TaggableEntityType,

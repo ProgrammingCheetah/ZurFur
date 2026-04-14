@@ -200,7 +200,7 @@ impl TagService {
             .detach_and_decrement(entity_type, entity_id, tag_id)
             .await
             .map_err(|e| match e {
-                domain::tag::TagError::NotFound => TagServiceError::NotAttached,
+                domain::tag::TagError::NotAttached => TagServiceError::NotAttached,
                 other => TagServiceError::Internal(other.to_string()),
             })
     }
@@ -428,7 +428,7 @@ mod tests {
                     !(et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id)
                 });
                 if ets.len() == len {
-                    return Err(TagError::NotFound);
+                    return Err(TagError::NotAttached);
                 }
             }
             self.decrement_usage_count(tag_id).await

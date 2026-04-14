@@ -291,6 +291,7 @@ impl TagRepository for SqlxTagRepository {
         .await
         .map_err(|e| match e {
             EntityTagError::AlreadyAttached => TagError::AlreadyAttached,
+            EntityTagError::Database(msg) => TagError::Database(msg),
             other => TagError::Database(other.to_string()),
         })?;
 
@@ -316,7 +317,8 @@ impl TagRepository for SqlxTagRepository {
         )
         .await
         .map_err(|e| match e {
-            EntityTagError::NotFound => TagError::NotFound,
+            EntityTagError::NotFound => TagError::NotAttached,
+            EntityTagError::Database(msg) => TagError::Database(msg),
             other => TagError::Database(other.to_string()),
         })?;
 

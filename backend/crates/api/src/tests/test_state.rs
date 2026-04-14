@@ -113,8 +113,11 @@ pub fn test_app_state() -> AppState {
         member_repo,
     );
 
-    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::default());
-    let entity_tag_repo: Arc<dyn EntityTagRepository> = Arc::new(MockEntityTagRepo::default());
+    let shared_entity_tags =
+        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::new(shared_entity_tags.clone()));
+    let entity_tag_repo: Arc<dyn EntityTagRepository> =
+        Arc::new(MockEntityTagRepo::new(shared_entity_tags));
 
     let tag_service = TagService::new(tag_repo, entity_tag_repo);
 
