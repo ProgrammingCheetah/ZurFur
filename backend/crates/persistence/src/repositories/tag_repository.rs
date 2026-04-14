@@ -85,6 +85,9 @@ async fn create_tag<'e>(
 }
 
 
+// FIXME: increment/decrement silently succeed if the tag doesn't exist (rows_affected == 0).
+// Currently safe because callers verify existence within the same transaction, but these
+// helpers should check rows_affected and return TagError::NotFound for defensive consistency.
 async fn increment_usage_count<'e>(
     executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
     id: Uuid,

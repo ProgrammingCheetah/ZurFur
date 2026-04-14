@@ -137,6 +137,9 @@ impl OrganizationService {
                 other => OrgServiceError::Internal(other.to_string()),
             })?;
 
+        // Extra query to load the member row. create_with_owner returns only the org to keep
+        // the trait simple (avoids coupling OrganizationRepository to OrganizationMember).
+        // Org creation is low-frequency, so the extra round-trip is acceptable.
         let members = self
             .member_repo
             .list_by_org(org.id)
