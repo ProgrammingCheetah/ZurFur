@@ -155,4 +155,35 @@ impl OrganizationRepository for SqlxOrganizationRepository {
         }
         Ok(())
     }
+
+    async fn create_with_owner(
+        &self,
+        slug: &str,
+        display_name: Option<&str>,
+        is_personal: bool,
+        owner_user_id: Uuid,
+    ) -> Result<Organization, OrganizationError> {
+        use domain::organization_member::{Permissions, Role};
+
+        let mut tx = self.pool.begin().await
+            .map_err(|e| OrganizationError::Database(e.to_string()))?;
+
+        let org = create_organization(&mut *tx, slug, display_name, is_personal).await?;
+
+        super::organization_member_repository::add_organization_member(
+            &mut *tx,
+            org.id,
+            owner_user_id,
+            Role::Owner,
+            None,
+            Permissions::new(Permissions::ALL),
+        )
+        .await
+        .map_err(|e| OrganizationError::Database(e.to_string()))?;
+
+        tx.commit().await
+            .map_err(|e| OrganizationError::Database(e.to_string()))?;
+
+        Ok(org)
+    }
 }

@@ -679,6 +679,9 @@ mod tests {
         async fn soft_delete(&self, _id: Uuid) -> Result<(), OrganizationError> {
             unimplemented!()
         }
+        async fn create_with_owner(&self, slug: &str, display_name: Option<&str>, is_personal: bool, _owner_user_id: Uuid) -> Result<Organization, OrganizationError> {
+            self.create(slug, display_name, is_personal).await
+        }
     }
 
     #[derive(Default)]

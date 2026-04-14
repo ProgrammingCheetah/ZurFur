@@ -117,7 +117,7 @@ impl OrganizationService {
         }
     }
 
-    /// Create a new (non-personal) organization and make the user the owner.
+    /// Create a new (non-personal) organization and make the user the owner atomically.
     pub async fn create_org(
         &self,
         user_id: Uuid,
@@ -128,7 +128,7 @@ impl OrganizationService {
 
         let org = self
             .org_repo
-            .create(slug, Some(display_name), false)
+            .create_with_owner(slug, Some(display_name), false, user_id)
             .await
             .map_err(|e| match e {
                 domain::organization::OrganizationError::SlugTaken(s) => {
@@ -137,26 +137,16 @@ impl OrganizationService {
                 other => OrgServiceError::Internal(other.to_string()),
             })?;
 
-        let member = self
+        let members = self
             .member_repo
-            .add(
-                org.id,
-                user_id,
-                Role::Owner,
-                None,
-                Permissions::new(Permissions::ALL),
-            )
+            .list_by_org(org.id)
             .await
             .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
 
-        Ok(OrgDetail {
-            org,
-            members: vec![member],
-        })
+        Ok(OrgDetail { org, members })
     }
 
-    /// Create a personal organization for a user (auto-created on signup).
-    // TODO(Feature 3.5 Phase 2): org creation + member addition are not atomic — crash between leaves an ownerless org. Needs UoW.
+    /// Create a personal organization for a user atomically (auto-created on signup).
     pub async fn create_personal_org(
         &self,
         user_id: Uuid,
@@ -167,24 +157,10 @@ impl OrganizationService {
             Err(_) => format!("user-{}", &Uuid::new_v4().to_string()[..8]),
         };
 
-        let org = self
-            .org_repo
-            .create(&effective_slug, None, true)
+        self.org_repo
+            .create_with_owner(&effective_slug, None, true, user_id)
             .await
-            .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
-
-        self.member_repo
-            .add(
-                org.id,
-                user_id,
-                Role::Owner,
-                None,
-                Permissions::new(Permissions::ALL),
-            )
-            .await
-            .map_err(|e| OrgServiceError::Internal(e.to_string()))?;
-
-        Ok(org)
+            .map_err(|e| OrgServiceError::Internal(e.to_string()))
     }
 
     /// Get an organization and its members by UUID.
@@ -388,9 +364,18 @@ mod tests {
     };
     use tokio::sync::Mutex;
 
-    #[derive(Default)]
     struct MockOrgRepo {
         orgs: Mutex<Vec<Organization>>,
+        shared_members: Arc<Mutex<Vec<OrganizationMember>>>,
+    }
+
+    impl Default for MockOrgRepo {
+        fn default() -> Self {
+            Self {
+                orgs: Mutex::new(vec![]),
+                shared_members: Arc::new(Mutex::new(vec![])),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -469,11 +454,40 @@ mod tests {
                 Err(OrganizationError::NotFound)
             }
         }
+
+        async fn create_with_owner(
+            &self,
+            slug: &str,
+            display_name: Option<&str>,
+            is_personal: bool,
+            owner_user_id: Uuid,
+        ) -> Result<Organization, OrganizationError> {
+            let org = self.create(slug, display_name, is_personal).await?;
+            let member = OrganizationMember {
+                id: Uuid::new_v4(),
+                org_id: org.id,
+                user_id: owner_user_id,
+                role: Role::Owner,
+                title: None,
+                permissions: Permissions::new(Permissions::ALL),
+                joined_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            self.shared_members.lock().await.push(member);
+            Ok(org)
+        }
     }
 
-    #[derive(Default)]
     struct MockMemberRepo {
-        members: Mutex<Vec<OrganizationMember>>,
+        members: Arc<Mutex<Vec<OrganizationMember>>>,
+    }
+
+    impl Default for MockMemberRepo {
+        fn default() -> Self {
+            Self {
+                members: Arc::new(Mutex::new(vec![])),
+            }
+        }
     }
 
     #[async_trait::async_trait]
@@ -604,6 +618,18 @@ mod tests {
         OrganizationService::new(Arc::new(org_repo), Arc::new(member_repo))
     }
 
+    fn build_service_shared() -> OrganizationService {
+        let shared_members = Arc::new(Mutex::new(Vec::<OrganizationMember>::new()));
+        let org_repo = MockOrgRepo {
+            orgs: Mutex::new(vec![]),
+            shared_members: shared_members.clone(),
+        };
+        let member_repo = MockMemberRepo {
+            members: shared_members,
+        };
+        build_service(org_repo, member_repo)
+    }
+
     #[test]
     fn valid_slugs() {
         assert!(OrganizationService::validate_slug("my-org").is_ok());
@@ -655,7 +681,7 @@ mod tests {
     #[tokio::test]
     async fn create_org_makes_user_owner() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let detail = svc.create_org(user_id, "my-studio", "My Studio").await.unwrap();
         assert_eq!(detail.org.slug, "my-studio");
@@ -667,7 +693,7 @@ mod tests {
 
     #[tokio::test]
     async fn create_org_with_invalid_slug_fails() {
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
         let err = svc.create_org(Uuid::new_v4(), "admin", "Admin").await.unwrap_err();
         assert!(matches!(err, OrgServiceError::InvalidSlug(_)));
     }
@@ -675,7 +701,7 @@ mod tests {
     #[tokio::test]
     async fn create_personal_org_has_null_display_name() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let org = svc.create_personal_org(user_id, "testuser").await.unwrap();
         assert!(org.is_personal);
@@ -686,7 +712,7 @@ mod tests {
     async fn update_org_by_non_owner_fails() {
         let owner_id = Uuid::new_v4();
         let other_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
 
@@ -704,7 +730,7 @@ mod tests {
     #[tokio::test]
     async fn delete_personal_org_fails() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let org = svc.create_personal_org(user_id, "testuser").await.unwrap();
         let err = svc.delete_org(org.id, user_id).await.unwrap_err();
@@ -714,7 +740,7 @@ mod tests {
     #[tokio::test]
     async fn delete_org_by_owner_succeeds() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
         svc.delete_org(detail.org.id, user_id).await.unwrap();
@@ -723,7 +749,7 @@ mod tests {
     #[tokio::test]
     async fn remove_owner_fails() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
         let err = svc
@@ -737,7 +763,7 @@ mod tests {
     async fn remove_non_owner_member_succeeds() {
         let owner_id = Uuid::new_v4();
         let member_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let detail = svc.create_org(owner_id, "my-org", "My Org").await.unwrap();
         svc.add_member(detail.org.id, owner_id, member_id, Role::Member, None)
@@ -752,7 +778,7 @@ mod tests {
     #[tokio::test]
     async fn get_org_returns_org_with_members() {
         let user_id = Uuid::new_v4();
-        let svc = build_service(MockOrgRepo::default(), MockMemberRepo::default());
+        let svc = build_service_shared();
 
         let _detail = svc.create_org(user_id, "my-org", "My Org").await.unwrap();
 
