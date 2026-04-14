@@ -35,6 +35,37 @@ fn map_entity_feed(row: sqlx::postgres::PgRow) -> Result<EntityFeed, EntityFeedE
     Ok(entity_feed)
 }
 
+// --- Executor-generic helpers ------------------------------------------------
+
+pub(super) async fn attach_entity_feed<'e>(
+    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
+    feed_id: Uuid,
+    entity_type: EntityType,
+    entity_id: Uuid,
+) -> Result<EntityFeed, EntityFeedError> {
+    let row = sqlx::query(
+        "INSERT INTO entity_feed (feed_id, entity_type, entity_id) \
+         VALUES ($1, $2, $3) \
+         RETURNING feed_id, entity_type, entity_id",
+    )
+    .bind(feed_id)
+    .bind(entity_type.as_str())
+    .bind(entity_id)
+    .fetch_one(executor)
+    .await
+    .map_err(|e| {
+        if is_unique_violation(&e) {
+            EntityFeedError::AlreadyAttached
+        } else {
+            EntityFeedError::Database(e.to_string())
+        }
+    })?;
+
+    map_entity_feed(row)
+}
+
+// --- Trait implementation ----------------------------------------------------
+
 #[async_trait::async_trait]
 impl EntityFeedRepository for SqlxEntityFeedRepository {
     async fn attach(
@@ -43,25 +74,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
         entity_type: EntityType,
         entity_id: Uuid,
     ) -> Result<EntityFeed, EntityFeedError> {
-        let row = sqlx::query(
-            "INSERT INTO entity_feed (feed_id, entity_type, entity_id) \
-             VALUES ($1, $2, $3) \
-             RETURNING feed_id, entity_type, entity_id",
-        )
-        .bind(feed_id)
-        .bind(entity_type.as_str())
-        .bind(entity_id)
-        .fetch_one(&self.pool)
-        .await
-        .map_err(|e| {
-            if is_unique_violation(&e) {
-                EntityFeedError::AlreadyAttached
-            } else {
-                EntityFeedError::Database(e.to_string())
-            }
-        })?;
-
-        map_entity_feed(row)
+        attach_entity_feed(&self.pool, feed_id, entity_type, entity_id).await
     }
 
     async fn find_by_feed_id(&self, feed_id: Uuid) -> Result<Option<EntityFeed>, EntityFeedError> {

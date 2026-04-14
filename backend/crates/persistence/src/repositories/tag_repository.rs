@@ -84,24 +84,6 @@ async fn create_tag<'e>(
     map_tag(row)
 }
 
-async fn attach_entity_tag<'e>(
-    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
-    entity_type: TaggableEntityType,
-    entity_id: Uuid,
-    tag_id: Uuid,
-) -> Result<(), TagError> {
-    sqlx::query(
-        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
-    )
-    .bind(entity_type.as_str())
-    .bind(entity_id)
-    .bind(tag_id)
-    .execute(executor)
-    .await
-    .map_err(|e| TagError::Database(e.to_string()))?;
-
-    Ok(())
-}
 
 async fn increment_usage_count<'e>(
     executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
@@ -299,7 +281,9 @@ impl TagRepository for SqlxTagRepository {
             .map_err(|e| TagError::Database(e.to_string()))?;
 
         let mut tag = create_tag(&mut *tx, category, name, is_approved).await?;
-        attach_entity_tag(&mut *tx, entity_type, entity_id, tag.id).await?;
+        super::entity_tag_repository::attach_entity_tag(&mut *tx, entity_type, entity_id, tag.id)
+            .await
+            .map_err(|e| TagError::Database(e.to_string()))?;
         increment_usage_count(&mut *tx, tag.id).await?;
 
         tx.commit().await

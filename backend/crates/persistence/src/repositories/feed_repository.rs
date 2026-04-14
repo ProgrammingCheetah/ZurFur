@@ -72,24 +72,6 @@ async fn create_feed<'e>(
     map_feed(row)
 }
 
-async fn attach_entity_feed<'e>(
-    executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
-    feed_id: Uuid,
-    entity_type: EntityType,
-    entity_id: Uuid,
-) -> Result<(), FeedError> {
-    sqlx::query(
-        "INSERT INTO entity_feed (feed_id, entity_type, entity_id) VALUES ($1, $2, $3)",
-    )
-    .bind(feed_id)
-    .bind(entity_type.as_str())
-    .bind(entity_id)
-    .execute(executor)
-    .await
-    .map_err(|e| FeedError::Database(e.to_string()))?;
-
-    Ok(())
-}
 
 // --- Trait implementation ----------------------------------------------------
 
@@ -204,7 +186,9 @@ impl FeedRepository for SqlxFeedRepository {
             .map_err(|e| FeedError::Database(e.to_string()))?;
 
         let feed = create_feed(&mut *tx, slug, display_name, description, feed_type).await?;
-        attach_entity_feed(&mut *tx, feed.id, entity_type, entity_id).await?;
+        super::entity_feed_repository::attach_entity_feed(&mut *tx, feed.id, entity_type, entity_id)
+            .await
+            .map_err(|e| FeedError::Database(e.to_string()))?;
 
         tx.commit().await
             .map_err(|e| FeedError::Database(e.to_string()))?;
