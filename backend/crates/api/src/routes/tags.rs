@@ -15,11 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::AppError;
 use crate::state::SharedState;
-use super::helpers::parse_uuid;
+use super::helpers::{PaginationQuery, parse_uuid};
 use crate::middleware::AuthUser;
-
-/// Default page size for paginated tag queries.
-const DEFAULT_PAGE_SIZE: i64 = 20;
 
 // --- Request / Response types ------------------------------------------------
 
@@ -74,20 +71,12 @@ struct DetachTagRequest {
 #[derive(Deserialize)]
 struct SearchQuery {
     q: String,
-    #[serde(default = "default_limit")]
+    #[serde(default = "search_default_limit")]
     limit: i64,
 }
 
-#[derive(Deserialize)]
-struct PaginationQuery {
-    #[serde(default = "default_limit")]
-    limit: i64,
-    #[serde(default)]
-    offset: i64,
-}
-
-fn default_limit() -> i64 {
-    DEFAULT_PAGE_SIZE
+fn search_default_limit() -> i64 {
+    super::helpers::DEFAULT_PAGE_SIZE
 }
 
 // --- Handlers ----------------------------------------------------------------

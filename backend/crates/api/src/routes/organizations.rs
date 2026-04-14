@@ -97,7 +97,7 @@ async fn create_org(
         tracing::warn!(org_id = %detail.org.id, error = %e, "Failed to create bio feed");
     }
 
-    Ok((StatusCode::CREATED, Json(to_detail_response(detail))))
+    Ok((StatusCode::CREATED, Json(OrgDetailResponse::from(detail))))
 }
 
 async fn get_org(
@@ -111,7 +111,7 @@ async fn get_org(
         state.org_service.get_org(&id_or_slug).await
     }?;
 
-    Ok(Json(to_detail_response(detail)))
+    Ok(Json(OrgDetailResponse::from(detail)))
 }
 
 async fn update_org(
@@ -128,7 +128,7 @@ async fn update_org(
         .update_org(org_id, user_id, body.display_name.as_deref())
         .await?;
 
-    Ok(Json(to_org_response(&org)))
+    Ok(Json(OrgResponse::from(&org)))
 }
 
 async fn delete_org(
@@ -163,7 +163,7 @@ async fn list_members(
         detail
             .members
             .iter()
-            .map(to_member_response)
+            .map(MemberResponse::from)
             .collect(),
     ))
 }
@@ -190,7 +190,7 @@ async fn add_member(
         .add_member(org_id, user_id, target_user_id, role, body.title.as_deref())
         .await?;
 
-    Ok((StatusCode::CREATED, Json(to_member_response(&member))))
+    Ok((StatusCode::CREATED, Json(MemberResponse::from(&member))))
 }
 
 async fn update_member(
@@ -226,7 +226,7 @@ async fn update_member(
         )
         .await?;
 
-    Ok(Json(to_member_response(&member)))
+    Ok(Json(MemberResponse::from(&member)))
 }
 
 async fn remove_member(
@@ -266,31 +266,35 @@ pub fn router() -> Router<SharedState> {
 
 // --- Response mapping --------------------------------------------------------
 
-fn to_org_response(org: &domain::organization::Organization) -> OrgResponse {
-    OrgResponse {
-        id: org.id.to_string(),
-        slug: org.slug.clone(),
-        display_name: org.display_name.clone(),
-        is_personal: org.is_personal,
+impl From<&domain::organization::Organization> for OrgResponse {
+    fn from(org: &domain::organization::Organization) -> Self {
+        Self {
+            id: org.id.to_string(),
+            slug: org.slug.clone(),
+            display_name: org.display_name.clone(),
+            is_personal: org.is_personal,
+        }
     }
 }
 
-fn to_member_response(m: &domain::organization_member::OrganizationMember) -> MemberResponse {
-    MemberResponse {
-        id: m.id.to_string(),
-        user_id: m.user_id.to_string(),
-        role: m.role.as_str().to_string(),
-        title: m.title.clone(),
-        permissions: m.permissions.0,
+impl From<&domain::organization_member::OrganizationMember> for MemberResponse {
+    fn from(m: &domain::organization_member::OrganizationMember) -> Self {
+        Self {
+            id: m.id.to_string(),
+            user_id: m.user_id.to_string(),
+            role: m.role.as_str().to_string(),
+            title: m.title.clone(),
+            permissions: m.permissions.0,
+        }
     }
 }
 
-fn to_detail_response(
-    detail: application::organization::service::OrgDetail,
-) -> OrgDetailResponse {
-    OrgDetailResponse {
-        org: to_org_response(&detail.org),
-        members: detail.members.iter().map(to_member_response).collect(),
+impl From<application::organization::service::OrgDetail> for OrgDetailResponse {
+    fn from(detail: application::organization::service::OrgDetail) -> Self {
+        Self {
+            org: OrgResponse::from(&detail.org),
+            members: detail.members.iter().map(MemberResponse::from).collect(),
+        }
     }
 }
 

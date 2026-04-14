@@ -2,7 +2,7 @@ use axum::{Json, Router, extract::State, routing::post};
 use domain::onboarding_role::OnboardingRole;
 use serde::{Deserialize, Serialize};
 
-use super::feeds::{FeedResponse, to_feed_response};
+use super::feeds::FeedResponse;
 use super::helpers::parse_user_id;
 use crate::error::AppError;
 use crate::middleware::AuthUser;
@@ -41,7 +41,7 @@ async fn complete_onboarding(
     let feeds_created = result
         .feeds_created
         .iter()
-        .map(to_feed_response)
+        .map(FeedResponse::from)
         .collect();
 
     let response = OnboardingResponse {
