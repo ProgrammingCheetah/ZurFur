@@ -266,11 +266,11 @@ mod tests {
         entity_tags: Arc<Mutex<Vec<EntityTag>>>,
     }
 
-    impl Default for MockTagRepo {
-        fn default() -> Self {
+    impl MockTagRepo {
+        fn new(entity_tags: Arc<Mutex<Vec<EntityTag>>>) -> Self {
             Self {
                 tags: Mutex::new(vec![]),
-                entity_tags: Arc::new(Mutex::new(vec![])),
+                entity_tags,
             }
         }
     }
@@ -400,15 +400,17 @@ mod tests {
             entity_id: Uuid,
             tag_id: Uuid,
         ) -> Result<EntityTag, TagError> {
-            let mut ets = self.entity_tags.lock().await;
-            if ets.iter().any(|et| {
-                et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id
-            }) {
-                return Err(TagError::AlreadyAttached);
-            }
-            let et = EntityTag { entity_type, entity_id, tag_id };
-            ets.push(et.clone());
-            drop(ets);
+            let et = {
+                let mut ets = self.entity_tags.lock().await;
+                if ets.iter().any(|et| {
+                    et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id
+                }) {
+                    return Err(TagError::AlreadyAttached);
+                }
+                let et = EntityTag { entity_type, entity_id, tag_id };
+                ets.push(et.clone());
+                et
+            };
             self.increment_usage_count(tag_id).await?;
             Ok(et)
         }
@@ -419,15 +421,16 @@ mod tests {
             entity_id: Uuid,
             tag_id: Uuid,
         ) -> Result<(), TagError> {
-            let mut ets = self.entity_tags.lock().await;
-            let len = ets.len();
-            ets.retain(|et| {
-                !(et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id)
-            });
-            if ets.len() == len {
-                return Err(TagError::NotFound);
+            {
+                let mut ets = self.entity_tags.lock().await;
+                let len = ets.len();
+                ets.retain(|et| {
+                    !(et.entity_type == entity_type && et.entity_id == entity_id && et.tag_id == tag_id)
+                });
+                if ets.len() == len {
+                    return Err(TagError::NotFound);
+                }
             }
-            drop(ets);
             self.decrement_usage_count(tag_id).await
         }
 
@@ -451,6 +454,12 @@ mod tests {
 
     struct MockEntityTagRepo {
         entity_tags: Arc<Mutex<Vec<EntityTag>>>,
+    }
+
+    impl MockEntityTagRepo {
+        fn new(entity_tags: Arc<Mutex<Vec<EntityTag>>>) -> Self {
+            Self { entity_tags }
+        }
     }
 
     #[async_trait::async_trait]
@@ -524,14 +533,9 @@ mod tests {
     }
 
     fn build_service() -> TagService {
-        let shared_entity_tags = Arc::new(Mutex::new(Vec::<EntityTag>::new()));
-        let tag_repo = MockTagRepo {
-            tags: Mutex::new(vec![]),
-            entity_tags: shared_entity_tags.clone(),
-        };
-        let entity_tag_repo = MockEntityTagRepo {
-            entity_tags: shared_entity_tags,
-        };
+        let shared_entity_tags = Arc::new(Mutex::new(Vec::new()));
+        let tag_repo = MockTagRepo::new(shared_entity_tags.clone());
+        let entity_tag_repo = MockEntityTagRepo::new(shared_entity_tags);
         TagService::new(Arc::new(tag_repo), Arc::new(entity_tag_repo))
     }
 

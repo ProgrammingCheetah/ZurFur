@@ -56,7 +56,8 @@ pub fn test_app_state() -> AppState {
     let state_store = Arc::new(MockStateStore::default());
     let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(10).unwrap());
 
-    let shared_members = std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let shared_members =
+        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
     let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo {
         shared_members: shared_members.clone(),
         ..MockOrgRepo::default()

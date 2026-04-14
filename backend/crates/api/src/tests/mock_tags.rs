@@ -132,16 +132,12 @@ impl TagRepository for MockTagRepo {
 
     async fn attach_and_increment(
         &self,
-        _entity_type: TaggableEntityType,
-        _entity_id: Uuid,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, TagError> {
         self.increment_usage_count(tag_id).await?;
-        Ok(EntityTag {
-            entity_type: _entity_type,
-            entity_id: _entity_id,
-            tag_id,
-        })
+        Ok(EntityTag { entity_type, entity_id, tag_id })
     }
 
     async fn detach_and_decrement(
