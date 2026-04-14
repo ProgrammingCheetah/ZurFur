@@ -9,9 +9,11 @@ use domain::organization_member::{
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+/// Maps user_id → org_id for personal orgs. Populated by test setup.
 #[derive(Default)]
 pub struct MockOrgRepo {
     pub orgs: Mutex<Vec<Organization>>,
+    pub personal_org_owners: Mutex<Vec<(Uuid, Uuid)>>,
 }
 
 #[async_trait]
@@ -52,11 +54,17 @@ impl OrganizationRepository for MockOrgRepo {
     }
     async fn find_personal_org(
         &self,
-        _user_id: Uuid,
+        user_id: Uuid,
     ) -> Result<Option<Organization>, OrganizationError> {
-        let orgs = self.orgs.lock().await;
-        let org = orgs.iter().find(|o| o.is_personal).cloned();
-        Ok(org)
+        let owners = self.personal_org_owners.lock().await;
+        let org_id = owners.iter().find(|(uid, _)| *uid == user_id).map(|(_, oid)| *oid);
+        match org_id {
+            Some(id) => {
+                let orgs = self.orgs.lock().await;
+                Ok(orgs.iter().find(|o| o.id == id).cloned())
+            }
+            None => Ok(None),
+        }
     }
     async fn update_display_name(
         &self,

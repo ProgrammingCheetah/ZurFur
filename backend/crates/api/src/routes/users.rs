@@ -110,7 +110,10 @@ async fn get_preferences(
         .map_err(map_user_error)?;
 
     let settings: serde_json::Value = serde_json::from_str(&prefs.settings)
-        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        .map_err(|e| {
+            eprintln!("Corrupt preferences JSON for user {user_id}: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+        })?;
 
     Ok(Json(PreferencesResponse { settings }))
 }
@@ -134,7 +137,10 @@ async fn update_preferences(
         .map_err(map_user_error)?;
 
     let settings: serde_json::Value = serde_json::from_str(&prefs.settings)
-        .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        .map_err(|e| {
+            eprintln!("Corrupt preferences JSON for user {user_id}: {e}");
+            (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+        })?;
 
     Ok(Json(PreferencesResponse { settings }))
 }

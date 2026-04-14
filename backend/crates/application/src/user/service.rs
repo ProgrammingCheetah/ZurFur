@@ -148,6 +148,7 @@ mod tests {
     #[derive(Default)]
     struct MockOrgRepo {
         orgs: Mutex<Vec<Organization>>,
+        personal_org_owners: Mutex<Vec<(Uuid, Uuid)>>,
     }
 
     #[async_trait::async_trait]
@@ -177,15 +178,17 @@ mod tests {
         }
         async fn find_personal_org(
             &self,
-            _user_id: Uuid,
+            user_id: Uuid,
         ) -> Result<Option<Organization>, OrganizationError> {
-            Ok(self
-                .orgs
-                .lock()
-                .await
-                .iter()
-                .find(|o| o.is_personal)
-                .cloned())
+            let owners = self.personal_org_owners.lock().await;
+            let org_id = owners.iter().find(|(uid, _)| *uid == user_id).map(|(_, oid)| *oid);
+            match org_id {
+                Some(id) => {
+                    let orgs = self.orgs.lock().await;
+                    Ok(orgs.iter().find(|o| o.id == id).cloned())
+                }
+                None => Ok(None),
+            }
         }
         async fn update_display_name(
             &self,
@@ -350,6 +353,7 @@ mod tests {
         };
         let org_repo = MockOrgRepo {
             orgs: Mutex::new(vec![test_org(org_id)]),
+            personal_org_owners: Mutex::new(vec![(user_id, org_id)]),
         };
 
         let svc = build_service(
