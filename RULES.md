@@ -86,6 +86,6 @@ async fn create_and_attach(&self, ...) -> Result<Tag, TagError> {
 
 Aggregates never reference each other in the schema. When operations span aggregates:
 
-- **Phase 1 (current):** Action methods on repository traits handle atomic pairs (e.g., `create_and_attach` for tag + entity_tag).
-- **Phase 2 (future):** Unit of Work — application layer starts a transaction and passes the executor down through persistence methods.
+- **Action methods (done):** Composite methods on repository traits handle atomic multi-step operations within a single aggregate boundary: `create_and_attach`, `attach_and_increment`, `detach_and_decrement`, `create_with_owner`, `create_with_elements`.
+- **UoW (future, before Feature 4):** For cross-service operations (onboarding: feeds + mark complete). Application layer starts a transaction and passes the executor through persistence methods.
 - **API-layer orchestration:** Best-effort side effects (e.g., org creation triggers tag + feed creation). Failures are logged, not propagated.
