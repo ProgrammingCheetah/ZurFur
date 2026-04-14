@@ -421,6 +421,23 @@ mod tests {
                 Ok(())
             }
         }
+
+        async fn create_and_attach(
+            &self,
+            category: TagCategory,
+            name: &str,
+            is_approved: bool,
+            _entity_type: TaggableEntityType,
+            _entity_id: Uuid,
+        ) -> Result<Tag, TagError> {
+            let mut tag = self.create(category, name, is_approved).await?;
+            tag.usage_count = 1;
+            let mut tags = self.tags.lock().await;
+            if let Some(t) = tags.iter_mut().find(|t| t.id == tag.id) {
+                t.usage_count = 1;
+            }
+            Ok(tag)
+        }
     }
 
     #[derive(Default)]

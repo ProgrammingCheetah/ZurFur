@@ -2,6 +2,7 @@
 
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
+use domain::entity_tag::TaggableEntityType;
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 use sqlx::Row;
 use std::sync::Arc;
@@ -243,5 +244,59 @@ impl TagRepository for SqlxTagRepository {
             return Err(TagError::NotFound);
         }
         Ok(())
+    }
+
+    async fn create_and_attach(
+        &self,
+        category: TagCategory,
+        name: &str,
+        is_approved: bool,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+    ) -> Result<Tag, TagError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        let row = sqlx::query(concat!(
+            "INSERT INTO tag (category, name, is_approved) ",
+            "VALUES ($1::tag_category, $2, $3) ",
+            "RETURNING ", cols!()
+        ))
+        .bind(category.as_str())
+        .bind(name)
+        .bind(is_approved)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|e| {
+            if is_unique_violation(&e) {
+                TagError::NameTaken(name.to_string())
+            } else {
+                TagError::Database(e.to_string())
+            }
+        })?;
+
+        let mut tag = map_tag(row)?;
+
+        sqlx::query(
+            "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
+        )
+        .bind(entity_type.as_str())
+        .bind(entity_id)
+        .bind(tag.id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|e| TagError::Database(e.to_string()))?;
+
+        sqlx::query("UPDATE tag SET usage_count = usage_count + 1 WHERE id = $1")
+            .bind(tag.id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        tx.commit().await
+            .map_err(|e| TagError::Database(e.to_string()))?;
+
+        tag.usage_count = 1;
+        Ok(tag)
     }
 }

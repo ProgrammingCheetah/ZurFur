@@ -13,6 +13,8 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
+use crate::entity_tag::TaggableEntityType;
+
 /// What kind of tag this is. Stored as a PostgreSQL ENUM (`tag_category`).
 ///
 /// This is intrinsic to the tag — it describes what the tag IS, not how it's
@@ -161,6 +163,17 @@ pub trait TagRepository: Send + Sync {
 
     /// Hard-delete a tag. Immutability is enforced at the application layer.
     async fn delete(&self, id: Uuid) -> Result<(), TagError>;
+
+    /// Atomically create a tag, attach it to an entity, and set usage_count to 1.
+    /// Implementations must perform all three operations in a single transaction.
+    async fn create_and_attach(
+        &self,
+        category: TagCategory,
+        name: &str,
+        is_approved: bool,
+        entity_type: TaggableEntityType,
+        entity_id: Uuid,
+    ) -> Result<Tag, TagError>;
 }
 
 #[cfg(test)]
