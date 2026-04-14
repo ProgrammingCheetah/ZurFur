@@ -1,5 +1,6 @@
 use crate::pool::Pool;
-use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
+use domain::feed_element::FeedElement;
+use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository, NewFeedElementInput};
 use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -125,5 +126,37 @@ impl FeedItemRepository for SqlxFeedItemRepository {
             return Err(FeedItemError::NotFound);
         }
         Ok(())
+    }
+
+    async fn create_with_elements(
+        &self,
+        feed_id: Uuid,
+        author_type: AuthorType,
+        author_id: Uuid,
+        elements: &[NewFeedElementInput],
+    ) -> Result<(FeedItem, Vec<FeedElement>), FeedItemError> {
+        let mut tx = self.pool.begin().await
+            .map_err(|e| FeedItemError::Database(e.to_string()))?;
+
+        let item = create_feed_item(&mut *tx, feed_id, author_type, author_id).await?;
+
+        let mut created_elements = Vec::with_capacity(elements.len());
+        for el in elements {
+            let element = super::feed_element_repository::create_feed_element(
+                &mut *tx,
+                item.id,
+                el.element_type,
+                &el.content_json,
+                el.position,
+            )
+            .await
+            .map_err(|e| FeedItemError::Database(e.to_string()))?;
+            created_elements.push(element);
+        }
+
+        tx.commit().await
+            .map_err(|e| FeedItemError::Database(e.to_string()))?;
+
+        Ok((item, created_elements))
     }
 }
