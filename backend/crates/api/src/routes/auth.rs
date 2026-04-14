@@ -85,13 +85,13 @@ async fn start_login(
         return Err(AppError::BadRequest("Invalid handle format".into()));
     }
 
-    eprintln!("[api] POST /auth/start handle={handle}");
+    tracing::info!(handle, "POST /auth/start");
     let result = state
         .auth_service
         .start_login(handle)
         .await
         .map_err(|e| {
-            eprintln!("[api] POST /auth/start FAILED: {e}");
+            tracing::error!(handle, error = %e, "POST /auth/start failed");
             AppError::from(e)
         })?;
 
@@ -105,16 +105,16 @@ async fn callback(
     State(state): State<SharedState>,
     Json(params): Json<CallbackQuery>,
 ) -> Result<Json<CallbackResponse>, AppError> {
-    eprintln!("[api] POST /auth/callback state={}", params.state);
+    tracing::info!(state = %params.state, "POST /auth/callback");
     let result = state
         .auth_service
         .complete_login(&params.code, &params.state)
         .await
         .map_err(|e| {
-            eprintln!("[api] POST /auth/callback FAILED: {e}");
+            tracing::error!(state = %params.state, error = %e, "POST /auth/callback failed");
             AppError::from(e)
         })?;
-    eprintln!("[api] POST /auth/callback succeeded, user_id={}, is_new={}", result.user_id, result.is_new_user);
+    tracing::info!(user_id = %result.user_id, is_new = result.is_new_user, "POST /auth/callback succeeded");
 
     Ok(Json(CallbackResponse {
         access_token: result.access_token,

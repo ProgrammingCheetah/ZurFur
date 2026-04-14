@@ -42,7 +42,7 @@ impl IntoResponse for AppError {
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             AppError::Conflict(msg) => (StatusCode::CONFLICT, msg),
             AppError::Internal(msg) => {
-                eprintln!("Internal error: {msg}");
+                tracing::error!("Internal error: {msg}");
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
             }
             AppError::BadGateway(msg) => (StatusCode::BAD_GATEWAY, msg),

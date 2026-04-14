@@ -23,3 +23,5 @@ jsonwebtoken = "9"
 chrono = { version = "0.4", features = ["serde"] }
 serde_json = { version = "1.0" }
 tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

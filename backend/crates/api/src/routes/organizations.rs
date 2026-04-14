@@ -86,7 +86,7 @@ async fn create_org(
         )
         .await
     {
-        eprintln!("Failed to create org tag for {}: {e}", detail.org.id);
+        tracing::warn!(org_id = %detail.org.id, error = %e, "Failed to create org tag");
     }
 
     if let Err(e) = state
@@ -94,7 +94,7 @@ async fn create_org(
         .create_system_feed(detail.org.id, "bio", "Bio")
         .await
     {
-        eprintln!("Failed to create bio feed for {}: {e}", detail.org.id);
+        tracing::warn!(org_id = %detail.org.id, error = %e, "Failed to create bio feed");
     }
 
     Ok((StatusCode::CREATED, Json(to_detail_response(detail))))

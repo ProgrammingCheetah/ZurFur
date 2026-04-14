@@ -244,9 +244,9 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                     );
                     // TODO(review): silent error swallowing — failed self-healing org creation is only logged
                     if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
-                        eprintln!(
-                            "Failed to create personal org for returning user {}: {e}",
-                            user.id
+                        tracing::warn!(
+                            user_id = %user.id, error = %e,
+                            "Failed to create personal org for returning user",
                         );
                     }
                 }
@@ -284,9 +284,9 @@ impl<S: OAuthRequestStorage> AuthService<S> {
                     self.member_repo.clone(),
                 );
                 if let Err(e) = org_service.create_personal_org(user.id, &slug).await {
-                    eprintln!(
-                        "Failed to create personal org for user {}: {e}",
-                        user.id
+                    tracing::warn!(
+                        user_id = %user.id, error = %e,
+                        "Failed to create personal org for new user",
                     );
                     // Non-fatal: user exists but personal org creation failed.
                     // The user can still authenticate; the org will be created

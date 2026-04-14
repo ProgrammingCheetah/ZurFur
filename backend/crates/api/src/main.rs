@@ -10,6 +10,14 @@ use tokio::net::TcpListener;
 
 #[tokio::main]
 async fn main() {
+    // Structured logging: configure via RUST_LOG env var (e.g. RUST_LOG=info,api=debug)
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "info".into()),
+        )
+        .init();
+
     // Database
     let db_config = persistence::Config::from_env().expect("DATABASE_URL must be set");
     let pool = persistence::connect(&db_config)
@@ -102,7 +110,7 @@ async fn main() {
     let app = router(state);
     // TODO(review): bind address and port are hardcoded; should be configurable via env var
     let listener = TcpListener::bind("0.0.0.0:3000").await.unwrap();
-    println!("Zurfur API listening on 0.0.0.0:3000");
+    tracing::info!("Zurfur API listening on 0.0.0.0:3000");
     axum::serve(listener, app).await.unwrap();
 }
 
