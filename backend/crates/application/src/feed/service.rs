@@ -182,7 +182,7 @@ impl FeedService {
     }
 
     /// Post a new item with elements to a feed.
-    // TODO(review): partial element creation is not rolled back if a later element fails — needs transaction (Feature 3.5)
+    // TODO(Feature 3.5 Phase 2): partial element creation is not rolled back if a later element fails — needs UoW.
     pub async fn post_to_feed(
         &self,
         feed_id: Uuid,

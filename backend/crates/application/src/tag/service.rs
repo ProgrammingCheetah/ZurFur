@@ -30,8 +30,8 @@ pub enum TagServiceError {
 /// Enforces business rules:
 /// - Organization/character tags are immutable (cannot update/delete)
 /// - Tag names are trimmed, lowercased, and validated (1-100 chars)
-/// - Usage count is maintained atomically on attach/detach
-/// - `create_entity_tag` performs compensating rollback on failure
+/// - Usage count is maintained on attach/detach
+/// - `create_entity_tag` uses transactional `create_and_attach`
 pub struct TagService {
     tag_repo: Arc<dyn TagRepository>,
     entity_tag_repo: Arc<dyn EntityTagRepository>,
@@ -174,7 +174,7 @@ impl TagService {
     }
 
     /// Attach a tag to an entity and increment the tag's usage count.
-    // TODO(review): attach + increment_usage_count are not atomic — count can drift if increment fails. Needs transaction (Feature 3.5)
+    // TODO(Feature 3.5 Phase 2): attach + increment are not atomic — count can drift if increment fails. Needs UoW.
     pub async fn attach_tag(
         &self,
         entity_type: TaggableEntityType,
@@ -201,7 +201,7 @@ impl TagService {
     }
 
     /// Detach a tag from an entity and decrement the tag's usage count.
-    // TODO(review): detach + decrement_usage_count are not atomic — count can drift if decrement fails. Needs transaction (Feature 3.5)
+    // TODO(Feature 3.5 Phase 2): detach + decrement are not atomic — count can drift if decrement fails. Needs UoW.
     pub async fn detach_tag(
         &self,
         entity_type: TaggableEntityType,
