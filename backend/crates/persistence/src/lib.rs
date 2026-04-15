@@ -53,10 +53,10 @@ pub async fn connect(config: &Config) -> Result<Pool, sqlx::Error> {
     Ok(pool)
 }
 
+/// Compiled migrations, usable by both `migrate()` and `#[sqlx::test(migrator)]`.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
 /// Runs all pending migrations.
 pub async fn migrate(pool: &Pool) -> Result<(), sqlx::Error> {
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await
-        .map_err(Into::into)
+    MIGRATOR.run(pool).await.map_err(Into::into)
 }
