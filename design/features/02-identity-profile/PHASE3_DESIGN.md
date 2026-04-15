@@ -47,12 +47,11 @@ erDiagram
 
 ### What already exists
 
-The codebase is prepared for characters. No domain enum changes needed:
+The codebase is prepared for characters through the unified entity discriminator. Character support is provided by `EntityKind::Character`:
 
 | Enum | Variant | Status |
 |------|---------|--------|
-| `EntityType` (feeds) | `Character` | Exists |
-| `TaggableEntityType` (tags) | `Character` | Exists |
+| `EntityKind` | `Character` | Exists |
 | `TagCategory` | `Character` | Exists |
 | `ContentRating` | `Sfw`, `Questionable`, `Nsfw` | Exists |
 

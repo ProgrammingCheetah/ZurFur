@@ -4,7 +4,7 @@ use domain::entity::EntityKind;
 use domain::entity_feed::EntityFeedRepository;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use domain::feed_element::{FeedElement, FeedElementRepository, FeedElementType};
-use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository, NewFeedElementInput};
+use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository};
 use domain::organization_member::{OrganizationMemberRepository, Permissions};
 use uuid::Uuid;
 
