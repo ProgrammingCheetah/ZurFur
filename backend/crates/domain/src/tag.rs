@@ -13,7 +13,8 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::entity_tag::{EntityTag, TaggableEntityType};
+use crate::entity::EntityKind;
+use crate::entity_tag::EntityTag;
 
 /// What kind of tag this is. Stored as a PostgreSQL ENUM (`tag_category`).
 ///
@@ -172,7 +173,7 @@ pub trait TagRepository: Send + Sync {
     /// Returns `AlreadyAttached` if the tag is already on this entity.
     async fn attach_and_increment(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, TagError>;
@@ -181,7 +182,7 @@ pub trait TagRepository: Send + Sync {
     /// Returns `NotAttached` if the tag is not attached to this entity.
     async fn detach_and_decrement(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), TagError>;
@@ -193,7 +194,7 @@ pub trait TagRepository: Send + Sync {
         category: TagCategory,
         name: &str,
         is_approved: bool,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Tag, TagError>;
 }

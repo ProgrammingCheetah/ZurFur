@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use domain::entity_feed::{EntityFeedRepository, EntityType};
+use domain::entity::EntityKind;
+use domain::entity_feed::EntityFeedRepository;
 use domain::feed::{Feed, FeedRepository, FeedType};
 use domain::onboarding_role::OnboardingRole;
 use domain::organization::OrganizationRepository;
@@ -82,7 +83,7 @@ impl OnboardingService {
         // 4. Check existing feeds to avoid duplicates
         let existing_entity_feeds = self
             .entity_feed_repo
-            .list_by_entity(EntityType::Org, org.id)
+            .list_by_entity(EntityKind::Org, org.id)
             .await
             .map_err(|e| OnboardingError::Internal(e.to_string()))?;
 
@@ -119,7 +120,7 @@ impl OnboardingService {
 
             let feed = self
                 .feed_repo
-                .create_and_attach(slug, display_name, None, FeedType::System, EntityType::Org, org.id)
+                .create_and_attach(slug, display_name, None, FeedType::System, EntityKind::Org, org.id)
                 .await
                 .map_err(|e| OnboardingError::Internal(e.to_string()))?;
 
@@ -143,7 +144,8 @@ impl OnboardingService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository, EntityType};
+    use domain::entity::EntityKind;
+    use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository};
     use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
     use domain::organization::{Organization, OrganizationError, OrganizationRepository};
     use domain::user::{User, UserError, UserRepository};
@@ -296,7 +298,7 @@ mod tests {
             display_name: &str,
             description: Option<&str>,
             feed_type: FeedType,
-            _entity_type: domain::entity_feed::EntityType,
+            _entity_type: domain::entity::EntityKind,
             _entity_id: Uuid,
         ) -> Result<Feed, FeedError> {
             self.create(slug, display_name, description, feed_type).await
@@ -313,7 +315,7 @@ mod tests {
         async fn attach(
             &self,
             feed_id: Uuid,
-            entity_type: EntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
         ) -> Result<EntityFeed, EntityFeedError> {
             let ef = EntityFeed {
@@ -332,7 +334,7 @@ mod tests {
         }
         async fn list_by_entity(
             &self,
-            entity_type: EntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
         ) -> Result<Vec<EntityFeed>, EntityFeedError> {
             let efs = self.entity_feeds.lock().await;

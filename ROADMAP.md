@@ -79,7 +79,7 @@ canine (general)
 - Meta-categorization (tag "wolf" with "species" metadata tag)
 
 **Implementation path:**
-- Add `Tag` to `TaggableEntityType` enum + CHECK constraint
+- `EntityKind::Tag` and CHECK constraints already support tag-on-tag relationships
 - Recursive CTEs for ancestor/descendant traversal
 - Depth limit to bound traversal (3-4 levels sufficient)
 
@@ -95,7 +95,7 @@ Tags owning feeds, enabling topic-based content aggregation.
 - Topic-based discovery feeds
 
 **Implementation path:**
-- Add `Tag` to `EntityType` enum + CHECK constraint
+- `EntityKind::Tag` and CHECK constraints already support tag-owned feeds
 - Create system feed on tag creation (or lazily on first subscription)
 - Existing feed subscription infrastructure handles the rest
 

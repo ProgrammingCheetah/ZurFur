@@ -2,7 +2,8 @@
 
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
-use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository, TaggableEntityType};
+use domain::entity::EntityKind;
+use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository};
 use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -31,7 +32,7 @@ impl SqlxEntityTagRepository {
 /// Map a PostgreSQL row to an `EntityTag` domain entity.
 fn map_entity_tag(row: sqlx::postgres::PgRow) -> Result<EntityTag, EntityTagError> {
     let entity_type_str: String = row.get("entity_type");
-    let entity_type = TaggableEntityType::from_str(&entity_type_str).ok_or_else(|| {
+    let entity_type = EntityKind::from_str(&entity_type_str).ok_or_else(|| {
         EntityTagError::Database(format!("Unknown entity type: {entity_type_str}"))
     })?;
 
@@ -46,7 +47,7 @@ fn map_entity_tag(row: sqlx::postgres::PgRow) -> Result<EntityTag, EntityTagErro
 
 pub(super) async fn attach_entity_tag<'e>(
     executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
-    entity_type: TaggableEntityType,
+    entity_type: EntityKind,
     entity_id: Uuid,
     tag_id: Uuid,
 ) -> Result<EntityTag, EntityTagError> {
@@ -73,7 +74,7 @@ pub(super) async fn attach_entity_tag<'e>(
 
 pub(super) async fn detach_entity_tag<'e>(
     executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
-    entity_type: TaggableEntityType,
+    entity_type: EntityKind,
     entity_id: Uuid,
     tag_id: Uuid,
 ) -> Result<(), EntityTagError> {
@@ -100,7 +101,7 @@ pub(super) async fn detach_entity_tag<'e>(
 impl EntityTagRepository for SqlxEntityTagRepository {
     async fn attach(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, EntityTagError> {
@@ -109,7 +110,7 @@ impl EntityTagRepository for SqlxEntityTagRepository {
 
     async fn detach(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), EntityTagError> {
@@ -118,7 +119,7 @@ impl EntityTagRepository for SqlxEntityTagRepository {
 
     async fn list_by_entity(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Vec<EntityTag>, EntityTagError> {
         let rows = sqlx::query(

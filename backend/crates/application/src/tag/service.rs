@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use domain::entity_tag::{EntityTag, EntityTagRepository, TaggableEntityType};
+use domain::entity::EntityKind;
+use domain::entity_tag::{EntityTag, EntityTagRepository};
 use domain::tag::{Tag, TagCategory, TagRepository};
 use uuid::Uuid;
 
@@ -74,7 +75,7 @@ impl TagService {
     pub async fn create_entity_tag(
         &self,
         category: TagCategory,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         name: &str,
     ) -> Result<Tag, TagServiceError> {
@@ -176,7 +177,7 @@ impl TagService {
     /// Attach a tag to an entity and increment the tag's usage count atomically.
     pub async fn attach_tag(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, TagServiceError> {
@@ -192,7 +193,7 @@ impl TagService {
     /// Detach a tag from an entity and decrement the tag's usage count atomically.
     pub async fn detach_tag(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), TagServiceError> {
@@ -208,7 +209,7 @@ impl TagService {
     /// List all tags attached to an entity, returning full Tag objects.
     pub async fn list_tags_for_entity(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Vec<Tag>, TagServiceError> {
         let entity_tags = self
@@ -257,7 +258,8 @@ impl TagService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository, TaggableEntityType};
+    use domain::entity::EntityKind;
+    use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository};
     use domain::tag::{Tag, TagCategory, TagError, TagRepository};
     use tokio::sync::Mutex;
 
@@ -396,7 +398,7 @@ mod tests {
 
         async fn attach_and_increment(
             &self,
-            entity_type: TaggableEntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
             tag_id: Uuid,
         ) -> Result<EntityTag, TagError> {
@@ -417,7 +419,7 @@ mod tests {
 
         async fn detach_and_decrement(
             &self,
-            entity_type: TaggableEntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
             tag_id: Uuid,
         ) -> Result<(), TagError> {
@@ -439,7 +441,7 @@ mod tests {
             category: TagCategory,
             name: &str,
             is_approved: bool,
-            _entity_type: TaggableEntityType,
+            _entity_type: EntityKind,
             _entity_id: Uuid,
         ) -> Result<Tag, TagError> {
             let mut tag = self.create(category, name, is_approved).await?;
@@ -466,7 +468,7 @@ mod tests {
     impl EntityTagRepository for MockEntityTagRepo {
         async fn attach(
             &self,
-            entity_type: TaggableEntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
             tag_id: Uuid,
         ) -> Result<EntityTag, EntityTagError> {
@@ -487,7 +489,7 @@ mod tests {
 
         async fn detach(
             &self,
-            entity_type: TaggableEntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
             tag_id: Uuid,
         ) -> Result<(), EntityTagError> {
@@ -507,7 +509,7 @@ mod tests {
 
         async fn list_by_entity(
             &self,
-            entity_type: TaggableEntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
         ) -> Result<Vec<EntityTag>, EntityTagError> {
             Ok(self
@@ -575,7 +577,7 @@ mod tests {
         let org_id = Uuid::new_v4();
 
         let tag = svc
-            .create_entity_tag(TagCategory::Organization, TaggableEntityType::Org, org_id, "my-studio")
+            .create_entity_tag(TagCategory::Organization, EntityKind::Org, org_id, "my-studio")
             .await
             .unwrap();
 
@@ -589,7 +591,7 @@ mod tests {
     async fn update_immutable_tag_fails() {
         let svc = build_service();
         let tag = svc
-            .create_entity_tag(TagCategory::Organization, TaggableEntityType::Org, Uuid::new_v4(), "org-tag")
+            .create_entity_tag(TagCategory::Organization, EntityKind::Org, Uuid::new_v4(), "org-tag")
             .await
             .unwrap();
 
@@ -601,7 +603,7 @@ mod tests {
     async fn delete_immutable_tag_fails() {
         let svc = build_service();
         let tag = svc
-            .create_entity_tag(TagCategory::Character, TaggableEntityType::Character, Uuid::new_v4(), "foxy")
+            .create_entity_tag(TagCategory::Character, EntityKind::Character, Uuid::new_v4(), "foxy")
             .await
             .unwrap();
 
@@ -616,17 +618,17 @@ mod tests {
         assert_eq!(tag.usage_count, 0);
         let org_id = Uuid::new_v4();
 
-        svc.attach_tag(TaggableEntityType::Org, org_id, tag.id).await.unwrap();
+        svc.attach_tag(EntityKind::Org, org_id, tag.id).await.unwrap();
 
-        let tags = svc.list_tags_for_entity(TaggableEntityType::Org, org_id).await.unwrap();
+        let tags = svc.list_tags_for_entity(EntityKind::Org, org_id).await.unwrap();
         assert_eq!(tags.len(), 1);
 
         let attached = svc.get_tag(tag.id).await.unwrap();
         assert_eq!(attached.usage_count, 1);
 
-        svc.detach_tag(TaggableEntityType::Org, org_id, tag.id).await.unwrap();
+        svc.detach_tag(EntityKind::Org, org_id, tag.id).await.unwrap();
 
-        let tags = svc.list_tags_for_entity(TaggableEntityType::Org, org_id).await.unwrap();
+        let tags = svc.list_tags_for_entity(EntityKind::Org, org_id).await.unwrap();
         assert!(tags.is_empty());
 
         let detached = svc.get_tag(tag.id).await.unwrap();
@@ -639,10 +641,10 @@ mod tests {
         let tag = svc.create_tag(TagCategory::Metadata, "canine").await.unwrap();
         let org_id = Uuid::new_v4();
 
-        svc.attach_tag(TaggableEntityType::Org, org_id, tag.id).await.unwrap();
+        svc.attach_tag(EntityKind::Org, org_id, tag.id).await.unwrap();
 
         let err = svc
-            .attach_tag(TaggableEntityType::Org, org_id, tag.id)
+            .attach_tag(EntityKind::Org, org_id, tag.id)
             .await
             .unwrap_err();
         assert!(matches!(err, TagServiceError::AlreadyAttached));

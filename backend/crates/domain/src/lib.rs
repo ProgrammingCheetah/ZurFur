@@ -1,6 +1,7 @@
 pub mod atproto_session;
 pub mod content_rating;
 pub mod default_role;
+pub mod entity;
 pub mod entity_feed;
 pub mod entity_tag;
 pub mod feed;
