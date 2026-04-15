@@ -78,10 +78,6 @@ impl TryFrom<&str> for EntityKind {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Traits
-// ---------------------------------------------------------------------------
-
 /// Base trait for all domain entities. Provides identity and kind discrimination.
 pub trait Entity: Send + Sync {
     /// The entity's UUID primary key.
@@ -142,10 +138,6 @@ pub trait Authorable: Entity {
     fn author_type(&self) -> AuthorType;
 }
 
-// ---------------------------------------------------------------------------
-// Implementations: User
-// ---------------------------------------------------------------------------
-
 use crate::user::User;
 
 impl Entity for User {
@@ -165,10 +157,6 @@ impl Authorable for User {
         AuthorType::User
     }
 }
-
-// ---------------------------------------------------------------------------
-// Implementations: Organization
-// ---------------------------------------------------------------------------
 
 use crate::organization::Organization;
 
@@ -190,10 +178,6 @@ impl Authorable for Organization {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Implementations: Feed
-// ---------------------------------------------------------------------------
-
 use crate::feed::Feed;
 
 impl Entity for Feed {
@@ -207,10 +191,6 @@ impl Entity for Feed {
 
 impl Taggable for Feed {}
 impl FeedOwnable for Feed {}
-
-// ---------------------------------------------------------------------------
-// Implementations: Tag
-// ---------------------------------------------------------------------------
 
 use crate::tag::Tag;
 
@@ -226,10 +206,6 @@ impl Entity for Tag {
 impl Taggable for Tag {}
 impl FeedOwnable for Tag {}
 
-// ---------------------------------------------------------------------------
-// Implementations: FeedItem
-// ---------------------------------------------------------------------------
-
 use crate::feed_item::FeedItem;
 
 impl Entity for FeedItem {
@@ -244,10 +220,6 @@ impl Entity for FeedItem {
 impl Taggable for FeedItem {}
 impl FeedOwnable for FeedItem {}
 
-// ---------------------------------------------------------------------------
-// Implementations: FeedElement
-// ---------------------------------------------------------------------------
-
 use crate::feed_element::FeedElement;
 
 impl Entity for FeedElement {
@@ -261,10 +233,6 @@ impl Entity for FeedElement {
 
 impl Taggable for FeedElement {}
 impl FeedOwnable for FeedElement {}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
