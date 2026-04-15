@@ -195,7 +195,7 @@ pub(crate) async fn list_org_feeds(
 
     let feeds = state
         .feed_service
-        .list_feeds_for_entity(domain::entity_feed::EntityType::Org, org_id)
+        .list_feeds_for_entity(domain::entity::EntityKind::Org, org_id)
         .await?;
 
     let response: Vec<FeedResponse> = feeds.iter().map(FeedResponse::from).collect();

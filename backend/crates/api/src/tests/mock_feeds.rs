@@ -2,7 +2,8 @@
 
 use async_trait::async_trait;
 use chrono::Utc;
-use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository, EntityType};
+use domain::entity::EntityKind;
+use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository};
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use domain::feed_element::{FeedElement, FeedElementError, FeedElementRepository, FeedElementType};
 use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
@@ -65,7 +66,7 @@ impl FeedRepository for MockFeedRepo {
         display_name: &str,
         description: Option<&str>,
         feed_type: FeedType,
-        _entity_type: EntityType,
+        _entity_type: EntityKind,
         _entity_id: Uuid,
     ) -> Result<Feed, FeedError> {
         self.create(slug, display_name, description, feed_type).await
@@ -82,7 +83,7 @@ impl EntityFeedRepository for MockEntityFeedRepo {
     async fn attach(
         &self,
         feed_id: Uuid,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<EntityFeed, EntityFeedError> {
         let ef = EntityFeed {
@@ -107,7 +108,7 @@ impl EntityFeedRepository for MockEntityFeedRepo {
     }
     async fn list_by_entity(
         &self,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Vec<EntityFeed>, EntityFeedError> {
         let efs = self.entity_feeds.lock().await;

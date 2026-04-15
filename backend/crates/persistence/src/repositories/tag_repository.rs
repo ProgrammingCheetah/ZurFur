@@ -2,7 +2,8 @@
 
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
-use domain::entity_tag::{EntityTag, EntityTagError, TaggableEntityType};
+use domain::entity::EntityKind;
+use domain::entity_tag::{EntityTag, EntityTagError};
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 use sqlx::Row;
 use std::sync::Arc;
@@ -281,7 +282,7 @@ impl TagRepository for SqlxTagRepository {
 
     async fn attach_and_increment(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, TagError> {
@@ -308,7 +309,7 @@ impl TagRepository for SqlxTagRepository {
 
     async fn detach_and_decrement(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), TagError> {
@@ -338,7 +339,7 @@ impl TagRepository for SqlxTagRepository {
         category: TagCategory,
         name: &str,
         is_approved: bool,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Tag, TagError> {
         let mut tx = self.pool.begin().await
