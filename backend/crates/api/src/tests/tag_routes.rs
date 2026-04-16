@@ -142,3 +142,87 @@ async fn attach_with_invalid_entity_type_returns_400() {
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
 }
+
+// --- Tag attachment with various entity types --------------------------------
+
+async fn assert_attach_to_entity_type(entity_type: &str, tag_name: &str) {
+    let server = test_server();
+    let user_id = Uuid::new_v4();
+    let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
+    let auth = auth_header(&token);
+
+    let tag_resp = server
+        .post("/tags")
+        .json(&serde_json::json!({"category": "metadata", "name": tag_name}))
+        .add_header(auth.0.clone(), auth.1.clone())
+        .await;
+    let tag: serde_json::Value = tag_resp.json();
+    let tag_id = tag["id"].as_str().unwrap();
+
+    let response = server
+        .post("/tags/attach")
+        .json(&serde_json::json!({
+            "entity_type": entity_type,
+            "entity_id": Uuid::new_v4().to_string(),
+            "tag_id": tag_id,
+        }))
+        .add_header(auth.0, auth.1)
+        .await;
+    response.assert_status(StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn attach_tag_to_user_entity() {
+    assert_attach_to_entity_type("user", "user-tag").await;
+}
+
+#[tokio::test]
+async fn attach_tag_to_feed_entity() {
+    assert_attach_to_entity_type("feed", "feed-tag").await;
+}
+
+#[tokio::test]
+async fn attach_tag_to_tag_entity() {
+    assert_attach_to_entity_type("tag", "meta-tag").await;
+}
+
+// --- GET /tags/entity/:type/:id ---------------------------------------------
+
+#[tokio::test]
+async fn list_tags_for_entity_returns_tags() {
+    let server = test_server();
+    let user_id = Uuid::new_v4();
+    let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
+    let (name, value) = auth_header(&token);
+
+    // Create and attach a tag
+    let tag_resp = server
+        .post("/tags")
+        .json(&serde_json::json!({"category": "general", "name": "entity-list-tag"}))
+        .add_header(name.clone(), value.clone())
+        .await;
+    let tag: serde_json::Value = tag_resp.json();
+    let tag_id = tag["id"].as_str().unwrap();
+
+    let entity_id = Uuid::new_v4();
+    server
+        .post("/tags/attach")
+        .json(&serde_json::json!({
+            "entity_type": "org",
+            "entity_id": entity_id.to_string(),
+            "tag_id": tag_id,
+        }))
+        .add_header(name.clone(), value.clone())
+        .await;
+
+    // List tags for entity
+    let response = server
+        .get(&format!("/tags/entity/org/{entity_id}"))
+        .add_header(name, value)
+        .await;
+    response.assert_status_ok();
+
+    let body: Vec<serde_json::Value> = response.json();
+    assert_eq!(body.len(), 1);
+    assert_eq!(body[0]["name"], "entity-list-tag");
+}

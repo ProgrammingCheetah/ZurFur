@@ -66,6 +66,42 @@ async fn list_by_feed_pagination(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn create_with_elements(pool: PgPool) {
+    use domain::feed_element::FeedElementType;
+    use domain::feed_item::NewFeedElementInput;
+
+    let feed = create_test_feed(&pool, "fi-elems", "Elements Feed", "custom", None).await;
+    let author_id = Uuid::new_v4();
+    let repo = SqlxFeedItemRepository::new(pool);
+
+    let elements = vec![
+        NewFeedElementInput {
+            element_type: FeedElementType::Text,
+            content_json: r#"{"text":"hello world"}"#.to_string(),
+            position: 0,
+        },
+        NewFeedElementInput {
+            element_type: FeedElementType::Image,
+            content_json: r#"{"url":"img.png"}"#.to_string(),
+            position: 1,
+        },
+    ];
+
+    let (item, created_elements) = repo
+        .create_with_elements(feed.id, AuthorType::User, author_id, &elements)
+        .await
+        .unwrap();
+
+    assert_eq!(item.feed_id, feed.id);
+    assert_eq!(item.author_id, author_id);
+    assert_eq!(created_elements.len(), 2);
+    assert_eq!(created_elements[0].position, 0);
+    assert!(matches!(created_elements[0].element_type, FeedElementType::Text));
+    assert_eq!(created_elements[1].position, 1);
+    assert!(matches!(created_elements[1].element_type, FeedElementType::Image));
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
 async fn delete_item(pool: PgPool) {
     let feed = create_test_feed(&pool, "fi-del", "Delete Feed", "custom", None).await;
     let repo = SqlxFeedItemRepository::new(pool);

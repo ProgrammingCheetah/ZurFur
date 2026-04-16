@@ -7,12 +7,33 @@ use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository};
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use domain::feed_element::{FeedElement, FeedElementError, FeedElementRepository, FeedElementType};
 use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
+use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Default)]
+pub type SharedEntityFeeds = Arc<Mutex<Vec<EntityFeed>>>;
+
 pub struct MockFeedRepo {
     pub feeds: Mutex<Vec<Feed>>,
+    pub shared_entity_feeds: SharedEntityFeeds,
+}
+
+impl Default for MockFeedRepo {
+    fn default() -> Self {
+        Self {
+            feeds: Mutex::new(vec![]),
+            shared_entity_feeds: Arc::new(Mutex::new(vec![])),
+        }
+    }
+}
+
+impl MockFeedRepo {
+    pub fn with_shared_entity_feeds(shared_entity_feeds: SharedEntityFeeds) -> Self {
+        Self {
+            feeds: Mutex::new(vec![]),
+            shared_entity_feeds,
+        }
+    }
 }
 
 #[async_trait]
@@ -38,24 +59,47 @@ impl FeedRepository for MockFeedRepo {
         Ok(feed)
     }
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Feed>, FeedError> {
-        Ok(self.feeds.lock().await.iter().find(|f| f.id == id).cloned())
+        Ok(self
+            .feeds
+            .lock()
+            .await
+            .iter()
+            .find(|f| f.id == id && f.deleted_at.is_none())
+            .cloned())
     }
     async fn update(
         &self,
-        _id: Uuid,
-        _display_name: &str,
-        _description: Option<&str>,
+        id: Uuid,
+        display_name: &str,
+        description: Option<&str>,
     ) -> Result<Feed, FeedError> {
-        unimplemented!()
+        let mut feeds = self.feeds.lock().await;
+        let feed = feeds
+            .iter_mut()
+            .find(|f| f.id == id && f.deleted_at.is_none())
+            .ok_or(FeedError::NotFound)?;
+        feed.display_name = display_name.into();
+        feed.description = description.map(String::from);
+        feed.updated_at = Utc::now();
+        Ok(feed.clone())
     }
-    async fn soft_delete(&self, _id: Uuid) -> Result<(), FeedError> {
-        unimplemented!()
+    async fn soft_delete(&self, id: Uuid) -> Result<(), FeedError> {
+        let mut feeds = self.feeds.lock().await;
+        let feed = feeds
+            .iter_mut()
+            .find(|f| f.id == id && f.deleted_at.is_none())
+            .ok_or(FeedError::NotFound)?;
+        if matches!(feed.feed_type, FeedType::System) {
+            return Err(FeedError::SystemFeedUndeletable);
+        }
+        feed.deleted_at = Some(Utc::now());
+        Ok(())
     }
     async fn list_by_ids(&self, ids: &[Uuid]) -> Result<Vec<Feed>, FeedError> {
         let feeds = self.feeds.lock().await;
         let result = feeds
             .iter()
-            .filter(|f| ids.contains(&f.id))
+            .filter(|f| ids.contains(&f.id) && f.deleted_at.is_none())
             .cloned()
             .collect();
         Ok(result)
@@ -66,16 +110,37 @@ impl FeedRepository for MockFeedRepo {
         display_name: &str,
         description: Option<&str>,
         feed_type: FeedType,
-        _entity_type: EntityKind,
-        _entity_id: Uuid,
+        entity_type: EntityKind,
+        entity_id: Uuid,
     ) -> Result<Feed, FeedError> {
-        self.create(slug, display_name, description, feed_type).await
+        let feed = self.create(slug, display_name, description, feed_type).await?;
+        self.shared_entity_feeds.lock().await.push(EntityFeed {
+            feed_id: feed.id,
+            entity_type,
+            entity_id,
+        });
+        Ok(feed)
     }
 }
 
-#[derive(Default)]
 pub struct MockEntityFeedRepo {
-    pub entity_feeds: Mutex<Vec<EntityFeed>>,
+    pub entity_feeds: SharedEntityFeeds,
+}
+
+impl Default for MockEntityFeedRepo {
+    fn default() -> Self {
+        Self {
+            entity_feeds: Arc::new(Mutex::new(vec![])),
+        }
+    }
+}
+
+impl MockEntityFeedRepo {
+    pub fn with_shared(shared: SharedEntityFeeds) -> Self {
+        Self {
+            entity_feeds: shared,
+        }
+    }
 }
 
 #[async_trait]
@@ -119,8 +184,10 @@ impl EntityFeedRepository for MockEntityFeedRepo {
             .collect();
         Ok(result)
     }
-    async fn detach(&self, _feed_id: Uuid) -> Result<(), EntityFeedError> {
-        unimplemented!()
+    async fn detach(&self, feed_id: Uuid) -> Result<(), EntityFeedError> {
+        let mut efs = self.entity_feeds.lock().await;
+        efs.retain(|ef| ef.feed_id != feed_id);
+        Ok(())
     }
 }
 
@@ -222,8 +289,8 @@ impl FeedElementRepository for MockFeedElementRepo {
         self.elements.lock().await.push(el.clone());
         Ok(el)
     }
-    async fn find_by_id(&self, _id: Uuid) -> Result<Option<FeedElement>, FeedElementError> {
-        Ok(None)
+    async fn find_by_id(&self, id: Uuid) -> Result<Option<FeedElement>, FeedElementError> {
+        Ok(self.elements.lock().await.iter().find(|e| e.id == id).cloned())
     }
     async fn list_by_feed_item(
         &self,

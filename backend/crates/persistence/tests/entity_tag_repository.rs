@@ -92,3 +92,20 @@ async fn all_taggable_entity_types_accepted(pool: PgPool) {
         assert!(result.is_ok(), "entity type '{name}' should be accepted");
     }
 }
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn invalid_entity_type_rejected(pool: PgPool) {
+    let tag = create_test_tag(&pool, "general", "et-invalid").await;
+
+    // Insert directly with an invalid entity_type to test the CHECK constraint
+    let result = sqlx::query(
+        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
+    )
+    .bind("bogus_type")
+    .bind(Uuid::new_v4())
+    .bind(tag.id)
+    .execute(&pool)
+    .await;
+
+    assert!(result.is_err(), "invalid entity_type should be rejected by CHECK constraint");
+}
