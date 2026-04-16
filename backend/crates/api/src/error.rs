@@ -9,6 +9,7 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use application::auth::login::LoginError;
 use application::feed::service::FeedServiceError;
@@ -36,10 +37,12 @@ pub enum AppError {
 }
 
 /// JSON envelope for error responses. Every error returns this shape.
-#[derive(Serialize)]
-struct ErrorBody {
-    error: String,
-    code: &'static str,
+#[derive(Serialize, ToSchema)]
+pub struct ErrorBody {
+    /// Human-readable error message
+    pub error: String,
+    /// Machine-readable error code
+    pub code: &'static str,
 }
 
 impl IntoResponse for AppError {
