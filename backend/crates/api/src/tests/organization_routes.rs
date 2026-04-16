@@ -1,8 +1,7 @@
 use axum::http::StatusCode;
-use axum_test::TestServer;
 use uuid::Uuid;
 
-use super::test_state::{auth_header, issue_test_jwt, test_app_state_with_user, test_server};
+use super::test_state::{auth_header, issue_test_jwt, test_server, test_server_with_user};
 
 // --- Auth guard tests --------------------------------------------------------
 
@@ -176,9 +175,7 @@ async fn delete_org_returns_204() {
 
 #[tokio::test]
 async fn delete_personal_org_returns_403() {
-    let (state, user_id) = test_app_state_with_user();
-    let app = crate::router(state);
-    let server = TestServer::new(app).unwrap();
+    let (server, user_id) = test_server_with_user();
     let token = issue_test_jwt(&user_id, "did:plc:testuser", Some("testuser.bsky.social"));
     let (name, value) = auth_header(&token);
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use domain::entity::EntityKind;
 use domain::entity_feed::EntityFeedRepository;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
-use domain::feed_element::{FeedElement, FeedElementRepository, FeedElementType};
+use domain::feed_element::{FeedElement, FeedElementRepository};
 use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository};
 use domain::organization_member::{OrganizationMemberRepository, Permissions};
 use uuid::Uuid;
@@ -300,7 +300,7 @@ mod tests {
     use super::*;
     use domain::entity_feed::{EntityFeed, EntityFeedError};
     use domain::feed::FeedError;
-    use domain::feed_element::{FeedElement, FeedElementError};
+    use domain::feed_element::{FeedElement, FeedElementError, FeedElementType};
     use domain::feed_item::{FeedItem, FeedItemError};
     use domain::organization_member::{
         OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Role,

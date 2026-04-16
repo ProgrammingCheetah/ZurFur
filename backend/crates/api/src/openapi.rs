@@ -4,10 +4,14 @@
 //! interactive Scalar UI at `/api/docs`. Route annotations are added
 //! in Phase 3 — this module provides the infrastructure only.
 
+use std::sync::LazyLock;
+
 use axum::Json;
 use utoipa::OpenApi;
 
 use crate::error::ErrorBody;
+
+static OPENAPI_SPEC: LazyLock<utoipa::openapi::OpenApi> = LazyLock::new(ApiDoc::openapi);
 
 #[derive(OpenApi)]
 #[openapi(
@@ -52,7 +56,7 @@ impl utoipa::Modify for SecurityAddon {
 }
 
 pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
-    Json(ApiDoc::openapi())
+    Json(OPENAPI_SPEC.clone())
 }
 
 #[cfg(test)]
