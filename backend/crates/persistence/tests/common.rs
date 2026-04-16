@@ -170,42 +170,6 @@ pub async fn create_test_tag(
     }
 }
 
-pub struct TestCharacter {
-    pub id: Uuid,
-    pub org_id: Uuid,
-    pub name: String,
-}
-
-/// Create a test character via direct SQL insert.
-pub async fn create_test_character(
-    pool: &PgPool,
-    org_id: Uuid,
-    name: &str,
-    content_rating: &str,
-    visibility: &str,
-) -> TestCharacter {
-    let id = Uuid::new_v4();
-
-    sqlx::query(
-        "INSERT INTO character (id, org_id, name, content_rating, visibility) \
-         VALUES ($1, $2, $3, $4::content_rating, $5::character_visibility)",
-    )
-    .bind(id)
-    .bind(org_id)
-    .bind(name)
-    .bind(content_rating)
-    .bind(visibility)
-    .execute(pool)
-    .await
-    .expect("failed to create test character");
-
-    TestCharacter {
-        id,
-        org_id,
-        name: name.to_string(),
-    }
-}
-
 /// Attach a tag to an entity via entity_tag.
 pub async fn attach_tag_to_entity(
     pool: &PgPool,

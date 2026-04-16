@@ -22,23 +22,37 @@ impl SqlxCharacterRepository {
     }
 }
 
-fn map_character(row: sqlx::postgres::PgRow) -> Character {
+/// Map a PostgreSQL row to a `Character` domain entity. PG ENUM columns are
+/// cast to `::text` in SQL and parsed back into Rust enums here.
+fn map_character(row: sqlx::postgres::PgRow) -> Result<Character, CharacterError> {
     let content_rating_str: String = row.get("content_rating");
     let visibility_str: String = row.get("visibility");
 
-    Character {
+    let content_rating = ContentRating::from_str(&content_rating_str).ok_or_else(|| {
+        CharacterError::Database(format!("Unknown content_rating: {content_rating_str}"))
+    })?;
+    let visibility = CharacterVisibility::from_str(&visibility_str).ok_or_else(|| {
+        CharacterError::Database(format!("Unknown character_visibility: {visibility_str}"))
+    })?;
+
+    Ok(Character {
         id: row.get("id"),
         org_id: row.get("org_id"),
         name: row.get("name"),
         description: row.get("description"),
-        content_rating: ContentRating::from_str(&content_rating_str)
-            .expect("invalid content_rating in database"),
-        visibility: CharacterVisibility::from_str(&visibility_str)
-            .expect("invalid character_visibility in database"),
+        content_rating,
+        visibility,
         created_at: row.get("created_at"),
         updated_at: row.get("updated_at"),
         deleted_at: row.get("deleted_at"),
-    }
+    })
+}
+
+macro_rules! cols {
+    () => {
+        "id, org_id, name, description, content_rating::text, visibility::text, \
+         created_at, updated_at, deleted_at"
+    };
 }
 
 #[async_trait::async_trait]
@@ -52,10 +66,11 @@ impl CharacterRepository for SqlxCharacterRepository {
         visibility: CharacterVisibility,
     ) -> Result<Character, CharacterError> {
         sqlx::query(
-            "INSERT INTO character (org_id, name, description, content_rating, visibility) \
-             VALUES ($1, $2, $3, $4::content_rating, $5::character_visibility) \
-             RETURNING id, org_id, name, description, content_rating::text, visibility::text, \
-                       created_at, updated_at, deleted_at",
+            concat!(
+                "INSERT INTO character (org_id, name, description, content_rating, visibility) \
+                 VALUES ($1, $2, $3, $4::content_rating, $5::character_visibility) \
+                 RETURNING ", cols!()
+            ),
         )
         .bind(org_id)
         .bind(name)
@@ -64,21 +79,20 @@ impl CharacterRepository for SqlxCharacterRepository {
         .bind(visibility.as_str())
         .fetch_one(&self.pool)
         .await
-        .map(map_character)
         .map_err(|e| CharacterError::Database(e.to_string()))
+        .and_then(map_character)
     }
 
     async fn find_by_id(&self, id: Uuid) -> Result<Option<Character>, CharacterError> {
         sqlx::query(
-            "SELECT id, org_id, name, description, content_rating::text, visibility::text, \
-                    created_at, updated_at, deleted_at \
-             FROM character WHERE id = $1 AND deleted_at IS NULL",
+            concat!("SELECT ", cols!(), " FROM character WHERE id = $1 AND deleted_at IS NULL"),
         )
         .bind(id)
         .fetch_optional(&self.pool)
         .await
-        .map(|opt| opt.map(map_character))
-        .map_err(|e| CharacterError::Database(e.to_string()))
+        .map_err(|e| CharacterError::Database(e.to_string()))?
+        .map(map_character)
+        .transpose()
     }
 
     async fn list_by_org(
@@ -89,18 +103,12 @@ impl CharacterRepository for SqlxCharacterRepository {
         content_rating: Option<ContentRating>,
         tag_ids: Option<&[Uuid]>,
     ) -> Result<Vec<Character>, CharacterError> {
-        // Dynamic query building for optional filters.
-        // Base: WHERE org_id = $1 AND deleted_at IS NULL
-        // Optional: AND content_rating = $N
-        // Optional: AND id IN (SELECT entity_id FROM entity_tag WHERE entity_type = 'character' AND tag_id = ANY($N))
-        // ORDER BY created_at DESC LIMIT $N OFFSET $N
-        let mut sql = String::from(
-            "SELECT id, org_id, name, description, content_rating::text, visibility::text, \
-                    created_at, updated_at, deleted_at \
-             FROM character WHERE org_id = $1 AND deleted_at IS NULL",
-        );
+        // Dynamic SQL: optional filters change the parameter count, so the query
+        // must be built at runtime rather than using a static string.
+        let mut sql = String::from(concat!(
+            "SELECT ", cols!(), " FROM character WHERE org_id = $1 AND deleted_at IS NULL"
+        ));
 
-        // Track bind parameter index (starts at 2 since $1 is org_id)
         let mut param_idx = 2u32;
 
         if content_rating.is_some() {
@@ -140,8 +148,10 @@ impl CharacterRepository for SqlxCharacterRepository {
         query
             .fetch_all(&self.pool)
             .await
-            .map(|rows| rows.into_iter().map(map_character).collect())
-            .map_err(|e| CharacterError::Database(e.to_string()))
+            .map_err(|e| CharacterError::Database(e.to_string()))?
+            .into_iter()
+            .map(map_character)
+            .collect()
     }
 
     async fn update(
@@ -153,12 +163,13 @@ impl CharacterRepository for SqlxCharacterRepository {
         visibility: CharacterVisibility,
     ) -> Result<Character, CharacterError> {
         sqlx::query(
-            "UPDATE character \
-             SET name = $1, description = $2, content_rating = $3::content_rating, \
-                 visibility = $4::character_visibility, updated_at = now() \
-             WHERE id = $5 AND deleted_at IS NULL \
-             RETURNING id, org_id, name, description, content_rating::text, visibility::text, \
-                       created_at, updated_at, deleted_at",
+            concat!(
+                "UPDATE character \
+                 SET name = $1, description = $2, content_rating = $3::content_rating, \
+                     visibility = $4::character_visibility, updated_at = now() \
+                 WHERE id = $5 AND deleted_at IS NULL \
+                 RETURNING ", cols!()
+            ),
         )
         .bind(name)
         .bind(description)
@@ -169,6 +180,7 @@ impl CharacterRepository for SqlxCharacterRepository {
         .await
         .map_err(|e| CharacterError::Database(e.to_string()))?
         .map(map_character)
+        .transpose()?
         .ok_or(CharacterError::NotFound)
     }
 
