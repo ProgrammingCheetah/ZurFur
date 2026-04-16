@@ -1,22 +1,7 @@
-use axum::http::{HeaderName, HeaderValue, StatusCode};
-use axum_test::TestServer;
+use axum::http::StatusCode;
 use uuid::Uuid;
 
-use super::test_state::{issue_test_jwt, test_app_state};
-use crate::router;
-
-fn test_server() -> TestServer {
-    let state = test_app_state();
-    let app = router(state);
-    TestServer::new(app).unwrap()
-}
-
-fn auth_header(token: &str) -> (HeaderName, HeaderValue) {
-    (
-        HeaderName::from_static("authorization"),
-        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
-    )
-}
+use super::test_state::{auth_header, issue_test_jwt, test_server};
 
 // --- Auth guard tests --------------------------------------------------------
 
