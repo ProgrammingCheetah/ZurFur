@@ -235,6 +235,20 @@ impl Entity for FeedElement {
 impl Taggable for FeedElement {}
 impl FeedOwnable for FeedElement {}
 
+use crate::character::Character;
+
+impl Entity for Character {
+    fn id(&self) -> Uuid {
+        self.id
+    }
+    fn entity_kind(&self) -> EntityKind {
+        EntityKind::Character
+    }
+}
+
+impl Taggable for Character {}
+impl FeedOwnable for Character {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -333,6 +347,22 @@ mod tests {
         }
     }
 
+    fn test_character() -> Character {
+        use crate::character::CharacterVisibility;
+        use crate::content_rating::ContentRating;
+        Character {
+            id: Uuid::new_v4(),
+            org_id: Uuid::new_v4(),
+            name: "Test Character".into(),
+            description: None,
+            content_rating: ContentRating::Sfw,
+            visibility: CharacterVisibility::Public,
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+            deleted_at: None,
+        }
+    }
+
     #[test]
     fn user_implements_entity() {
         let u = test_user();
@@ -367,6 +397,32 @@ mod tests {
     fn feed_element_implements_entity() {
         let fe = test_feed_element();
         assert_eq!(fe.entity_kind(), EntityKind::FeedElement);
+    }
+
+    #[test]
+    fn character_entity_kind() {
+        let c = test_character();
+        assert_eq!(c.entity_kind(), EntityKind::Character);
+    }
+
+    #[test]
+    fn character_entity_id() {
+        let c = test_character();
+        assert_eq!(c.id(), c.id);
+    }
+
+    #[test]
+    fn character_taggable_defaults() {
+        let c = test_character();
+        assert!(c.validate_tag(Uuid::new_v4()).is_ok());
+        assert!(c.validate_untag(Uuid::new_v4()).is_ok());
+    }
+
+    #[test]
+    fn character_feed_ownable_defaults() {
+        let c = test_character();
+        assert!(c.validate_feed_creation().is_ok());
+        assert!(c.validate_feed_deletion(Uuid::new_v4()).is_ok());
     }
 
     #[test]
@@ -413,6 +469,7 @@ mod tests {
         let t = test_tag();
         let fi = test_feed_item();
         let fe = test_feed_element();
+        let c = test_character();
 
         // All entities are Taggable
         accepts_taggable(&u);
@@ -421,6 +478,7 @@ mod tests {
         accepts_taggable(&t);
         accepts_taggable(&fi);
         accepts_taggable(&fe);
+        accepts_taggable(&c);
 
         // All entities are FeedOwnable
         accepts_feed_ownable(&u);
@@ -429,6 +487,7 @@ mod tests {
         accepts_feed_ownable(&t);
         accepts_feed_ownable(&fi);
         accepts_feed_ownable(&fe);
+        accepts_feed_ownable(&c);
 
         // Only User and Organization are Authorable
         accepts_authorable(&u);
