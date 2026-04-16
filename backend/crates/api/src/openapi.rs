@@ -13,7 +13,7 @@ use crate::error::ErrorBody;
 #[openapi(
     info(
         title = "Zurfur API",
-        version = "0.1.0",
+        version = env!("CARGO_PKG_VERSION"),
         description = "AT Protocol-native art commission platform"
     ),
     tags(
@@ -27,9 +27,9 @@ use crate::error::ErrorBody;
     components(
         schemas(ErrorBody)
     ),
-    security(
-        ("bearer_auth" = [])
-    ),
+    // Security scheme is defined (via SecurityAddon) but NOT applied globally.
+    // Phase 3 route annotations apply security(("bearer_auth" = [])) per-operation,
+    // so public endpoints like /auth/start don't incorrectly show as auth-required.
     modifiers(&SecurityAddon)
 )]
 pub struct ApiDoc;
@@ -71,7 +71,7 @@ mod tests {
     fn openapi_spec_has_info() {
         let spec = ApiDoc::openapi();
         assert_eq!(spec.info.title, "Zurfur API");
-        assert_eq!(spec.info.version, "0.1.0");
+        assert_eq!(spec.info.version, env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
@@ -92,6 +92,11 @@ mod tests {
         assert!(
             schemes.contains_key("bearer_auth"),
             "bearer_auth security scheme should be defined"
+        );
+        // Security is defined but NOT applied globally — Phase 3 applies per-operation
+        assert!(
+            spec.security.is_none(),
+            "global security should not be set; applied per-operation in Phase 3"
         );
     }
 
