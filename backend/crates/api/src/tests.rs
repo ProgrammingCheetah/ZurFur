@@ -6,6 +6,7 @@ mod mock_users;
 mod test_state;
 
 mod auth_routes;
+mod openapi_routes;
 mod organization_routes;
 mod tag_routes;
 mod user_routes;
