@@ -1,5 +1,3 @@
-mod common;
-
 use domain::entity_tag::TaggableEntityType;
 use domain::tag::{TagCategory, TagError, TagRepository};
 use persistence::SqlxTagRepository;

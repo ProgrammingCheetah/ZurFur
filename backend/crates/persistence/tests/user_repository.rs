@@ -1,5 +1,3 @@
-mod common;
-
 use persistence::SqlxUserRepository;
 use domain::user::UserRepository;
 use sqlx::PgPool;

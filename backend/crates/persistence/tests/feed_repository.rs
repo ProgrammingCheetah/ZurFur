@@ -90,7 +90,7 @@ async fn list_by_ids(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "persistence::MIGRATOR")]
-async fn list_by_ids_empty(pool: PgPool) {
+async fn list_by_ids_unknown_returns_empty(pool: PgPool) {
     let repo = SqlxFeedRepository::new(pool);
 
     let feeds = repo.list_by_ids(&[Uuid::new_v4()]).await.unwrap();

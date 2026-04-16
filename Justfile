@@ -51,11 +51,11 @@ db-reset:
 
 # Run all tests (unit + integration). Requires: just up
 test:
-    cd backend && cargo test --workspace
+    cargo test --workspace
 
 # Run only persistence integration tests against PostgreSQL. Requires: just up
 test-integration:
-    cd backend && cargo test -p persistence
+    cargo test -p persistence
 
 # --- Code quality ---
 
