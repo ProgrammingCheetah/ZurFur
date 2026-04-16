@@ -15,3 +15,8 @@ CREATE TABLE character (
 );
 
 CREATE INDEX idx_character_org_id ON character (org_id);
+
+CREATE TRIGGER character_updated_at
+    BEFORE UPDATE ON character
+    FOR EACH ROW
+    EXECUTE PROCEDURE update_updated_at_column();
