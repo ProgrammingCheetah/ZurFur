@@ -6,6 +6,7 @@ pub(crate) mod sqlx_utils;
 
 pub use config::{Config, ConfigError};
 pub use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
+pub use domain::character::{Character, CharacterError, CharacterRepository, CharacterVisibility};
 pub use domain::content_rating::ContentRating;
 pub use domain::default_role::{DefaultRole, DefaultRoleError, DefaultRoleRepository};
 pub use domain::entity::EntityKind;
@@ -31,7 +32,8 @@ pub use domain::user_preferences::{
 };
 pub use pool::{create, Pool};
 pub use repositories::{
-    SqlxAtprotoSessionRepository, SqlxDefaultRoleRepository, SqlxEntityFeedRepository,
+    SqlxAtprotoSessionRepository, SqlxCharacterRepository, SqlxDefaultRoleRepository,
+    SqlxEntityFeedRepository,
     SqlxFeedElementRepository, SqlxFeedItemRepository, SqlxFeedRepository,
     SqlxEntityTagRepository, SqlxFeedSubscriptionRepository, SqlxOrganizationMemberRepository,
     SqlxOrganizationRepository, SqlxRefreshTokenRepository, SqlxTagRepository,

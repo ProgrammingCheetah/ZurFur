@@ -1,4 +1,5 @@
 mod atproto_session_repository;
+mod character_repository;
 mod default_role_repository;
 mod entity_feed_repository;
 mod entity_tag_repository;
@@ -14,6 +15,7 @@ mod user_preferences_repository;
 mod user_repository;
 
 pub use atproto_session_repository::SqlxAtprotoSessionRepository;
+pub use character_repository::SqlxCharacterRepository;
 pub use default_role_repository::SqlxDefaultRoleRepository;
 pub use entity_feed_repository::SqlxEntityFeedRepository;
 pub use entity_tag_repository::SqlxEntityTagRepository;

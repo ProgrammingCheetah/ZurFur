@@ -170,6 +170,24 @@ pub async fn create_test_tag(
     }
 }
 
+/// Attach a tag to an entity via entity_tag.
+pub async fn attach_tag_to_entity(
+    pool: &PgPool,
+    entity_type: &str,
+    entity_id: Uuid,
+    tag_id: Uuid,
+) {
+    sqlx::query(
+        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
+    )
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(tag_id)
+    .execute(pool)
+    .await
+    .expect("failed to attach tag to entity");
+}
+
 /// Create a test feed item.
 pub async fn create_test_feed_item(
     pool: &PgPool,

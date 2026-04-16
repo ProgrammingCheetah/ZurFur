@@ -1,4 +1,5 @@
 pub mod atproto_session;
+pub mod character;
 pub mod content_rating;
 pub mod default_role;
 pub mod entity;
