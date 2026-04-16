@@ -3,7 +3,8 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository, TaggableEntityType};
+use domain::entity::EntityKind;
+use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository};
 use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -143,7 +144,7 @@ impl TagRepository for MockTagRepo {
 
     async fn attach_and_increment(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, TagError> {
@@ -164,7 +165,7 @@ impl TagRepository for MockTagRepo {
 
     async fn detach_and_decrement(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), TagError> {
@@ -186,7 +187,7 @@ impl TagRepository for MockTagRepo {
         category: TagCategory,
         name: &str,
         is_approved: bool,
-        _entity_type: TaggableEntityType,
+        _entity_type: EntityKind,
         _entity_id: Uuid,
     ) -> Result<Tag, TagError> {
         let mut tag = self.create(category, name, is_approved).await?;
@@ -213,7 +214,7 @@ impl MockEntityTagRepo {
 impl EntityTagRepository for MockEntityTagRepo {
     async fn attach(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<EntityTag, EntityTagError> {
@@ -234,7 +235,7 @@ impl EntityTagRepository for MockEntityTagRepo {
 
     async fn detach(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
         tag_id: Uuid,
     ) -> Result<(), EntityTagError> {
@@ -252,7 +253,7 @@ impl EntityTagRepository for MockEntityTagRepo {
 
     async fn list_by_entity(
         &self,
-        entity_type: TaggableEntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Vec<EntityTag>, EntityTagError> {
         Ok(self

@@ -47,6 +47,16 @@ db-reset:
     cd backend/crates/persistence && sqlx database create
     cd backend/crates/persistence && sqlx migrate run
 
+# --- Testing ---
+
+# Run all tests (unit + integration). Requires: just up
+test:
+    cargo test --workspace
+
+# Run only persistence integration tests against PostgreSQL. Requires: just up
+test-integration:
+    cargo test -p persistence
+
 # --- Code quality ---
 
 check:

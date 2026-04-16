@@ -1,6 +1,7 @@
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
-use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository, EntityType};
+use domain::entity::EntityKind;
+use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository};
 use sqlx::Row;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -24,7 +25,7 @@ impl SqlxEntityFeedRepository {
 
 fn map_entity_feed(row: sqlx::postgres::PgRow) -> Result<EntityFeed, EntityFeedError> {
     let entity_type_str: String = row.get("entity_type");
-    let entity_type = EntityType::from_str(&entity_type_str)
+    let entity_type = EntityKind::from_str(&entity_type_str)
         .ok_or_else(|| EntityFeedError::Database(format!("Unknown entity type: {entity_type_str}")))?;
 
     let entity_feed = EntityFeed {
@@ -40,7 +41,7 @@ fn map_entity_feed(row: sqlx::postgres::PgRow) -> Result<EntityFeed, EntityFeedE
 pub(super) async fn attach_entity_feed<'e>(
     executor: impl sqlx::Executor<'e, Database = sqlx::Postgres>,
     feed_id: Uuid,
-    entity_type: EntityType,
+    entity_type: EntityKind,
     entity_id: Uuid,
 ) -> Result<EntityFeed, EntityFeedError> {
     let row = sqlx::query(
@@ -71,7 +72,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
     async fn attach(
         &self,
         feed_id: Uuid,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<EntityFeed, EntityFeedError> {
         attach_entity_feed(&self.pool, feed_id, entity_type, entity_id).await
@@ -94,7 +95,7 @@ impl EntityFeedRepository for SqlxEntityFeedRepository {
 
     async fn list_by_entity(
         &self,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Vec<EntityFeed>, EntityFeedError> {
         let rows = sqlx::query(

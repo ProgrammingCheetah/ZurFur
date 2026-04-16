@@ -80,7 +80,7 @@ async fn create_org(
         .tag_service
         .create_entity_tag(
             domain::tag::TagCategory::Organization,
-            domain::entity_tag::TaggableEntityType::Org,
+            domain::entity::EntityKind::Org,
             detail.org.id,
             &body.slug,
         )

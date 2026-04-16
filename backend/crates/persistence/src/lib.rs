@@ -8,8 +8,9 @@ pub use config::{Config, ConfigError};
 pub use domain::atproto_session::{AtprotoSessionEntity, AtprotoSessionRepository};
 pub use domain::content_rating::ContentRating;
 pub use domain::default_role::{DefaultRole, DefaultRoleError, DefaultRoleRepository};
-pub use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository, EntityType};
-pub use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository, TaggableEntityType};
+pub use domain::entity::EntityKind;
+pub use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository};
+pub use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository};
 pub use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 pub use domain::feed_element::{FeedElement, FeedElementError, FeedElementRepository, FeedElementType};
 pub use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
@@ -53,10 +54,10 @@ pub async fn connect(config: &Config) -> Result<Pool, sqlx::Error> {
     Ok(pool)
 }
 
+/// Compiled migrations, usable by both `migrate()` and `#[sqlx::test(migrator)]`.
+pub static MIGRATOR: sqlx::migrate::Migrator = sqlx::migrate!("./migrations");
+
 /// Runs all pending migrations.
 pub async fn migrate(pool: &Pool) -> Result<(), sqlx::Error> {
-    sqlx::migrate!("./migrations")
-        .run(pool)
-        .await
-        .map_err(Into::into)
+    MIGRATOR.run(pool).await.map_err(Into::into)
 }

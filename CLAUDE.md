@@ -78,6 +78,26 @@ Optional with defaults: `JWT_ACCESS_EXPIRY_SECS` (900), `JWT_REFRESH_EXPIRY_SECS
 - `design/features/OVERVIEW.md` - Feature dependency map and build order
 - `diagrams/auth/login.mermaid` - OAuth login sequence diagram
 
+## Parallel Work
+
+Work is orchestrated via `WORKBOARD.md`. Each unit of work has a self-contained design doc.
+
+**Branch strategy (GitFlow):**
+- `main` — stable, only receives merges from `develop` at phase gates
+- `develop` — integration branch, all feature PRs target this
+- `feature/*` — individual units of work
+
+**When assigned a unit of work:**
+1. Create a worktree: `git worktree add ../zurfur-<unit-name> -b feature/<branch-name> develop`
+2. Read the design doc specified in `WORKBOARD.md`
+3. Implement commit by commit, run tests after each
+4. PR to `develop` when done — **never push directly to `main`**
+5. Clean up: `git worktree remove ../zurfur-<unit-name>`
+
+**Design docs live in:**
+- `design/infrastructure/` — cross-cutting (entity interfaces, OpenAPI, testing)
+- `design/features/` — feature-specific (characters, TOS, commissions)
+
 ## Retrospectives
 
 Read `docs/retrospectives.md` before starting any feature work. Contains shared guidance on branching, testing, commit discipline, automated reviewer patterns, common pitfalls, and per-feature lessons learned.

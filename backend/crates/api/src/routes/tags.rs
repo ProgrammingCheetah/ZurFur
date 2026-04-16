@@ -9,7 +9,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use domain::entity_tag::TaggableEntityType;
+use domain::entity::EntityKind;
 use domain::tag::TagCategory;
 use serde::{Deserialize, Serialize};
 
@@ -248,11 +248,11 @@ pub fn router() -> Router<SharedState> {
 
 // --- Helpers -----------------------------------------------------------------
 
-/// Parse a string into a `TaggableEntityType`, returning 400 on invalid input.
-fn parse_entity_type(s: &str) -> Result<TaggableEntityType, AppError> {
-    TaggableEntityType::from_str(s).ok_or_else(|| {
+/// Parse a string into an `EntityKind`, returning 400 on invalid input.
+fn parse_entity_type(s: &str) -> Result<EntityKind, AppError> {
+    EntityKind::from_str(s).ok_or_else(|| {
         AppError::BadRequest(format!(
-            "Invalid entity type: '{s}'. Must be 'org', 'commission', 'feed_item', 'character', or 'feed_element'"
+            "Invalid entity type: '{s}'. Must be one of: 'user', 'org', 'character', 'commission', 'feed', 'tag', 'feed_item', 'feed_element'"
         ))
     })
 }

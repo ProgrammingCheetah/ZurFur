@@ -10,7 +10,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::entity_feed::EntityType;
+use crate::entity::EntityKind;
 
 /// Whether a feed is system-managed or user-created.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -112,7 +112,7 @@ pub trait FeedRepository: Send + Sync {
         display_name: &str,
         description: Option<&str>,
         feed_type: FeedType,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Feed, FeedError>;
 }

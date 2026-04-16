@@ -1,6 +1,6 @@
 use crate::pool::Pool;
 use crate::sqlx_utils::is_unique_violation;
-use domain::entity_feed::EntityType;
+use domain::entity::EntityKind;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use sqlx::Row;
 use std::sync::Arc;
@@ -179,7 +179,7 @@ impl FeedRepository for SqlxFeedRepository {
         display_name: &str,
         description: Option<&str>,
         feed_type: FeedType,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Feed, FeedError> {
         let mut tx = self.pool.begin().await

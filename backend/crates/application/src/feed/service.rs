@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use domain::entity_feed::{EntityFeedRepository, EntityType};
+use domain::entity::EntityKind;
+use domain::entity_feed::EntityFeedRepository;
 use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 use domain::feed_element::{FeedElement, FeedElementRepository, FeedElementType};
 use domain::feed_item::{AuthorType, FeedItem, FeedItemRepository};
@@ -24,12 +25,8 @@ pub enum FeedServiceError {
     Internal(String),
 }
 
-/// Input for creating a new feed element within a post.
-pub struct NewFeedElement {
-    pub element_type: FeedElementType,
-    pub content_json: String,
-    pub position: i32,
-}
+/// Re-export domain input type for feed element creation.
+pub use domain::feed_item::NewFeedElementInput as NewFeedElement;
 
 /// A feed item together with its content elements.
 pub struct FeedItemWithElements {
@@ -67,7 +64,7 @@ impl FeedService {
     /// List all feeds attached to an entity.
     pub async fn list_feeds_for_entity(
         &self,
-        entity_type: EntityType,
+        entity_type: EntityKind,
         entity_id: Uuid,
     ) -> Result<Vec<Feed>, FeedServiceError> {
         let entity_feeds = self
@@ -109,7 +106,7 @@ impl FeedService {
     ) -> Result<Feed, FeedServiceError> {
         let feed = self
             .feed_repo
-            .create_and_attach(slug, display_name, None, FeedType::System, EntityType::Org, org_id)
+            .create_and_attach(slug, display_name, None, FeedType::System, EntityKind::Org, org_id)
             .await
             .map_err(|e| match e {
                 FeedError::SlugTaken(s) => FeedServiceError::SlugTaken(s),
@@ -133,7 +130,7 @@ impl FeedService {
 
         let feed = self
             .feed_repo
-            .create_and_attach(slug, display_name, description, FeedType::Custom, EntityType::Org, org_id)
+            .create_and_attach(slug, display_name, description, FeedType::Custom, EntityKind::Org, org_id)
             .await
             .map_err(|e| match e {
                 FeedError::SlugTaken(s) => FeedServiceError::SlugTaken(s),
@@ -188,24 +185,13 @@ impl FeedService {
         actor_id: Uuid,
         elements: Vec<NewFeedElement>,
     ) -> Result<FeedItemWithElements, FeedServiceError> {
-        use domain::feed_item::NewFeedElementInput;
-
         let org_id = self.resolve_feed_org(feed_id).await?;
         self.require_feed_permission_on_org(org_id, actor_id, Permissions::MANAGE_PROFILE)
             .await?;
 
-        let inputs: Vec<NewFeedElementInput> = elements
-            .into_iter()
-            .map(|el| NewFeedElementInput {
-                element_type: el.element_type,
-                content_json: el.content_json,
-                position: el.position,
-            })
-            .collect();
-
         let (item, created_elements) = self
             .feed_item_repo
-            .create_with_elements(feed_id, AuthorType::User, actor_id, &inputs)
+            .create_with_elements(feed_id, AuthorType::User, actor_id, &elements)
             .await
             .map_err(|e| FeedServiceError::Internal(e.to_string()))?;
 
@@ -280,7 +266,7 @@ impl FeedService {
             .ok_or(FeedServiceError::FeedNotFound)?;
 
         // For now, we only support org-owned feeds for permission checks
-        if entity_feed.entity_type != EntityType::Org {
+        if entity_feed.entity_type != EntityKind::Org {
             return Err(FeedServiceError::Forbidden);
         }
 
@@ -384,7 +370,7 @@ mod tests {
             display_name: &str,
             description: Option<&str>,
             feed_type: FeedType,
-            _entity_type: domain::entity_feed::EntityType,
+            _entity_type: domain::entity::EntityKind,
             _entity_id: Uuid,
         ) -> Result<Feed, FeedError> {
             self.create(slug, display_name, description, feed_type).await
@@ -401,7 +387,7 @@ mod tests {
         async fn attach(
             &self,
             feed_id: Uuid,
-            entity_type: EntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
         ) -> Result<EntityFeed, EntityFeedError> {
             let ef = EntityFeed {
@@ -426,7 +412,7 @@ mod tests {
         }
         async fn list_by_entity(
             &self,
-            entity_type: EntityType,
+            entity_type: EntityKind,
             entity_id: Uuid,
         ) -> Result<Vec<EntityFeed>, EntityFeedError> {
             let efs = self.entity_feeds.lock().await;
@@ -680,7 +666,7 @@ mod tests {
             .await
             .unwrap();
         entity_feed_repo
-            .attach(feed.id, EntityType::Org, org_id)
+            .attach(feed.id, EntityKind::Org, org_id)
             .await
             .unwrap();
 
@@ -693,7 +679,7 @@ mod tests {
         );
 
         let feeds = svc
-            .list_feeds_for_entity(EntityType::Org, org_id)
+            .list_feeds_for_entity(EntityKind::Org, org_id)
             .await
             .unwrap();
 
@@ -772,7 +758,7 @@ mod tests {
             .await
             .unwrap();
         entity_feed_repo
-            .attach(feed.id, EntityType::Org, org_id)
+            .attach(feed.id, EntityKind::Org, org_id)
             .await
             .unwrap();
 
@@ -802,7 +788,7 @@ mod tests {
             .await
             .unwrap();
         entity_feed_repo
-            .attach(feed.id, EntityType::Org, org_id)
+            .attach(feed.id, EntityKind::Org, org_id)
             .await
             .unwrap();
 
