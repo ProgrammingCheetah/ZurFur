@@ -19,8 +19,9 @@ use uuid::Uuid;
 use crate::feed_item::AuthorType;
 
 /// The kind of entity. Used as the discriminator in all polymorphic junction
-/// tables (entity_feed, entity_tag). Every domain struct maps to exactly one
-/// EntityKind variant.
+/// tables (entity_feed, entity_tag). Each domain struct maps to exactly one
+/// variant. Some variants (Character, Commission) are forward-declared for
+/// database compatibility — their structs will be added in future phases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntityKind {
     User,
