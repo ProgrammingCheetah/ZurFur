@@ -170,6 +170,60 @@ pub async fn create_test_tag(
     }
 }
 
+pub struct TestCharacter {
+    pub id: Uuid,
+    pub org_id: Uuid,
+    pub name: String,
+}
+
+/// Create a test character via direct SQL insert.
+pub async fn create_test_character(
+    pool: &PgPool,
+    org_id: Uuid,
+    name: &str,
+    content_rating: &str,
+    visibility: &str,
+) -> TestCharacter {
+    let id = Uuid::new_v4();
+
+    sqlx::query(
+        "INSERT INTO character (id, org_id, name, content_rating, visibility) \
+         VALUES ($1, $2, $3, $4::content_rating, $5::character_visibility)",
+    )
+    .bind(id)
+    .bind(org_id)
+    .bind(name)
+    .bind(content_rating)
+    .bind(visibility)
+    .execute(pool)
+    .await
+    .expect("failed to create test character");
+
+    TestCharacter {
+        id,
+        org_id,
+        name: name.to_string(),
+    }
+}
+
+/// Attach a tag to an entity via entity_tag.
+pub async fn attach_tag_to_entity(
+    pool: &PgPool,
+    entity_type: &str,
+    entity_id: Uuid,
+    tag_id: Uuid,
+) {
+    sqlx::query(
+        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
+    )
+    .bind(entity_type)
+    .bind(entity_id)
+    .bind(tag_id)
+    .execute(pool)
+    .await
+    .expect("failed to attach tag to entity");
+}
+
 /// Create a test feed item.
 pub async fn create_test_feed_item(
     pool: &PgPool,
