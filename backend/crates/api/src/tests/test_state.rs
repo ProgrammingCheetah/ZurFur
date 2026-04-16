@@ -245,6 +245,25 @@ pub fn test_app_state_with_user() -> (AppState, Uuid) {
     (state, user_id)
 }
 
+pub fn test_server() -> axum_test::TestServer {
+    let state = test_app_state();
+    let app = crate::router(state);
+    axum_test::TestServer::new(app).unwrap()
+}
+
+pub fn test_server_with_user() -> (axum_test::TestServer, Uuid) {
+    let (state, user_id) = test_app_state_with_user();
+    let app = crate::router(state);
+    (axum_test::TestServer::new(app).unwrap(), user_id)
+}
+
+pub fn auth_header(token: &str) -> (axum::http::HeaderName, axum::http::HeaderValue) {
+    (
+        axum::http::HeaderName::from_static("authorization"),
+        axum::http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+    )
+}
+
 /// Issue a valid JWT for testing protected routes.
 pub fn issue_test_jwt(user_id: &Uuid, did: &str, handle: Option<&str>) -> String {
     use application::auth::service::ZurfurClaims;

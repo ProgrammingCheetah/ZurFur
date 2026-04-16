@@ -1,28 +1,7 @@
-use axum::http::{HeaderName, HeaderValue, StatusCode};
-use axum_test::TestServer;
+use axum::http::StatusCode;
 use uuid::Uuid;
 
-use super::test_state::{issue_test_jwt, test_app_state, test_app_state_with_user};
-use crate::router;
-
-fn test_server() -> TestServer {
-    let state = test_app_state();
-    let app = router(state);
-    TestServer::new(app).unwrap()
-}
-
-fn test_server_with_user() -> (TestServer, Uuid) {
-    let (state, user_id) = test_app_state_with_user();
-    let app = router(state);
-    (TestServer::new(app).unwrap(), user_id)
-}
-
-fn auth_header(token: &str) -> (HeaderName, HeaderValue) {
-    (
-        HeaderName::from_static("authorization"),
-        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
-    )
-}
+use super::test_state::{auth_header, issue_test_jwt, test_server, test_server_with_user};
 
 // --- Auth guard tests --------------------------------------------------------
 
@@ -42,12 +21,12 @@ async fn complete_onboarding_without_token_returns_401() {
 async fn complete_onboarding_as_artist_returns_200() {
     let (server, user_id) = test_server_with_user();
     let token = issue_test_jwt(&user_id, "did:plc:testuser", Some("testuser.bsky.social"));
-    let (name, value) = auth_header(&token);
+    let auth = auth_header(&token);
 
     let response = server
         .post("/onboarding/complete")
         .json(&serde_json::json!({"role": "artist"}))
-        .add_header(name, value)
+        .add_header(auth.0, auth.1)
         .await;
     response.assert_status_ok();
 
@@ -61,12 +40,12 @@ async fn complete_onboarding_as_artist_returns_200() {
 async fn complete_onboarding_as_commissioner_returns_200() {
     let (server, user_id) = test_server_with_user();
     let token = issue_test_jwt(&user_id, "did:plc:testuser", Some("testuser.bsky.social"));
-    let (name, value) = auth_header(&token);
+    let auth = auth_header(&token);
 
     let response = server
         .post("/onboarding/complete")
         .json(&serde_json::json!({"role": "commissioner_client"}))
-        .add_header(name, value)
+        .add_header(auth.0, auth.1)
         .await;
     response.assert_status_ok();
 
@@ -80,20 +59,18 @@ async fn complete_onboarding_as_commissioner_returns_200() {
 async fn complete_onboarding_twice_is_idempotent() {
     let (server, user_id) = test_server_with_user();
     let token = issue_test_jwt(&user_id, "did:plc:testuser", Some("testuser.bsky.social"));
-    let (name, value) = auth_header(&token);
+    let auth = auth_header(&token);
 
-    // First call
     server
         .post("/onboarding/complete")
         .json(&serde_json::json!({"role": "artist"}))
-        .add_header(name.clone(), value.clone())
+        .add_header(auth.0.clone(), auth.1.clone())
         .await;
 
-    // Second call — should succeed with 0 feeds created
     let response = server
         .post("/onboarding/complete")
         .json(&serde_json::json!({"role": "artist"}))
-        .add_header(name, value)
+        .add_header(auth.0, auth.1)
         .await;
     response.assert_status_ok();
 
@@ -107,12 +84,12 @@ async fn complete_onboarding_invalid_role_returns_400() {
     let server = test_server();
     let user_id = Uuid::new_v4();
     let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
-    let (name, value) = auth_header(&token);
+    let auth = auth_header(&token);
 
     let response = server
         .post("/onboarding/complete")
         .json(&serde_json::json!({"role": "invalid_role"}))
-        .add_header(name, value)
+        .add_header(auth.0, auth.1)
         .await;
     response.assert_status(StatusCode::BAD_REQUEST);
 }

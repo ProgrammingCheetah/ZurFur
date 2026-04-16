@@ -1,22 +1,7 @@
-use axum::http::{HeaderName, HeaderValue, StatusCode};
-use axum_test::TestServer;
+use axum::http::StatusCode;
 use uuid::Uuid;
 
-use super::test_state::{issue_test_jwt, test_app_state};
-use crate::router;
-
-fn test_server() -> TestServer {
-    let state = test_app_state();
-    let app = router(state);
-    TestServer::new(app).unwrap()
-}
-
-fn auth_header(token: &str) -> (HeaderName, HeaderValue) {
-    (
-        HeaderName::from_static("authorization"),
-        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
-    )
-}
+use super::test_state::{auth_header, issue_test_jwt, test_server};
 
 // --- Auth guard tests --------------------------------------------------------
 
@@ -160,17 +145,16 @@ async fn attach_with_invalid_entity_type_returns_400() {
 
 // --- Tag attachment with various entity types --------------------------------
 
-#[tokio::test]
-async fn attach_tag_to_user_entity() {
+async fn assert_attach_to_entity_type(entity_type: &str, tag_name: &str) {
     let server = test_server();
     let user_id = Uuid::new_v4();
     let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
-    let (name, value) = auth_header(&token);
+    let auth = auth_header(&token);
 
     let tag_resp = server
         .post("/tags")
-        .json(&serde_json::json!({"category": "metadata", "name": "user-tag"}))
-        .add_header(name.clone(), value.clone())
+        .json(&serde_json::json!({"category": "metadata", "name": tag_name}))
+        .add_header(auth.0.clone(), auth.1.clone())
         .await;
     let tag: serde_json::Value = tag_resp.json();
     let tag_id = tag["id"].as_str().unwrap();
@@ -178,67 +162,28 @@ async fn attach_tag_to_user_entity() {
     let response = server
         .post("/tags/attach")
         .json(&serde_json::json!({
-            "entity_type": "user",
+            "entity_type": entity_type,
             "entity_id": Uuid::new_v4().to_string(),
             "tag_id": tag_id,
         }))
-        .add_header(name, value)
+        .add_header(auth.0, auth.1)
         .await;
     response.assert_status(StatusCode::CREATED);
+}
+
+#[tokio::test]
+async fn attach_tag_to_user_entity() {
+    assert_attach_to_entity_type("user", "user-tag").await;
 }
 
 #[tokio::test]
 async fn attach_tag_to_feed_entity() {
-    let server = test_server();
-    let user_id = Uuid::new_v4();
-    let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
-    let (name, value) = auth_header(&token);
-
-    let tag_resp = server
-        .post("/tags")
-        .json(&serde_json::json!({"category": "general", "name": "feed-tag"}))
-        .add_header(name.clone(), value.clone())
-        .await;
-    let tag: serde_json::Value = tag_resp.json();
-    let tag_id = tag["id"].as_str().unwrap();
-
-    let response = server
-        .post("/tags/attach")
-        .json(&serde_json::json!({
-            "entity_type": "feed",
-            "entity_id": Uuid::new_v4().to_string(),
-            "tag_id": tag_id,
-        }))
-        .add_header(name, value)
-        .await;
-    response.assert_status(StatusCode::CREATED);
+    assert_attach_to_entity_type("feed", "feed-tag").await;
 }
 
 #[tokio::test]
 async fn attach_tag_to_tag_entity() {
-    let server = test_server();
-    let user_id = Uuid::new_v4();
-    let token = issue_test_jwt(&user_id, "did:plc:test", Some("test.bsky.social"));
-    let (name, value) = auth_header(&token);
-
-    let tag_resp = server
-        .post("/tags")
-        .json(&serde_json::json!({"category": "metadata", "name": "meta-tag"}))
-        .add_header(name.clone(), value.clone())
-        .await;
-    let tag: serde_json::Value = tag_resp.json();
-    let tag_id = tag["id"].as_str().unwrap();
-
-    let response = server
-        .post("/tags/attach")
-        .json(&serde_json::json!({
-            "entity_type": "tag",
-            "entity_id": Uuid::new_v4().to_string(),
-            "tag_id": tag_id,
-        }))
-        .add_header(name, value)
-        .await;
-    response.assert_status(StatusCode::CREATED);
+    assert_attach_to_entity_type("tag", "meta-tag").await;
 }
 
 // --- GET /tags/entity/:type/:id ---------------------------------------------

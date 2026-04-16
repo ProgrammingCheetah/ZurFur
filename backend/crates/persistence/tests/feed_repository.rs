@@ -111,13 +111,6 @@ async fn duplicate_slug_per_entity_allowed(pool: PgPool) {
         .create_and_attach("gallery", "Gallery", None, FeedType::Custom, EntityKind::Org, org2.id)
         .await;
 
-    // Both should succeed — feeds are not globally unique by slug
-    // (If slug IS globally unique, the second will fail and we'll need to adjust the schema expectation)
-    if f1.is_ok() && f2.is_ok() {
-        // Slug uniqueness is per-entity, not global — expected behavior
-    } else if f1.is_ok() && f2.is_err() {
-        // Global slug uniqueness — feed slugs are globally unique
-        // This is also valid schema design; the test documents current behavior
-        panic!("Feed slug appears to be globally unique — update design doc if intentional");
-    }
+    f1.unwrap();
+    f2.unwrap();
 }

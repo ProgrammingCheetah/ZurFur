@@ -1,22 +1,8 @@
-use axum::http::{HeaderName, HeaderValue, StatusCode};
+use axum::http::StatusCode;
 use axum_test::TestServer;
 use uuid::Uuid;
 
-use super::test_state::{issue_test_jwt, test_app_state};
-use crate::router;
-
-fn test_server() -> TestServer {
-    let state = test_app_state();
-    let app = router(state);
-    TestServer::new(app).unwrap()
-}
-
-fn auth_header(token: &str) -> (HeaderName, HeaderValue) {
-    (
-        HeaderName::from_static("authorization"),
-        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
-    )
-}
+use super::test_state::{auth_header, issue_test_jwt, test_app_state_with_user, test_server};
 
 // --- Auth guard tests --------------------------------------------------------
 
@@ -190,8 +176,6 @@ async fn delete_org_returns_204() {
 
 #[tokio::test]
 async fn delete_personal_org_returns_403() {
-    use super::test_state::test_app_state_with_user;
-
     let (state, user_id) = test_app_state_with_user();
     let app = crate::router(state);
     let server = TestServer::new(app).unwrap();
