@@ -3,6 +3,9 @@
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 
+use axum::http::{HeaderName, HeaderValue};
+use axum_test::TestServer;
+
 use application::auth::login::OAuthConfig;
 use application::auth::service::{AuthService, create_default_oauth_storage};
 use application::feed::service::FeedService;
@@ -129,6 +132,19 @@ pub fn test_app_state() -> AppState {
         feed_service,
         tag_service,
     }
+}
+
+pub fn test_server() -> TestServer {
+    let state = test_app_state();
+    let app = crate::router(state);
+    TestServer::new(app).unwrap()
+}
+
+pub fn auth_header(token: &str) -> (HeaderName, HeaderValue) {
+    (
+        HeaderName::from_static("authorization"),
+        HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+    )
 }
 
 /// Issue a valid JWT for testing protected routes.

@@ -1,13 +1,4 @@
-use axum_test::TestServer;
-
-use super::test_state::test_app_state;
-use crate::router;
-
-fn test_server() -> TestServer {
-    let state = test_app_state();
-    let app = router(state);
-    TestServer::new(app).unwrap()
-}
+use super::test_state::test_server;
 
 #[tokio::test]
 async fn get_openapi_json_returns_200() {

@@ -34,7 +34,6 @@ use crate::error::ErrorBody;
 )]
 pub struct ApiDoc;
 
-/// Adds Bearer JWT security scheme to the spec.
 struct SecurityAddon;
 
 impl utoipa::Modify for SecurityAddon {
@@ -52,7 +51,6 @@ impl utoipa::Modify for SecurityAddon {
     }
 }
 
-/// Returns the OpenAPI JSON spec.
 pub async fn openapi_json() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
 }
@@ -63,7 +61,6 @@ mod tests {
 
     #[test]
     fn openapi_spec_generates() {
-        // Should not panic
         let _spec = ApiDoc::openapi();
     }
 
@@ -93,7 +90,6 @@ mod tests {
             schemes.contains_key("bearer_auth"),
             "bearer_auth security scheme should be defined"
         );
-        // Security is defined but NOT applied globally — Phase 3 applies per-operation
         assert!(
             spec.security.is_none(),
             "global security should not be set; applied per-operation in Phase 3"
