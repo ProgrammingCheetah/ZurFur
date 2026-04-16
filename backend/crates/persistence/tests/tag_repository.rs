@@ -137,6 +137,64 @@ async fn delete_tag(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn attach_and_increment(pool: PgPool) {
+    let repo = SqlxTagRepository::new(pool);
+    let tag = repo.create(TagCategory::General, "attach-inc", true).await.unwrap();
+    assert_eq!(tag.usage_count, 0);
+
+    let entity_id = Uuid::new_v4();
+    let entity_tag = repo
+        .attach_and_increment(EntityKind::Org, entity_id, tag.id)
+        .await
+        .unwrap();
+
+    assert_eq!(entity_tag.tag_id, tag.id);
+    assert_eq!(entity_tag.entity_id, entity_id);
+
+    let found = repo.find_by_id(tag.id).await.unwrap().unwrap();
+    assert_eq!(found.usage_count, 1, "usage_count should be 1 after attach");
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn detach_and_decrement(pool: PgPool) {
+    let repo = SqlxTagRepository::new(pool);
+    let tag = repo.create(TagCategory::General, "detach-dec", true).await.unwrap();
+    let entity_id = Uuid::new_v4();
+
+    // Attach first
+    repo.attach_and_increment(EntityKind::Org, entity_id, tag.id)
+        .await
+        .unwrap();
+    let found = repo.find_by_id(tag.id).await.unwrap().unwrap();
+    assert_eq!(found.usage_count, 1);
+
+    // Detach
+    repo.detach_and_decrement(EntityKind::Org, entity_id, tag.id)
+        .await
+        .unwrap();
+
+    let found = repo.find_by_id(tag.id).await.unwrap().unwrap();
+    assert_eq!(found.usage_count, 0, "usage_count should be 0 after detach");
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn attach_tag_twice_fails(pool: PgPool) {
+    let repo = SqlxTagRepository::new(pool);
+    let tag = repo.create(TagCategory::General, "twice-attach", true).await.unwrap();
+    let entity_id = Uuid::new_v4();
+
+    repo.attach_and_increment(EntityKind::Org, entity_id, tag.id)
+        .await
+        .unwrap();
+
+    let result = repo
+        .attach_and_increment(EntityKind::Org, entity_id, tag.id)
+        .await;
+
+    assert!(result.is_err(), "attaching same tag twice should fail");
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
 async fn duplicate_name_category_fails(pool: PgPool) {
     let repo = SqlxTagRepository::new(pool);
     repo.create(TagCategory::General, "dup-tag", true).await.unwrap();

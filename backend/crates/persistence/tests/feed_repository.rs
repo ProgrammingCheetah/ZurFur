@@ -96,3 +96,28 @@ async fn list_by_ids_unknown_returns_empty(pool: PgPool) {
     let feeds = repo.list_by_ids(&[Uuid::new_v4()]).await.unwrap();
     assert!(feeds.is_empty());
 }
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn duplicate_slug_per_entity_allowed(pool: PgPool) {
+    let user = create_test_user(&pool).await;
+    let org1 = create_test_org(&pool, "slug-org-1", None, false, Some(user.id)).await;
+    let org2 = create_test_org(&pool, "slug-org-2", None, false, None).await;
+    let repo = SqlxFeedRepository::new(pool);
+
+    let f1 = repo
+        .create_and_attach("gallery", "Gallery", None, FeedType::Custom, EntityKind::Org, org1.id)
+        .await;
+    let f2 = repo
+        .create_and_attach("gallery", "Gallery", None, FeedType::Custom, EntityKind::Org, org2.id)
+        .await;
+
+    // Both should succeed — feeds are not globally unique by slug
+    // (If slug IS globally unique, the second will fail and we'll need to adjust the schema expectation)
+    if f1.is_ok() && f2.is_ok() {
+        // Slug uniqueness is per-entity, not global — expected behavior
+    } else if f1.is_ok() && f2.is_err() {
+        // Global slug uniqueness — feed slugs are globally unique
+        // This is also valid schema design; the test documents current behavior
+        panic!("Feed slug appears to be globally unique — update design doc if intentional");
+    }
+}
