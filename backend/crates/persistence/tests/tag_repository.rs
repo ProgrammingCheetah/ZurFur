@@ -1,4 +1,4 @@
-use domain::entity_tag::TaggableEntityType;
+use domain::entity::EntityKind;
 use domain::tag::{TagCategory, TagError, TagRepository};
 use persistence::SqlxTagRepository;
 use sqlx::PgPool;
@@ -22,7 +22,7 @@ async fn create_and_attach_tag(pool: PgPool) {
     let entity_id = Uuid::new_v4();
 
     let tag = repo
-        .create_and_attach(TagCategory::Organization, "studio-x", true, TaggableEntityType::Org, entity_id)
+        .create_and_attach(TagCategory::Organization, "studio-x", true, EntityKind::Org, entity_id)
         .await
         .unwrap();
 

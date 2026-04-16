@@ -114,8 +114,8 @@ All merged to `main`.
 |-----|----------|--------|
 | `design/infrastructure/entity-interfaces/DESIGN.md` | 1A | Done |
 | `design/infrastructure/testing/DESIGN.md` | 1B, 2C | Done |
-| `design/infrastructure/openapi/DESIGN.md` | 2A, 3A-3C | **Needs writing** |
-| `design/features/02-identity-profile/PHASE3_DESIGN.md` | 2B, 3D | **Needs update** (gallery shift, EntityKind) |
+| `design/infrastructure/openapi/DESIGN.md` | 2A, 3A-3C | Done |
+| `design/features/02-identity-profile/PHASE3_DESIGN.md` | 2B, 3D | Done (updated for gallery shift + EntityKind) |
 | `design/features/11-artist-tos/DESIGN.md` | 4A | Not started |
 
 ---

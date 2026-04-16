@@ -18,8 +18,8 @@ async fn migrations_run_cleanly(pool: PgPool) {
 /// Running migrations a second time should be idempotent.
 #[sqlx::test(migrator = "persistence::MIGRATOR")]
 async fn migrations_are_idempotent(pool: PgPool) {
-    // sqlx::test already ran migrations once. Run them again.
-    sqlx::migrate!("./migrations")
+    // sqlx::test already ran migrations once. Run them again via the shared MIGRATOR.
+    persistence::MIGRATOR
         .run(&pool)
         .await
         .expect("re-running migrations should not fail");

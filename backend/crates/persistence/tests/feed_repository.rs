@@ -1,7 +1,7 @@
 mod common;
 
 use common::*;
-use domain::entity_feed::EntityType;
+use domain::entity::EntityKind;
 use domain::feed::{FeedError, FeedRepository, FeedType};
 use persistence::SqlxFeedRepository;
 use sqlx::PgPool;
@@ -27,7 +27,7 @@ async fn create_and_attach_feed(pool: PgPool) {
     let repo = SqlxFeedRepository::new(pool);
 
     let feed = repo
-        .create_and_attach("updates", "Updates", None, FeedType::System, EntityType::Org, org.id)
+        .create_and_attach("updates", "Updates", None, FeedType::System, EntityKind::Org, org.id)
         .await
         .unwrap();
 
