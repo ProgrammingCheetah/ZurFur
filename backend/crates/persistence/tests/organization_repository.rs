@@ -68,6 +68,56 @@ async fn soft_delete_org(pool: PgPool) {
 }
 
 #[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn create_org_with_owner(pool: PgPool) {
+    let user = create_test_user(&pool).await;
+    let repo = SqlxOrganizationRepository::new(pool.clone());
+
+    let org = repo
+        .create_with_owner("owned-org", Some("Owned Org"), false, user.id)
+        .await
+        .unwrap();
+
+    assert_eq!(org.slug, "owned-org");
+
+    // Verify owner membership was also created
+    let member = sqlx::query_as::<_, (String, i64)>(
+        "SELECT role, permissions FROM organization_member WHERE org_id = $1 AND user_id = $2",
+    )
+    .bind(org.id)
+    .bind(user.id)
+    .fetch_one(&pool)
+    .await
+    .expect("owner member should exist");
+
+    assert_eq!(member.0, "owner");
+    assert_eq!(member.1, -1, "owner should have ALL permissions (i64 -1 = u64::MAX)");
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn create_org_with_owner_rollback_on_invalid_user(pool: PgPool) {
+    let repo = SqlxOrganizationRepository::new(pool.clone());
+
+    // Non-existent user_id causes FK violation on organization_member.user_id,
+    // which should roll back the entire transaction including the org creation.
+    let fake_user_id = uuid::Uuid::new_v4();
+    let result = repo
+        .create_with_owner("rollback-org", Some("Rollback Org"), false, fake_user_id)
+        .await;
+
+    assert!(result.is_err(), "create_with_owner should fail for non-existent user");
+
+    // Verify the org was NOT created (transaction rolled back)
+    let org_exists = sqlx::query_scalar::<_, i64>(
+        "SELECT COUNT(*) FROM organization WHERE slug = 'rollback-org'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(org_exists, 0, "org should not exist after rollback");
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
 async fn duplicate_slug_fails(pool: PgPool) {
     let repo = SqlxOrganizationRepository::new(pool);
     repo.create("dup-slug", Some("First"), false).await.unwrap();

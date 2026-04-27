@@ -1,5 +1,6 @@
 pub mod error;
 pub mod middleware;
+pub mod openapi;
 mod routes;
 pub mod state;
 #[cfg(test)]
@@ -8,7 +9,12 @@ mod tests;
 pub use state::{AppState, SharedState};
 
 use axum::http::{HeaderValue, Method, header};
+use axum::routing::get;
 use tower_http::cors::CorsLayer;
+use utoipa::OpenApi;
+use utoipa_scalar::{Scalar, Servable};
+
+use crate::openapi::ApiDoc;
 
 /// Build the top-level Axum router with CORS and all route modules.
 pub fn router(state: AppState) -> axum::Router {
@@ -40,6 +46,8 @@ pub fn router(state: AppState) -> axum::Router {
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION]);
 
     routes::router()
+        .merge(Scalar::with_url("/api/docs", ApiDoc::openapi()))
+        .route("/api/docs/openapi.json", get(openapi::openapi_json))
         .with_state(std::sync::Arc::new(state))
         .layer(cors)
 }

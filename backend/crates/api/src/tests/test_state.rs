@@ -21,13 +21,8 @@ use shared::JwtConfig;
 use uuid::Uuid;
 
 use super::mock_auth::{MockRefreshRepo, MockSessionRepo, MockStateStore};
-use application::tag::service::TagService;
-use domain::entity_tag::EntityTagRepository;
-use domain::tag::TagRepository;
-
 use super::mock_feeds::{MockEntityFeedRepo, MockFeedElementRepo, MockFeedItemRepo, MockFeedRepo};
 use super::mock_organizations::{MockMemberRepo, MockOrgRepo};
-use super::mock_tags::{MockEntityTagRepo, MockTagRepo};
 use super::mock_users::{MockPreferencesRepo, MockUserRepo};
 use crate::AppState;
 
@@ -39,7 +34,16 @@ pub fn test_jwt_config() -> JwtConfig {
     }
 }
 
-pub fn test_app_state() -> AppState {
+fn build_app_state(
+    user_repo: Arc<dyn UserRepository>,
+    org_repo: Arc<dyn OrganizationRepository>,
+    member_repo: Arc<dyn OrganizationMemberRepository>,
+    preferences_repo: Arc<dyn UserPreferencesRepository>,
+    feed_repo: Arc<dyn FeedRepository>,
+    entity_feed_repo: Arc<dyn EntityFeedRepository>,
+    feed_item_repo: Arc<dyn FeedItemRepository>,
+    feed_element_repo: Arc<dyn FeedElementRepository>,
+) -> AppState {
     let oauth_config = OAuthConfig {
         redirect_uri: "http://localhost:5173/callback".into(),
         client_id: "https://zurfur.app".into(),
@@ -50,23 +54,10 @@ pub fn test_app_state() -> AppState {
         plc_hostname: "plc.directory".into(),
     };
 
-    let user_repo: Arc<dyn UserRepository> = Arc::new(MockUserRepo::default());
+    let state_store = Arc::new(MockStateStore::default());
     let session_repo = Arc::new(MockSessionRepo::default());
     let refresh_repo = Arc::new(MockRefreshRepo::default());
-    let state_store = Arc::new(MockStateStore::default());
     let oauth_storage = create_default_oauth_storage(NonZeroUsize::new(10).unwrap());
-
-    let shared_members =
-        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
-    let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo {
-        shared_members: shared_members.clone(),
-        ..MockOrgRepo::default()
-    });
-    let member_repo: Arc<dyn OrganizationMemberRepository> = Arc::new(MockMemberRepo {
-        members: shared_members,
-    });
-    let preferences_repo: Arc<dyn UserPreferencesRepository> =
-        Arc::new(MockPreferencesRepo::default());
 
     let auth_service = AuthService::new(
         oauth_config,
@@ -92,12 +83,6 @@ pub fn test_app_state() -> AppState {
         member_repo.clone(),
     );
 
-    let feed_repo: Arc<dyn FeedRepository> = Arc::new(MockFeedRepo::default());
-    let entity_feed_repo: Arc<dyn EntityFeedRepository> = Arc::new(MockEntityFeedRepo::default());
-    let feed_item_repo: Arc<dyn FeedItemRepository> = Arc::new(MockFeedItemRepo::default());
-    let feed_element_repo: Arc<dyn FeedElementRepository> =
-        Arc::new(MockFeedElementRepo::default());
-
     let onboarding_service = OnboardingService::new(
         user_repo,
         org_repo,
@@ -113,22 +98,146 @@ pub fn test_app_state() -> AppState {
         member_repo,
     );
 
-    let shared_entity_tags =
-        std::sync::Arc::new(tokio::sync::Mutex::new(Vec::new()));
-    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::new(shared_entity_tags.clone()));
-    let entity_tag_repo: Arc<dyn EntityTagRepository> =
-        Arc::new(MockEntityTagRepo::new(shared_entity_tags));
-
-    let tag_service = TagService::new(tag_repo, entity_tag_repo);
-
     AppState {
         auth_service,
         user_service,
         org_service,
         onboarding_service,
         feed_service,
-        tag_service,
     }
+}
+
+pub fn test_app_state() -> AppState {
+    let shared_members = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+    let shared_entity_feeds = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+    let user_repo: Arc<dyn UserRepository> = Arc::new(MockUserRepo::default());
+    let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo {
+        shared_members: shared_members.clone(),
+        ..MockOrgRepo::default()
+    });
+    let member_repo: Arc<dyn OrganizationMemberRepository> = Arc::new(MockMemberRepo {
+        members: shared_members,
+    });
+    let preferences_repo: Arc<dyn UserPreferencesRepository> =
+        Arc::new(MockPreferencesRepo::default());
+
+    let feed_repo: Arc<dyn FeedRepository> =
+        Arc::new(MockFeedRepo::with_shared_entity_feeds(shared_entity_feeds.clone()));
+    let entity_feed_repo: Arc<dyn EntityFeedRepository> =
+        Arc::new(MockEntityFeedRepo::with_shared(shared_entity_feeds));
+    let feed_item_repo: Arc<dyn FeedItemRepository> = Arc::new(MockFeedItemRepo::default());
+    let feed_element_repo: Arc<dyn FeedElementRepository> =
+        Arc::new(MockFeedElementRepo::default());
+
+    build_app_state(
+        user_repo,
+        org_repo,
+        member_repo,
+        preferences_repo,
+        feed_repo,
+        entity_feed_repo,
+        feed_item_repo,
+        feed_element_repo,
+    )
+}
+
+/// Create an AppState pre-populated with a user and their personal org.
+/// Returns (AppState, user_id) so tests can issue JWTs for the pre-existing user.
+pub fn test_app_state_with_user() -> (AppState, Uuid) {
+    use chrono::Utc;
+    use domain::organization::Organization;
+    use domain::organization_member::{OrganizationMember, Permissions, Role};
+    use domain::user::User;
+
+    let user_id = Uuid::new_v4();
+    let org_id = Uuid::new_v4();
+
+    let user = User {
+        id: user_id,
+        did: Some("did:plc:testuser".into()),
+        handle: Some("testuser.bsky.social".into()),
+        email: Some("test@example.com".into()),
+        username: "testuser".into(),
+        onboarding_completed_at: None,
+    };
+
+    let personal_org = Organization {
+        id: org_id,
+        slug: "testuser".into(),
+        display_name: None,
+        is_personal: true,
+        created_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let owner_member = OrganizationMember {
+        id: Uuid::new_v4(),
+        org_id,
+        user_id,
+        role: Role::Owner,
+        title: None,
+        permissions: Permissions::new(Permissions::ALL),
+        joined_at: Utc::now(),
+        updated_at: Utc::now(),
+    };
+
+    let shared_members = Arc::new(tokio::sync::Mutex::new(vec![owner_member]));
+    let shared_entity_feeds = Arc::new(tokio::sync::Mutex::new(Vec::new()));
+
+    let user_repo: Arc<dyn UserRepository> = Arc::new(MockUserRepo {
+        users: tokio::sync::Mutex::new(vec![user]),
+    });
+    let org_repo: Arc<dyn OrganizationRepository> = Arc::new(MockOrgRepo {
+        orgs: tokio::sync::Mutex::new(vec![personal_org]),
+        personal_org_owners: tokio::sync::Mutex::new(vec![(user_id, org_id)]),
+        shared_members: shared_members.clone(),
+    });
+    let member_repo: Arc<dyn OrganizationMemberRepository> = Arc::new(MockMemberRepo {
+        members: shared_members,
+    });
+    let preferences_repo: Arc<dyn UserPreferencesRepository> =
+        Arc::new(MockPreferencesRepo::default());
+
+    let feed_repo: Arc<dyn FeedRepository> =
+        Arc::new(MockFeedRepo::with_shared_entity_feeds(shared_entity_feeds.clone()));
+    let entity_feed_repo: Arc<dyn EntityFeedRepository> =
+        Arc::new(MockEntityFeedRepo::with_shared(shared_entity_feeds));
+    let feed_item_repo: Arc<dyn FeedItemRepository> = Arc::new(MockFeedItemRepo::default());
+    let feed_element_repo: Arc<dyn FeedElementRepository> =
+        Arc::new(MockFeedElementRepo::default());
+
+    let state = build_app_state(
+        user_repo,
+        org_repo,
+        member_repo,
+        preferences_repo,
+        feed_repo,
+        entity_feed_repo,
+        feed_item_repo,
+        feed_element_repo,
+    );
+
+    (state, user_id)
+}
+
+pub fn test_server() -> axum_test::TestServer {
+    let state = test_app_state();
+    let app = crate::router(state);
+    axum_test::TestServer::new(app).unwrap()
+}
+
+pub fn test_server_with_user() -> (axum_test::TestServer, Uuid) {
+    let (state, user_id) = test_app_state_with_user();
+    let app = crate::router(state);
+    (axum_test::TestServer::new(app).unwrap(), user_id)
+}
+
+pub fn auth_header(token: &str) -> (axum::http::HeaderName, axum::http::HeaderValue) {
+    (
+        axum::http::HeaderName::from_static("authorization"),
+        axum::http::HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+    )
 }
 
 /// Issue a valid JWT for testing protected routes.

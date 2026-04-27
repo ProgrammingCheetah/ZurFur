@@ -80,7 +80,6 @@ async fn all_entity_types_accepted(pool: PgPool) {
         (EntityKind::Character, "character"),
         (EntityKind::Commission, "commission"),
         (EntityKind::Feed, "feed"),
-        (EntityKind::Tag, "tag"),
         (EntityKind::FeedItem, "feed_item"),
         (EntityKind::FeedElement, "feed_element"),
     ] {
@@ -97,4 +96,21 @@ async fn all_entity_types_accepted(pool: PgPool) {
         let result = repo.attach(feed.id, entity_type, entity_id).await;
         assert!(result.is_ok(), "entity type '{type_str}' should be accepted");
     }
+}
+
+#[sqlx::test(migrator = "persistence::MIGRATOR")]
+async fn invalid_entity_type_rejected(pool: PgPool) {
+    let feed = create_test_feed(&pool, "ef-invalid", "Invalid Type Feed", "custom", None).await;
+
+    // Insert directly with an invalid entity_type to test the CHECK constraint
+    let result = sqlx::query(
+        "INSERT INTO entity_feed (feed_id, entity_type, entity_id) VALUES ($1, $2, $3)",
+    )
+    .bind(feed.id)
+    .bind("bogus_type")
+    .bind(Uuid::new_v4())
+    .execute(&pool)
+    .await;
+
+    assert!(result.is_err(), "invalid entity_type should be rejected by CHECK constraint");
 }

@@ -9,12 +9,12 @@ use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use application::auth::login::LoginError;
 use application::feed::service::FeedServiceError;
 use application::onboarding::service::OnboardingError;
 use application::organization::service::OrgServiceError;
-use application::tag::service::TagServiceError;
 use application::user::service::UserServiceError;
 
 /// Unified error type for all API route handlers.
@@ -36,10 +36,12 @@ pub enum AppError {
 }
 
 /// JSON envelope for error responses. Every error returns this shape.
-#[derive(Serialize)]
-struct ErrorBody {
-    error: String,
-    code: &'static str,
+#[derive(Serialize, ToSchema)]
+pub struct ErrorBody {
+    /// Human-readable error message
+    pub error: String,
+    /// Machine-readable error code
+    pub code: &'static str,
 }
 
 impl IntoResponse for AppError {
@@ -76,32 +78,6 @@ impl From<OrgServiceError> for AppError {
                 AppError::Forbidden("Cannot remove the owner from an organization".into())
             }
             OrgServiceError::Internal(msg) => AppError::Internal(msg),
-        }
-    }
-}
-
-impl From<TagServiceError> for AppError {
-    fn from(e: TagServiceError) -> Self {
-        match e {
-            TagServiceError::NotFound => AppError::NotFound("Tag not found".into()),
-            TagServiceError::NotAttached => {
-                AppError::NotFound("Tag is not attached to this entity".into())
-            }
-            TagServiceError::NameTaken(s) => {
-                AppError::Conflict(format!("Tag name already taken: {s}"))
-            }
-            TagServiceError::Immutable => {
-                AppError::Forbidden("Entity-backed tags cannot be modified".into())
-            }
-            TagServiceError::InvalidCategory => AppError::BadRequest(
-                "This category cannot be used for user-created tags. Use 'metadata' or 'general'."
-                    .into(),
-            ),
-            TagServiceError::InvalidName(msg) => AppError::BadRequest(msg),
-            TagServiceError::AlreadyAttached => {
-                AppError::Conflict("Tag is already attached to this entity".into())
-            }
-            TagServiceError::Internal(msg) => AppError::Internal(msg),
         }
     }
 }

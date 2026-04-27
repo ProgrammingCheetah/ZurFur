@@ -74,21 +74,7 @@ async fn create_org(
         .create_org(user_id, &body.slug, &body.display_name)
         .await?;
 
-    // TODO(Feature 3.5 UoW): org + tag + feed creation spans multiple services — best-effort by design until cross-service UoW.
-    // Orchestration: auto-create org tag + bio feed (best-effort)
-    if let Err(e) = state
-        .tag_service
-        .create_entity_tag(
-            domain::tag::TagCategory::Organization,
-            domain::entity::EntityKind::Org,
-            detail.org.id,
-            &body.slug,
-        )
-        .await
-    {
-        tracing::warn!(org_id = %detail.org.id, error = %e, "Failed to create org tag");
-    }
-
+    // Orchestration: auto-create bio feed (best-effort)
     if let Err(e) = state
         .feed_service
         .create_system_feed(detail.org.id, "bio", "Bio")
