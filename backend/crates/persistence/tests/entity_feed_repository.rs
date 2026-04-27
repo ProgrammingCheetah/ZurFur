@@ -80,7 +80,6 @@ async fn all_entity_types_accepted(pool: PgPool) {
         (EntityKind::Character, "character"),
         (EntityKind::Commission, "commission"),
         (EntityKind::Feed, "feed"),
-        (EntityKind::Tag, "tag"),
         (EntityKind::FeedItem, "feed_item"),
         (EntityKind::FeedElement, "feed_element"),
     ] {

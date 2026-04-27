@@ -117,7 +117,6 @@ pub trait CharacterRepository: Send + Sync {
         limit: i64,
         offset: i64,
         content_rating: Option<ContentRating>,
-        tag_ids: Option<&[Uuid]>,
     ) -> Result<Vec<Character>, CharacterError>;
 
     /// Update a character's mutable fields.

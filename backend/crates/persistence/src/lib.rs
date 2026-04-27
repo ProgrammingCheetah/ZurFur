@@ -11,7 +11,6 @@ pub use domain::content_rating::ContentRating;
 pub use domain::default_role::{DefaultRole, DefaultRoleError, DefaultRoleRepository};
 pub use domain::entity::EntityKind;
 pub use domain::entity_feed::{EntityFeed, EntityFeedError, EntityFeedRepository};
-pub use domain::entity_tag::{EntityTag, EntityTagError, EntityTagRepository};
 pub use domain::feed::{Feed, FeedError, FeedRepository, FeedType};
 pub use domain::feed_element::{FeedElement, FeedElementError, FeedElementRepository, FeedElementType};
 pub use domain::feed_item::{AuthorType, FeedItem, FeedItemError, FeedItemRepository};
@@ -25,7 +24,6 @@ pub use domain::organization_member::{
     OrganizationMember, OrganizationMemberError, OrganizationMemberRepository, Permissions, Role,
 };
 pub use domain::refresh_token::{RefreshTokenEntity, RefreshTokenRepository};
-pub use domain::tag::{Tag, TagCategory, TagError, TagRepository};
 pub use domain::user::{User, UserError, UserRepository};
 pub use domain::user_preferences::{
     UserPreferences, UserPreferencesError, UserPreferencesRepository,
@@ -35,8 +33,8 @@ pub use repositories::{
     SqlxAtprotoSessionRepository, SqlxCharacterRepository, SqlxDefaultRoleRepository,
     SqlxEntityFeedRepository,
     SqlxFeedElementRepository, SqlxFeedItemRepository, SqlxFeedRepository,
-    SqlxEntityTagRepository, SqlxFeedSubscriptionRepository, SqlxOrganizationMemberRepository,
-    SqlxOrganizationRepository, SqlxRefreshTokenRepository, SqlxTagRepository,
+    SqlxFeedSubscriptionRepository, SqlxOrganizationMemberRepository,
+    SqlxOrganizationRepository, SqlxRefreshTokenRepository,
     SqlxUserPreferencesRepository, SqlxUserRepository,
 };
 

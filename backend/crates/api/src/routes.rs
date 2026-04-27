@@ -3,7 +3,6 @@ mod feeds;
 mod helpers;
 mod onboarding;
 mod organizations;
-mod tags;
 mod users;
 
 use axum::{Router, routing::get};
@@ -20,7 +19,6 @@ pub fn router() -> Router<SharedState> {
         .nest("/organizations", organizations::router())
         .nest("/onboarding", onboarding::router())
         .nest("/feeds", feeds::feed_router())
-        .nest("/tags", tags::router())
 }
 
 /// Serve OAuth client metadata so Bluesky's auth server can verify our identity.

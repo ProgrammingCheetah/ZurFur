@@ -72,7 +72,7 @@ async fn list_by_org_basic(pool: PgPool) {
             .unwrap();
     }
 
-    let list = repo.list_by_org(org.id, 10, 0, None, None).await.unwrap();
+    let list = repo.list_by_org(org.id, 10, 0, None).await.unwrap();
     assert_eq!(list.len(), 3);
 }
 
@@ -92,7 +92,7 @@ async fn list_by_org_excludes_deleted(pool: PgPool) {
 
     repo.soft_delete(c2.id).await.unwrap();
 
-    let list = repo.list_by_org(org.id, 10, 0, None, None).await.unwrap();
+    let list = repo.list_by_org(org.id, 10, 0, None).await.unwrap();
     assert_eq!(list.len(), 1);
     assert_eq!(list[0].id, c1.id);
 }
@@ -110,35 +110,11 @@ async fn list_by_org_filter_content_rating(pool: PgPool) {
         .unwrap();
 
     let sfw_only = repo
-        .list_by_org(org.id, 10, 0, Some(ContentRating::Sfw), None)
+        .list_by_org(org.id, 10, 0, Some(ContentRating::Sfw))
         .await
         .unwrap();
     assert_eq!(sfw_only.len(), 1);
     assert_eq!(sfw_only[0].name, "SFW Char");
-}
-
-#[sqlx::test(migrator = "persistence::MIGRATOR")]
-async fn list_by_org_filter_tags(pool: PgPool) {
-    let org = create_test_org(&pool, "filter-tags-org", None, false, None).await;
-    let tag = create_test_tag(&pool, "character", "fox").await;
-    let repo = SqlxCharacterRepository::new(pool.clone());
-
-    let c1 = repo
-        .create(org.id, "Tagged", None, ContentRating::Sfw, CharacterVisibility::Public)
-        .await
-        .unwrap();
-    repo.create(org.id, "Untagged", None, ContentRating::Sfw, CharacterVisibility::Public)
-        .await
-        .unwrap();
-
-    attach_tag_to_entity(&pool, "character", c1.id, tag.id).await;
-
-    let tagged = repo
-        .list_by_org(org.id, 10, 0, None, Some(&[tag.id]))
-        .await
-        .unwrap();
-    assert_eq!(tagged.len(), 1);
-    assert_eq!(tagged[0].id, c1.id);
 }
 
 #[sqlx::test(migrator = "persistence::MIGRATOR")]
@@ -153,7 +129,7 @@ async fn list_by_org_pagination(pool: PgPool) {
             .unwrap();
     }
 
-    let page = repo.list_by_org(org.id, 2, 1, None, None).await.unwrap();
+    let page = repo.list_by_org(org.id, 2, 1, None).await.unwrap();
     assert_eq!(page.len(), 2);
 }
 

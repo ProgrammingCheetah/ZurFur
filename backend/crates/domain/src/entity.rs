@@ -5,9 +5,9 @@
 //!   by a UUID and connects to others through polymorphic junctions. The
 //!   composability comes from uniform interfaces.
 //!
-//!   `EntityKind` replaces the former `EntityType` (entity_feed) and
-//!   `TaggableEntityType` (entity_tag) — now that all entities implement all
-//!   capability traits, the variant sets are identical and one enum suffices.
+//!   `EntityKind` is the discriminator in the `entity_feed` polymorphic
+//!   junction. (The `entity_tag` junction was removed when Tag was deferred;
+//!   see design/GLOSSARY.md.)
 //!
 //!   Traits have validation hooks with default `Ok(())` implementations.
 //!   Services do persistence; traits enforce domain rules. Unused capabilities
@@ -18,10 +18,10 @@ use uuid::Uuid;
 
 use crate::feed_item::AuthorType;
 
-/// The kind of entity. Used as the discriminator in all polymorphic junction
-/// tables (entity_feed, entity_tag). Each domain struct maps to exactly one
-/// variant. Some variants (Character, Commission) are forward-declared for
-/// database compatibility — their structs will be added in future phases.
+/// The kind of entity. Used as the discriminator in the `entity_feed`
+/// polymorphic junction. Each domain struct maps to exactly one variant.
+/// `Commission` is forward-declared for database compatibility — its struct
+/// will be added in a future phase.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EntityKind {
     User,
@@ -29,7 +29,6 @@ pub enum EntityKind {
     Character,
     Commission,
     Feed,
-    Tag,
     FeedItem,
     FeedElement,
 }
@@ -43,7 +42,6 @@ impl EntityKind {
             EntityKind::Character => "character",
             EntityKind::Commission => "commission",
             EntityKind::Feed => "feed",
-            EntityKind::Tag => "tag",
             EntityKind::FeedItem => "feed_item",
             EntityKind::FeedElement => "feed_element",
         }
@@ -57,7 +55,6 @@ impl EntityKind {
             "character" => Some(EntityKind::Character),
             "commission" => Some(EntityKind::Commission),
             "feed" => Some(EntityKind::Feed),
-            "tag" => Some(EntityKind::Tag),
             "feed_item" => Some(EntityKind::FeedItem),
             "feed_element" => Some(EntityKind::FeedElement),
             _ => None,
@@ -84,37 +81,16 @@ pub trait Entity: Send + Sync {
     /// The entity's UUID primary key.
     fn id(&self) -> Uuid;
 
-    /// The kind of entity. Used as the discriminator in polymorphic
-    /// junction tables (entity_feed, entity_tag).
+    /// The kind of entity. Used as the discriminator in the `entity_feed`
+    /// polymorphic junction.
     fn entity_kind(&self) -> EntityKind;
-}
-
-/// Can have tags attached via `entity_tag`. All entities implement this.
-///
-/// Provides validation hooks that the domain uses to enforce business rules
-/// before persistence. Entities that don't care about tag validation use the
-/// default `Ok(())`.
-pub trait Taggable: Entity {
-    /// Domain validation before a tag is attached.
-    /// Override to enforce entity-specific rules (e.g., cycle detection for tags tagging tags).
-    /// Default: allow all.
-    fn validate_tag(&self, _tag_id: Uuid) -> Result<(), String> {
-        Ok(())
-    }
-
-    /// Domain validation before a tag is detached.
-    /// Override to prevent removal of required tags (e.g., identity tags).
-    /// Default: allow all.
-    fn validate_untag(&self, _tag_id: Uuid) -> Result<(), String> {
-        Ok(())
-    }
 }
 
 /// Can own feeds via `entity_feed`. All entities implement this.
 ///
-/// Same validation hook pattern as Taggable. For most entities this means
-/// concrete feeds in the `feeds` table. For Tags, this will be a virtualized
-/// query (deferred, post-MVP).
+/// Provides validation hooks that the domain uses to enforce business rules
+/// before persistence. Entities that don't care about feed validation use the
+/// default `Ok(())`.
 pub trait FeedOwnable: Entity {
     /// Domain validation before a feed is created for this entity.
     /// Override to enforce entity-specific rules.
@@ -150,7 +126,6 @@ impl Entity for User {
     }
 }
 
-impl Taggable for User {}
 impl FeedOwnable for User {}
 
 impl Authorable for User {
@@ -170,7 +145,6 @@ impl Entity for Organization {
     }
 }
 
-impl Taggable for Organization {}
 impl FeedOwnable for Organization {}
 
 impl Authorable for Organization {
@@ -190,22 +164,7 @@ impl Entity for Feed {
     }
 }
 
-impl Taggable for Feed {}
 impl FeedOwnable for Feed {}
-
-use crate::tag::Tag;
-
-impl Entity for Tag {
-    fn id(&self) -> Uuid {
-        self.id
-    }
-    fn entity_kind(&self) -> EntityKind {
-        EntityKind::Tag
-    }
-}
-
-impl Taggable for Tag {}
-impl FeedOwnable for Tag {}
 
 use crate::feed_item::FeedItem;
 
@@ -218,7 +177,6 @@ impl Entity for FeedItem {
     }
 }
 
-impl Taggable for FeedItem {}
 impl FeedOwnable for FeedItem {}
 
 use crate::feed_element::FeedElement;
@@ -232,7 +190,6 @@ impl Entity for FeedElement {
     }
 }
 
-impl Taggable for FeedElement {}
 impl FeedOwnable for FeedElement {}
 
 use crate::character::Character;
@@ -246,7 +203,6 @@ impl Entity for Character {
     }
 }
 
-impl Taggable for Character {}
 impl FeedOwnable for Character {}
 
 #[cfg(test)]
@@ -262,7 +218,6 @@ mod tests {
             (EntityKind::Character, "character"),
             (EntityKind::Commission, "commission"),
             (EntityKind::Feed, "feed"),
-            (EntityKind::Tag, "tag"),
             (EntityKind::FeedItem, "feed_item"),
             (EntityKind::FeedElement, "feed_element"),
         ];
@@ -276,6 +231,7 @@ mod tests {
     fn entity_kind_from_str_unknown() {
         assert_eq!(EntityKind::from_str("team"), None);
         assert_eq!(EntityKind::from_str(""), None);
+        assert_eq!(EntityKind::from_str("tag"), None);
     }
 
     fn test_user() -> User {
@@ -310,19 +266,6 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
             deleted_at: None,
-        }
-    }
-
-    fn test_tag() -> Tag {
-        use crate::tag::TagCategory;
-        Tag {
-            id: Uuid::new_v4(),
-            category: TagCategory::General,
-            name: "test-tag".into(),
-            usage_count: 0,
-            is_approved: false,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
         }
     }
 
@@ -382,12 +325,6 @@ mod tests {
     }
 
     #[test]
-    fn tag_implements_entity() {
-        let t = test_tag();
-        assert_eq!(t.entity_kind(), EntityKind::Tag);
-    }
-
-    #[test]
     fn feed_item_implements_entity() {
         let fi = test_feed_item();
         assert_eq!(fi.entity_kind(), EntityKind::FeedItem);
@@ -412,13 +349,6 @@ mod tests {
     }
 
     #[test]
-    fn character_taggable_defaults() {
-        let c = test_character();
-        assert!(c.validate_tag(Uuid::new_v4()).is_ok());
-        assert!(c.validate_untag(Uuid::new_v4()).is_ok());
-    }
-
-    #[test]
     fn character_feed_ownable_defaults() {
         let c = test_character();
         assert!(c.validate_feed_creation().is_ok());
@@ -438,18 +368,6 @@ mod tests {
     }
 
     #[test]
-    fn taggable_validate_default_allows() {
-        let u = test_user();
-        assert!(u.validate_tag(Uuid::new_v4()).is_ok());
-    }
-
-    #[test]
-    fn taggable_validate_untag_default_allows() {
-        let u = test_user();
-        assert!(u.validate_untag(Uuid::new_v4()).is_ok());
-    }
-
-    #[test]
     fn feed_ownable_validate_default_allows() {
         let o = test_org();
         assert!(o.validate_feed_creation().is_ok());
@@ -459,32 +377,20 @@ mod tests {
     /// Compile-time check: functions accepting trait bounds work with correct entity types.
     #[test]
     fn trait_bounds_compile() {
-        fn accepts_taggable(_e: &impl Taggable) {}
         fn accepts_feed_ownable(_e: &impl FeedOwnable) {}
         fn accepts_authorable(_e: &impl Authorable) {}
 
         let u = test_user();
         let o = test_org();
         let f = test_feed();
-        let t = test_tag();
         let fi = test_feed_item();
         let fe = test_feed_element();
         let c = test_character();
-
-        // All entities are Taggable
-        accepts_taggable(&u);
-        accepts_taggable(&o);
-        accepts_taggable(&f);
-        accepts_taggable(&t);
-        accepts_taggable(&fi);
-        accepts_taggable(&fe);
-        accepts_taggable(&c);
 
         // All entities are FeedOwnable
         accepts_feed_ownable(&u);
         accepts_feed_ownable(&o);
         accepts_feed_ownable(&f);
-        accepts_feed_ownable(&t);
         accepts_feed_ownable(&fi);
         accepts_feed_ownable(&fe);
         accepts_feed_ownable(&c);
