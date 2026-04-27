@@ -25,7 +25,6 @@ static OPENAPI_SPEC: LazyLock<utoipa::openapi::OpenApi> = LazyLock::new(ApiDoc::
         (name = "Users", description = "User profile and preferences"),
         (name = "Organizations", description = "Org CRUD, membership, roles"),
         (name = "Feeds", description = "Feed management, items, elements"),
-        (name = "Tags", description = "Tag taxonomy, attachment, search"),
         (name = "Onboarding", description = "First-login onboarding flow")
     ),
     components(
@@ -80,7 +79,7 @@ mod tests {
         let spec = ApiDoc::openapi();
         let tags = spec.tags.expect("tags should be present");
         let tag_names: Vec<&str> = tags.iter().map(|t| t.name.as_str()).collect();
-        for expected in ["Auth", "Users", "Organizations", "Feeds", "Tags", "Onboarding"] {
+        for expected in ["Auth", "Users", "Organizations", "Feeds", "Onboarding"] {
             assert!(tag_names.contains(&expected), "missing tag: {expected}");
         }
     }

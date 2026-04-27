@@ -28,12 +28,6 @@ pub struct TestFeed {
     pub feed_type: String,
 }
 
-pub struct TestTag {
-    pub id: Uuid,
-    pub category: String,
-    pub name: String,
-}
-
 pub struct TestFeedItem {
     pub id: Uuid,
     pub feed_id: Uuid,
@@ -143,49 +137,6 @@ pub async fn create_test_feed(
         display_name: display_name.to_string(),
         feed_type: feed_type.to_string(),
     }
-}
-
-/// Create a test tag.
-pub async fn create_test_tag(
-    pool: &PgPool,
-    category: &str,
-    name: &str,
-) -> TestTag {
-    let id = Uuid::new_v4();
-
-    sqlx::query(
-        "INSERT INTO tag (id, category, name, is_approved) VALUES ($1, $2::tag_category, $3, true)",
-    )
-    .bind(id)
-    .bind(category)
-    .bind(name)
-    .execute(pool)
-    .await
-    .expect("failed to create test tag");
-
-    TestTag {
-        id,
-        category: category.to_string(),
-        name: name.to_string(),
-    }
-}
-
-/// Attach a tag to an entity via entity_tag.
-pub async fn attach_tag_to_entity(
-    pool: &PgPool,
-    entity_type: &str,
-    entity_id: Uuid,
-    tag_id: Uuid,
-) {
-    sqlx::query(
-        "INSERT INTO entity_tag (entity_type, entity_id, tag_id) VALUES ($1, $2, $3)",
-    )
-    .bind(entity_type)
-    .bind(entity_id)
-    .bind(tag_id)
-    .execute(pool)
-    .await
-    .expect("failed to attach tag to entity");
 }
 
 /// Create a test feed item.

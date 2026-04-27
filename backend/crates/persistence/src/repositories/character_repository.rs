@@ -101,9 +101,8 @@ impl CharacterRepository for SqlxCharacterRepository {
         limit: i64,
         offset: i64,
         content_rating: Option<ContentRating>,
-        tag_ids: Option<&[Uuid]>,
     ) -> Result<Vec<Character>, CharacterError> {
-        // Dynamic SQL: optional filters change the parameter count, so the query
+        // Dynamic SQL: optional filter changes the parameter count, so the query
         // must be built at runtime rather than using a static string.
         let mut sql = String::from(concat!(
             "SELECT ", cols!(), " FROM character WHERE org_id = $1 AND deleted_at IS NULL"
@@ -116,16 +115,6 @@ impl CharacterRepository for SqlxCharacterRepository {
             param_idx += 1;
         }
 
-        if let Some(tags) = tag_ids {
-            if !tags.is_empty() {
-                sql.push_str(&format!(
-                    " AND id IN (SELECT entity_id FROM entity_tag \
-                     WHERE entity_type = 'character' AND tag_id = ANY(${param_idx}))"
-                ));
-                param_idx += 1;
-            }
-        }
-
         sql.push_str(&format!(
             " ORDER BY created_at DESC LIMIT ${param_idx} OFFSET ${}",
             param_idx + 1
@@ -135,12 +124,6 @@ impl CharacterRepository for SqlxCharacterRepository {
 
         if let Some(cr) = content_rating {
             query = query.bind(cr.as_str());
-        }
-
-        if let Some(tags) = tag_ids {
-            if !tags.is_empty() {
-                query = query.bind(tags);
-            }
         }
 
         query = query.bind(limit).bind(offset);

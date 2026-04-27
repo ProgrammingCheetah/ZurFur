@@ -21,13 +21,8 @@ use shared::JwtConfig;
 use uuid::Uuid;
 
 use super::mock_auth::{MockRefreshRepo, MockSessionRepo, MockStateStore};
-use application::tag::service::TagService;
-use domain::entity_tag::EntityTagRepository;
-use domain::tag::TagRepository;
-
 use super::mock_feeds::{MockEntityFeedRepo, MockFeedElementRepo, MockFeedItemRepo, MockFeedRepo};
 use super::mock_organizations::{MockMemberRepo, MockOrgRepo};
-use super::mock_tags::{MockEntityTagRepo, MockTagRepo};
 use super::mock_users::{MockPreferencesRepo, MockUserRepo};
 use crate::AppState;
 
@@ -48,8 +43,6 @@ fn build_app_state(
     entity_feed_repo: Arc<dyn EntityFeedRepository>,
     feed_item_repo: Arc<dyn FeedItemRepository>,
     feed_element_repo: Arc<dyn FeedElementRepository>,
-    tag_repo: Arc<dyn TagRepository>,
-    entity_tag_repo: Arc<dyn EntityTagRepository>,
 ) -> AppState {
     let oauth_config = OAuthConfig {
         redirect_uri: "http://localhost:5173/callback".into(),
@@ -105,15 +98,12 @@ fn build_app_state(
         member_repo,
     );
 
-    let tag_service = TagService::new(tag_repo, entity_tag_repo);
-
     AppState {
         auth_service,
         user_service,
         org_service,
         onboarding_service,
         feed_service,
-        tag_service,
     }
 }
 
@@ -140,11 +130,6 @@ pub fn test_app_state() -> AppState {
     let feed_element_repo: Arc<dyn FeedElementRepository> =
         Arc::new(MockFeedElementRepo::default());
 
-    let shared_entity_tags = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::new(shared_entity_tags.clone()));
-    let entity_tag_repo: Arc<dyn EntityTagRepository> =
-        Arc::new(MockEntityTagRepo::new(shared_entity_tags));
-
     build_app_state(
         user_repo,
         org_repo,
@@ -154,8 +139,6 @@ pub fn test_app_state() -> AppState {
         entity_feed_repo,
         feed_item_repo,
         feed_element_repo,
-        tag_repo,
-        entity_tag_repo,
     )
 }
 
@@ -224,11 +207,6 @@ pub fn test_app_state_with_user() -> (AppState, Uuid) {
     let feed_element_repo: Arc<dyn FeedElementRepository> =
         Arc::new(MockFeedElementRepo::default());
 
-    let shared_entity_tags = Arc::new(tokio::sync::Mutex::new(Vec::new()));
-    let tag_repo: Arc<dyn TagRepository> = Arc::new(MockTagRepo::new(shared_entity_tags.clone()));
-    let entity_tag_repo: Arc<dyn EntityTagRepository> =
-        Arc::new(MockEntityTagRepo::new(shared_entity_tags));
-
     let state = build_app_state(
         user_repo,
         org_repo,
@@ -238,8 +216,6 @@ pub fn test_app_state_with_user() -> (AppState, Uuid) {
         entity_feed_repo,
         feed_item_repo,
         feed_element_repo,
-        tag_repo,
-        entity_tag_repo,
     );
 
     (state, user_id)
