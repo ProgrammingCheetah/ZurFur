@@ -1,7 +1,5 @@
 //! `POST /commissions/{id}/notes` — a Participant writes a free-text note into
-//! the changelog stream (ZMVP-87 AC2; Changelog DD Decision 1). Speech into the
-//! record, never dialogue: a note is a standalone entry with **no reply
-//! affordances** — it cannot reference another entry, by shape.
+//! the changelog stream. Standalone; no reply affordances.
 
 use axum::{
     Json,
@@ -21,22 +19,14 @@ use uuid::Uuid;
 
 use crate::{AppState, problem::Problem};
 
-/// The `POST /commissions/{id}/notes` request body: just the free text. There is
-/// deliberately no reply-to, thread, or mention field — the changelog is not a
-/// chat (Changelog DD "What it is NOT").
+/// The `POST /commissions/{id}/notes` request body: just the free text.
 #[derive(Deserialize)]
 pub(super) struct WriteNoteBody {
     note: String,
 }
 
-/// Append a standalone note entry to the commission's stream (ZMVP-87 AC2).
-///
-/// Participant-only behind [`require_participant`](super::require_participant)
-/// (uniform 404 for everyone else — the closed door). The text is trimmed and
-/// must be non-empty (`422` otherwise) via [`StringBuilder`] (ZMVP-113); it lands as a
-/// [`Note`](domain::elements::commission::ChangelogEntryKind::Note) entry in the
-/// **same stream** as every domain event, appended through the unit of work like
-/// any other entry. Returns `201 Created`.
+/// Appends a standalone note entry to the commission's stream.
+/// Participant-only; `422` for an empty note. Returns `201 Created`.
 pub(super) async fn write_note(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,

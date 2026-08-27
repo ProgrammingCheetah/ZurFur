@@ -22,11 +22,13 @@
 //! [`Accepted`]: InvitationState::Accepted
 
 use std::ops::Deref;
+use std::str::FromStr;
 
 use crate::{
     datetime::DateTimeUtc,
     elements::{
         commission::{CommissionId, ElementId},
+        id::{IdError, parse_uuid},
         invitation::{InvitationError, InvitationState},
         user::UserId,
     },
@@ -54,6 +56,14 @@ impl Deref for SeatInvitationId {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl FromStr for SeatInvitationId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_uuid(s).map(Self)
     }
 }
 

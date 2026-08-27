@@ -1,58 +1,7 @@
 //! The commissions route group: the commission JSON API, split per area
-//! (ZMVP-65/87) so each later commission ticket adds a file here rather than
-//! growing one hotspot — the same seam-splitting move as [`super`] itself:
-//!
-//! - [`create`] — `POST /commissions` (ZMVP-65 + the creation changelog entry;
-//!   ZMVP-166 mints the commission's skeleton tabs in the same unit of work).
-//! - [`list`] — `GET /commissions` (ZMVP-157: the signed-in user's owned
-//!   commissions, owner-POV only — frontend enablement for ZMVP-153).
-//! - [`changelog`] — `GET /commissions/{id}/changelog` (the ordered read).
-//! - [`notes`] — `POST /commissions/{id}/notes` (free text into the record).
-//! - [`channel`] — `PUT`/`DELETE /commissions/{id}/channel` (the linked-channel
-//!   pointer).
-//! - [`delete`] — `DELETE /commissions/{id}` (the fact-free hard delete,
-//!   ZMVP-66).
-//! - [`archive`] — `POST /commissions/{id}/archive` / `POST
-//!   /commissions/{id}/unarchive` (the soft archive/un-archive acts, ZMVP-68).
-//! - [`maturity`] — `PUT /commissions/{id}/maturity` (ZMVP-31: the owner rates
-//!   the commission; replace-only, no clear).
-//! - [`elements`] — `POST /commissions/{id}/elements` and
-//!   `DELETE /commissions/{id}/elements/{element}` (ZMVP-166: the owner composes
-//!   the commission). **One pair of routes** where the tree needed three
-//!   (`/surfaces`, `/components`, `/nodes/{node}`): tabs and surfaces are a
-//!   code-declared skeleton, so an element is the only thing anyone writes.
-//! - [`slots`] — `POST /commissions/{id}/slots` (ZMVP-77: the owner declares a
-//!   batch of Slots — each carried by an ordinary element, its title/notes
-//!   in the satellite; an all-or-nothing array; fill deferred to the Character
-//!   epic).
-//! - [`seats`] — `POST /commissions/{id}/seats` (ZMVP-76: the owner declares a
-//!   vacant, typed Seat — an element plus its interpreted satellite).
-//! - [`invitations`] — `POST`/`DELETE /commissions/{id}/invitations` (ZMVP-78:
-//!   the owner invites a User to a vacant Seat, or revokes a pending offer;
-//!   accept/decline is ZMVP-79).
-//! - [`status`] — `PUT`/`DELETE /commissions/{id}/status/direction` (the
-//!   direction-axis Status, ZMVP-85).
-//! - [`deadline`] — `PUT`/`DELETE /commissions/{id}/deadline` and
-//!   `PUT`/`DELETE /commissions/{id}/status/deadline` (the deadline envelope
-//!   field and the manual Delayed flag, ZMVP-86; the system half — the Late
-//!   sweeper — lives in [`application::commission::sweep_deadlines`], not on a route).
-//! - [`markup`] — `POST /commissions/{id}/files/{file_id}/markup` (raw,
-//!   strictly-validated annotation onto a file entry, ZMVP-90).
-//!
-//! Commissions are user-scoped (no Account required — ZMVP-47, DD 26247170) and
-//! entirely Index-side. Like the rest of the JSON API the group returns status
-//! codes, not redirects: an unrecognized caller gets a `401`. It is part of the
-//! cookie surface, so [`crate::app`] mounts the group under the
-//! first-party-`Origin` (CSRF) layer.
-//!
-//! **The closed door.** Whether a commission *exists* is participant-only
-//! knowledge: every handler here answers a non-participant — and a truly absent
-//! id — with the one uniform [`Problem::commission_not_found`] 404 via
-//! [`require_participant`], never a 403 (an existence oracle). The changelog is
-//! Total-tier: this holds at every future root mode.
-//!
-//! References: ZMVP-65/87; DESIGN/Commission (`3276807`), the Changelog DD
-//! (`30408741`).
+//! (create, list, changelog, notes, channel, delete, archive, maturity,
+//! elements, slots, seats, invitations, status, deadline, files, markup,
+//! positioning). Mounted under the first-party-`Origin` (CSRF) layer.
 
 use axum::{
     Router,
@@ -66,24 +15,34 @@ use domain::elements::{
 use tower_sessions::Session;
 use uuid::Uuid;
 
+use application::commission::CommissionError;
+
 use crate::{AppState, SESSION_USER_KEY, problem::Problem};
 
-/// Domain time → the contract's wire time (ZMVP-160).
-/// [`WireTimestamp`](crate::wire_time::WireTimestamp) serializes as canonical
-/// ProtoJSON — RFC 3339, **Z-normalized**, 0/3/6/9 fractional digits — which
-/// is byte-identical to what chrono's serde emitted
-/// (`contract/VERSIONING.md` §7.3), so adopting the generated types does not
-/// move the wire. (The raw `pbjson_types::Timestamp` would have: its
-/// serializer emits `+00:00`, non-canonical — the epic gate caught it.)
+/// Maps a commission use-case error onto the wire problem: `404` for a missing
+/// commission, `403` for insufficient standing, `401` when the session's user
+/// no longer exists, `500` for the store.
+impl From<CommissionError> for Problem {
+    fn from(err: CommissionError) -> Self {
+        match err {
+            CommissionError::Infrastructure(err) => Problem::from(err),
+            CommissionError::UserNotFound => Problem::not_authenticated(),
+            CommissionError::CommissionNotFound => Problem::commission_not_found(),
+            CommissionError::CommissionAlreadyArchived => {
+                Problem::invalid_request("This commission is already archived.")
+            }
+            CommissionError::InsufficientPermissions => Problem::forbidden(),
+        }
+    }
+}
+
+/// Domain time → the contract's wire timestamp type.
 pub(super) fn wire_timestamp(at: domain::datetime::DateTimeUtc) -> crate::wire_time::WireTimestamp {
     crate::wire_time::WireTimestamp::from(at)
 }
 
-/// Wire time → domain time, or `None` for a timestamp outside the protobuf
-/// `Timestamp` range (years 0001–9999). The type's own `Deserialize` already
-/// range-checked anything that arrived over the wire (§7.3's validating
-/// newtype), so on a request path this is a bridge that cannot fail — the
-/// `Option` guards constructed-in-process values.
+/// Wire timestamp → domain time, or `None` if outside the protobuf
+/// `Timestamp` range (years 0001–9999).
 pub(super) fn from_wire_timestamp(
     at: crate::wire_time::WireTimestamp,
 ) -> Option<domain::datetime::DateTimeUtc> {
@@ -103,30 +62,20 @@ mod list;
 mod markup;
 mod maturity;
 mod notes;
+mod ports;
 mod positioning;
 mod seats;
 mod slots;
 mod status;
 
 /// Slack, in bytes, added above [`Config::max_upload_bytes`](crate::Config::max_upload_bytes)
-/// for the request body-size limit on the upload route: a `multipart/form-data`
-/// envelope (boundary + part headers) adds a little to the file's own size, so the
-/// framework backstop must sit above the file cap. The exact per-file cap is still
-/// enforced on the read bytes (a `413`); this only keeps the envelope overhead from
-/// tripping the backstop for a file that is itself within the cap.
+/// for the upload route's request body-size limit, to cover the
+/// `multipart/form-data` envelope overhead.
 const UPLOAD_BODY_SLACK_BYTES: usize = 1024 * 1024;
 
-/// The commissions route group. On the cookie surface; the composition root
-/// wraps the group with the CSRF
+/// The commissions route group; mounted under the CSRF
 /// [`require_first_party_origin`](super::require_first_party_origin) layer.
-///
-/// The changelog surface is deliberately **append-and-read only** (ZMVP-87 AC4):
-/// `GET` is the stream's single method — no route updates or removes an entry,
-/// so editing history is unrepresentable at the HTTP layer too.
-///
-/// `max_upload_bytes` is [`Config::max_upload_bytes`](crate::Config::max_upload_bytes),
-/// used to size the request body-size limit on the file-upload route (the exact
-/// per-file cap is enforced in the handler).
+/// `max_upload_bytes` sizes the upload route's body-size limit.
 pub(crate) fn commissions_router(max_upload_bytes: usize) -> Router<AppState> {
     let upload_body_limit = max_upload_bytes.saturating_add(UPLOAD_BODY_SLACK_BYTES);
     Router::new()
@@ -189,8 +138,6 @@ pub(crate) fn commissions_router(max_upload_bytes: usize) -> Router<AppState> {
             put(deadline::set_deadline_status).delete(deadline::clear_deadline_status),
         )
         .route(
-            // The upload raises the request body limit above the default (2 MiB) to
-            // the configured cap plus envelope slack; the download is a plain GET.
             "/commissions/{id}/files",
             post(files::upload_file).layer(DefaultBodyLimit::max(upload_body_limit)),
         )
@@ -204,9 +151,8 @@ pub(crate) fn commissions_router(max_upload_bytes: usize) -> Router<AppState> {
         )
 }
 
-/// Resolve the session to the acting [`User`] — the shared authentication step
-/// of every commission handler. An absent/unreadable session or a vanished User
-/// is a `401`, never a redirect, because the frontend *calls* these endpoints.
+/// Resolves the session to the acting [`User`], or `401` if unauthenticated
+/// or the User has vanished.
 async fn current_user(state: &AppState, session: &Session) -> Result<User, Problem> {
     let id = session
         .get::<Uuid>(SESSION_USER_KEY)
@@ -223,13 +169,8 @@ async fn current_user(state: &AppState, session: &Session) -> Result<User, Probl
         .ok_or_else(Problem::not_authenticated)
 }
 
-/// The closed-door gate (ZMVP-87 AC5; DESIGN/Commission): admit `user` only if
-/// they are a Participant of `commission`, answering **everyone else with the
-/// one uniform [`Problem::commission_not_found`] 404** — the same body whether
-/// the commission is hidden from them or does not exist at all
-/// ([`CommissionStore::is_participant`](domain::ports::CommissionStore::is_participant)
-/// answers `false` for both), so no response distinguishes the cases. Never a
-/// 403: a 403 would confirm existence.
+/// Admits `user` only if they are a participant of `commission`; otherwise
+/// `404 commission_not_found` — never `403`, which would leak existence.
 async fn require_participant(
     state: &AppState,
     commission: CommissionId,
@@ -242,18 +183,9 @@ async fn require_participant(
     }
 }
 
-/// The shared **owner-authority gate** — owner-only in v1, shaped so the future
-/// Commission Admin (ZMVP-83) extends *this one match* rather than growing a
-/// second path (one seam, swept once when the Admin arm activates): resolve the
-/// commission, then rank the caller. A non-participant (who may not learn the
-/// commission exists) gets the uniform
-/// [`commission_not_found`](Problem::commission_not_found) 404; a participant
-/// who is not the owner already knows it exists, so refusing them managing
-/// authority is an honest `403` — today that arm is unreachable (the owner is
-/// the only participant until ZMVP-79 seats more). Consumed by every
-/// owner-gated commission handler ([`channel`], [`delete`], [`archive`],
-/// [`elements`], [`seats`], [`invitations`]). Returns the resolved [`Commission`]
-/// so callers needn't re-read it.
+/// Admits only the commission's owner. A non-participant gets `404
+/// commission_not_found`; a non-owner participant gets `403`. Returns the
+/// resolved [`Commission`] so callers needn't re-read it.
 async fn require_owner(
     state: &AppState,
     commission: CommissionId,

@@ -142,7 +142,8 @@ async fn a_member_leaves_and_is_no_longer_a_member() {
         .grant_role(&UserAccount {
             user_id: me.id,
             account_id: account.id,
-            role: Role::Member(None),
+            role: Role::Member,
+            alias: None,
         })
         .await
         .expect("seat me as a member");

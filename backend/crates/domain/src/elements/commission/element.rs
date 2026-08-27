@@ -43,7 +43,11 @@ use std::ops::Deref;
 
 use crate::{
     datetime::DateTimeUtc,
-    elements::{commission::CommissionId, user::UserId},
+    elements::{
+        commission::CommissionId,
+        id::{IdError, parse_uuid},
+        user::UserId,
+    },
     string_builder::{StringBuilder, StringBuilderViolation},
 };
 
@@ -79,6 +83,14 @@ impl Deref for ElementId {
     }
 }
 
+impl std::str::FromStr for ElementId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_uuid(s).map(Self)
+    }
+}
+
 /// The app-private, stable handle for one **tab** of a commission.
 ///
 /// Tabs are the only composition level with a row of their own — their mode is
@@ -108,6 +120,14 @@ impl Deref for TabId {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl std::str::FromStr for TabId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_uuid(s).map(Self)
     }
 }
 

@@ -13,7 +13,7 @@
 -- `ListingScope`, so the valve cannot be bypassed by omission.
 --
 -- $2: honor_privacy
-SELECT a.id, ai.did, a.handle, a.name, a.created_at, a.updated_at, a.deleted_at, am.role
+SELECT a.id, ai.did, a.handle, a.name, a.created_at, a.updated_at, a.deleted_at, am.role, am.alias
 FROM account_members am
 JOIN accounts a ON a.id = am.account_id
 JOIN actor_identity ai ON ai.id = a.id

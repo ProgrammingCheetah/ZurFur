@@ -19,11 +19,35 @@
 use domain::{
     datetime::DateTimeUtc,
     elements::commission::{ChangelogEntryKind, NewChangelogEntry},
-    ports::{Database, UnitOfWork},
+    ports::{ChangelogStore, CommissionStore, Database, DidMinter, UnitOfWork, UserStore},
 };
 use serde_json::json;
 
 use crate::transaction;
+pub mod archive;
+pub mod changelog;
+pub mod create;
+pub mod deadline;
+pub mod delete;
+pub mod files;
+pub mod unarchive;
+
+pub(crate) mod getters;
+
+pub use archive::archive;
+pub use create::create;
+pub use delete::delete;
+pub use unarchive::unarchive;
+
+pub struct CommissionPorts<'a> {
+    pub commissions: &'a dyn CommissionStore,
+    pub changelog: &'a dyn ChangelogStore,
+    pub users: &'a dyn UserStore,
+    pub did_minter: &'a dyn DidMinter,
+    pub database: &'a dyn Database,
+}
+
+pub type CommissionResult<T> = Result<T, CommissionError>;
 
 /// Why a commission use case could not answer. One enum per module: a driver
 /// maps each variant to its own surface (problem+json, `{class, code}`).
@@ -36,13 +60,25 @@ use crate::transaction;
 pub enum CommissionError {
     /// The commission store failed. The unit of work rolled back whole, so
     /// nothing was marked halfway; the caller may retry.
-    Store(anyhow::Error),
+    Infrastructure(anyhow::Error),
+    UserNotFound,
+    CommissionNotFound,
+    CommissionAlreadyAtState,
+    InsufficientPermissions,
+    NotAMember,
+    InvalidStateRequested,
 }
 
 impl std::fmt::Display for CommissionError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            CommissionError::Store(_) => write!(f, "the commission store failed"),
+            Self::Infrastructure(_) => write!(f, "the commission store failed"),
+            Self::UserNotFound => write!(f, "The user could not be found"),
+            Self::CommissionNotFound => write!(f, "The commission could not be found"),
+            Self::CommissionAlreadyAtState => write!(f, "This commission is already in this state"),
+            Self::InsufficientPermissions => write!(f, "Insufficient permissions to do this"),
+            Self::NotAMember => write!(f, "Not a member of this commission"),
+            Self::InvalidStateRequested => write!(f, "The state couldn't get set"),
         }
     }
 }
@@ -50,7 +86,8 @@ impl std::fmt::Display for CommissionError {
 impl std::error::Error for CommissionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
-            CommissionError::Store(e) => Some(e.as_ref()),
+            Self::Infrastructure(e) => Some(e.as_ref()),
+            _ => None,
         }
     }
 }
@@ -104,7 +141,7 @@ pub async fn sweep_deadlines(
         Ok(lapsed.len())
     })
     .await
-    .map_err(CommissionError::Store)?;
+    .map_err(CommissionError::Infrastructure)?;
 
     Ok(SweepResult { marked_late })
 }

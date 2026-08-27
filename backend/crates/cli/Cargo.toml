@@ -32,6 +32,8 @@ directories = { workspace = true }
 tempfile = { workspace = true }
 sha2 = { workspace = true }
 chrono = { workspace = true }
+# The `{id}` argument of an account-scoped op, parsed by clap.
+uuid = { workspace = true }
 
 [dev-dependencies]
 # Process-level harness: spawn the real `zurfur` binary and assert on

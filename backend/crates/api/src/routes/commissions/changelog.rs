@@ -2,88 +2,75 @@
 //! stream in order (ZMVP-87 AC5). Read-only by design: the changelog's HTTP
 //! surface has no other method (append happens as a side of domain acts; AC4).
 
+use application::commission::changelog::{ReadChangelogQuery, ReadChangelogResult};
 use axum::{
     Json,
     extract::{Path, State},
     response::{IntoResponse, Response},
 };
-use domain::elements::commission::CommissionId;
+use domain::elements::{commission::CommissionId, did::Did, user::UserId};
 use serde::Serialize;
 use tower_sessions::Session;
 use uuid::Uuid;
 
-use crate::{AppState, problem::Problem, wire_time::WireTimestamp};
+use crate::{
+    AppState, problem::Problem, routes::commissions::ports::commission_ports,
+    wire_time::WireTimestamp,
+};
 
-/// One changelog entry as the API serves it — the stored envelope, with the
-/// kind as its stable token and the actor as a bare id (`null` = a system
-/// entry). `seq` is the explicit ordering key (ascending = stream order);
-/// `created_at` is carried for display.
+/// One changelog entry as the API serves it: the stored envelope, kind as its
+/// stable token, actor as a bare id (`null` = a system entry), `seq` as the
+/// ascending ordering key.
 ///
-/// `created_at` is a [`WireTimestamp`] — canonical ProtoJSON, RFC 3339,
-/// **Z-normalized**, 0/3/6/9 fractional digits, range-validated to years
-/// 0001–9999 — byte-identical to what chrono's serde previously emitted for
-/// every in-range instant (verified empirically; ZMVP-158 AC5), so adopting it
-/// here does not move the wire. Serialization is bounded to that same
-/// 0001–9999 range: a stored `created_at` outside it fails the whole list's
-/// response (matching the accepted behavior on the `/api/v1` corpus routes
-/// this type already serves) — unreachable in practice, since `created_at` is
-/// DB-minted `now()`, never client-supplied.
-///
-/// ⚠️ contract-decision-needed: `payload` is an unschematized `serde_json::Value`
-/// passthrough — the hole through which every changelog-payload `json!` site
-/// (14 of them, out of this ticket's scope) reaches the client verbatim, with
-/// no schema behind any of them. Resolution tracks `VERSIONING.md` §8 Q9
-/// (Engineer-deferred). One of those payloads, `markup_added`, itself carries a
-/// `Markup` value out this same hole — the other facet of the same
-/// unschematized passthrough is `Json<Markup>` on the way *in*
-/// (`routes/commissions/markup.rs`, `add_markup`).
+/// ⚠️ contract-decision-needed: `payload` is an unschematized
+/// `serde_json::Value` passthrough (tracks `VERSIONING.md` §8 Q9).
 #[derive(Serialize)]
 struct ChangelogEntryBody {
     seq: i64,
     kind: &'static str,
-    actor_id: Option<Uuid>,
+    actor_id: Option<Did>,
     payload: serde_json::Value,
     note: Option<String>,
     created_at: WireTimestamp,
 }
 
-/// Read the commission's changelog, in stream order (ZMVP-87 AC5): a bare JSON
-/// array of entries, ascending `seq`. Participant-only behind
-/// [`require_participant`](super::require_participant) — a non-participant (or
-/// an absent commission) gets the uniform `commission_not_found` 404, never a
-/// 403. Unpaginated at this ticket; cursors are ZMVP-100's job.
+/// Reads the commission's changelog in stream order: a bare JSON array of
+/// entries, ascending `seq`. Participant-only; `404` otherwise. Unpaginated.
 pub(super) async fn read_changelog(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
     session: Session,
 ) -> Result<Response, Problem> {
     let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    super::require_participant(&state, commission, user.id).await?;
+    let query = ReadChangelogQuery {
+        actor_id: user.id,
+        commission_id: CommissionId::new(id),
+    };
 
-    let entries: Vec<ChangelogEntryBody> = state
-        .changelog
-        .entries(commission)
-        .await?
+    let ports = commission_ports(&state);
+
+    let result: Vec<ChangelogEntryBody> = application::commission::changelog::read(query, ports)
+        .await
+        .map(|v| v.entries)
+        // FIXME: Claude -- Add the correct errors in here
+        .map_err(Problem::service_unavailable)?
         .into_iter()
-        .map(|entry| ChangelogEntryBody {
-            seq: entry.seq,
-            kind: entry.kind.as_str(),
-            actor_id: entry.actor_id.map(|actor| *actor),
-            payload: entry.payload,
-            note: entry.note,
-            created_at: WireTimestamp::from(entry.created_at),
+        .map(|cl| ChangelogEntryBody {
+            seq: cl.seq,
+            kind: cl.kind.as_str(),
+            actor_id: cl.actor_id.map(|a| *a),
+            payload: cl.payload,
+            note: cl.note,
+            created_at: WireTimestamp::from(cl.created_at),
         })
         .collect();
 
-    Ok(Json(entries).into_response())
+    Ok(Json(result).into_response())
 }
 
 #[cfg(test)]
 mod tests {
-    //! Pins `ChangelogEntryBody.created_at`'s wire format: canonical ProtoJSON
-    //! (RFC 3339, Z-normalized) — see `wire_time`'s own tests for the
-    //! byte-identity-with-chrono pin; this one is specific to the entry body.
+    //! Pins `ChangelogEntryBody.created_at`'s wire format.
 
     use chrono::{TimeZone, Utc};
 

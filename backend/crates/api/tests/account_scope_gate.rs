@@ -205,7 +205,7 @@ async fn authed_user_with_the_role_succeeds_on_an_account_scoped_write() {
     let account = account_id_from(&account_id);
     assert_eq!(
         backend.role_of(grantee.id, account).await.expect("role_of"),
-        Some(Role::Member(None)),
+        Some(Role::Member),
         "the grantee is seated as a Member",
     );
 }
@@ -243,7 +243,7 @@ async fn authed_user_with_zero_accounts_can_make_a_user_scoped_write() {
     let account = account_id_from(body["id"].as_str().expect("account id"));
     assert_eq!(
         backend.role_of(me.id, account).await.expect("role_of"),
-        Some(Role::Owner(None)),
+        Some(Role::Owner),
         "founding makes the zero-account User the Owner",
     );
 }

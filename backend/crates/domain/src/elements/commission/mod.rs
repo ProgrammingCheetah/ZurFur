@@ -79,10 +79,15 @@ pub use seat_invitation::{SeatInvitation, SeatInvitationId};
 pub use slot::{NewSlot, Slot, SlotTitle, SlotTitleError};
 
 use std::ops::Deref;
+use std::str::FromStr;
 
 use crate::{
     datetime::DateTimeUtc,
-    elements::{maturity::Maturity, user::UserId},
+    elements::{
+        id::{IdError, parse_uuid},
+        maturity::Maturity,
+        user::UserId,
+    },
     string_builder::{StringBuilder, StringBuilderViolation},
 };
 
@@ -107,6 +112,14 @@ impl Deref for CommissionId {
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl FromStr for CommissionId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        parse_uuid(s).map(Self)
     }
 }
 
@@ -326,6 +339,14 @@ impl Commission {
             archived_at: None,
         }
     }
+
+    pub fn is_archived(&self) -> bool {
+        self.archived_at.is_none()
+    }
+
+    pub fn is_owned_by(&self, user_id: &UserId) -> bool {
+        self.owner_id == *user_id
+    }
 }
 
 /// The single lifecycle state a commission holds (DESIGN/Commission).
@@ -531,6 +552,15 @@ impl DeadlineStatus {
     }
 }
 
+impl std::fmt::Display for DeadlineStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Delayed => write!(f, "delayed"),
+            Self::Late => write!(f, "late"),
+        }
+    }
+}
+
 /// Why a token failed to resolve to a [`DeadlineStatus`] — the same
 /// tamper-surfacing contract as [`UnknownLifecycleStep`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -555,6 +585,18 @@ impl TryFrom<&str> for DeadlineStatus {
             "late" => Self::Late,
             _ => return Err(UnknownDeadlineStatus),
         })
+    }
+}
+
+impl FromStr for DeadlineStatus {
+    type Err = UnknownDeadlineStatus;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "delayed" => Ok(Self::Delayed),
+            "late" => Ok(Self::Late),
+            _ => return Err(UnknownDeadlineStatus),
+        }
     }
 }
 

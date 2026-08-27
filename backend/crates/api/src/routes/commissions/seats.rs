@@ -1,17 +1,6 @@
 //! `POST /commissions/{id}/seats` — the owner declares a Seat on the
-//! commission (ZMVP-76; Referenceable/Slot/Seat DD `28311564` Decisions 1, 3,
-//! 8): a 1:1 structural participant position, born **vacant**, typed by an
-//! open kind (Creator, Client, … — deliberately not the Role enum: Role keeps
-//! authority, aliases keep display), optionally carrying its requirements —
-//! the v1 vocabulary of a free-text prompt and/or an external link (no form
-//! builder; that is a Plugin).
-//!
-//! A dedicated endpoint rather than the generic element add: a seat is an
-//! element in the composition (which gives it its address, its order, and its
-//! own visibility mode) **plus** the typed satellite the core interprets, and
-//! only a dedicated route can populate both atomically. The declaration is
-//! changelog-recorded (`seat_declared` — an existing variant of ZMVP-87's
-//! frozen taxonomy) in the same unit of work.
+//! commission (Referenceable/Slot/Seat DD `28311564`): a structural
+//! participant position, born vacant, typed by an open kind.
 
 use axum::{
     Json,
@@ -42,13 +31,9 @@ struct DeclareSeatResponse {
     id: Uuid,
 }
 
-/// The `POST /commissions/{id}/seats` request body: the address to declare the
-/// seat at (`tab` by id, `surface` by declared name — the seat projects under
-/// that surface's mode, so a vacant seat under a Description-visible surface is
-/// the published ask), the seat's typed `kind` (required; open vocabulary), and
-/// the optional requirements — a free-text `prompt` and/or an external `link`,
-/// each validated at the boundary. There is deliberately no occupant field:
-/// seats are born vacant (filling one is ZMVP-79's invitation-mediated act).
+/// The `POST /commissions/{id}/seats` request body: the address (`tab` +
+/// `surface`), the seat's typed `kind`, and optional `prompt`/`link`
+/// requirements. No occupant field — seats are born vacant.
 #[derive(Deserialize)]
 pub(super) struct DeclareSeatBody {
     tab: Uuid,
@@ -58,25 +43,10 @@ pub(super) struct DeclareSeatBody {
     link: Option<String>,
 }
 
-/// Declare a Seat into one of the commission's declared **surfaces**
-/// (ZMVP-76 AC1/AC2), as its owner.
-///
-/// Owner-only via the shared [`require_owner`] gate (the one managing-authority
-/// path; ZMVP-83 activates its Admin arm): a non-participant — and a truly
-/// absent commission — gets the uniform
-/// [`commission_not_found`](Problem::commission_not_found) 404 (never a 403; no
-/// existence oracle). A malformed body, a blank/oversized kind, or an invalid
-/// prompt/link is a `422`. The address walks the same gates as every element
-/// write, through the one shared mapping
-/// ([`elements::to_problem`](super::elements::to_problem)): a tab that doesn't
-/// exist in **this** commission — fabricated, or belonging to some other
-/// commission — is the indistinguishable
-/// [`tab_not_found`](Problem::tab_not_found) 404, an undeclared (tab, surface)
-/// pair the honest `422` [`unknown_surface`](Problem::unknown_surface). The seat's
-/// element, its satellite, and its `seat_declared` changelog entry land in **one
-/// unit of work** — a seat can never exist without its record. Returns `201
-/// Created` with the seat's element id — `{"id": "…"}` — the identity later
-/// tickets (invitations 78, applications 80, ceilings 96) address it by.
+/// Declares a Seat into one of the commission's declared surfaces, as its
+/// owner. Owner-only; `422` for a malformed body or invalid prompt/link,
+/// `404 tab_not_found` / `422 unknown_surface` for a bad address. Returns
+/// `201 Created` with `{"id": "…"}`.
 pub(super) async fn declare_seat(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -106,9 +76,6 @@ pub(super) async fn declare_seat(
     let now = Utc::now();
     let seat = NewSeat::contributed_at(commission, address, kind, prompt, link, user.id, now);
     let seat_id = *seat.id;
-    // The record: the payload carries the kind so the sentence ("declared a
-    // Creator seat") renders without joins (the DD's core-renderable rule);
-    // the seat's element id names which seat for later entries in the stream.
     let entry = NewChangelogEntry::event(
         commission,
         ChangelogEntryKind::SeatDeclared,
@@ -131,8 +98,7 @@ pub(super) async fn declare_seat(
 
 #[cfg(test)]
 mod tests {
-    //! Pins the `201` body's wire shape: `{"id": "<uuid>"}` — the exact string
-    //! form `json!({ "id": seat_id })` used to emit (ZMVP-158 AC1/AC3).
+    //! Pins the `201` body's wire shape: `{"id": "<uuid>"}`.
 
     use super::*;
 

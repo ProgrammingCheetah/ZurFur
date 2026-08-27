@@ -6,9 +6,15 @@
 //! [`crate::ports::UserWrites`] for the idempotent provisioning port, ZMVP-9, and
 //! DESIGN/User.
 
-use std::ops::Deref;
+use std::{ops::Deref, str::FromStr};
 
-use crate::{datetime::DateTimeUtc, elements::did::Did};
+use crate::{
+    datetime::DateTimeUtc,
+    elements::{
+        did::{Did, DidParseError},
+        id::{IdError, parse_uuid},
+    },
+};
 
 /// The app-private, stable handle for a [`User`].
 ///
@@ -17,22 +23,36 @@ use crate::{datetime::DateTimeUtc, elements::did::Did};
 /// public-facing identity is the user's [`Did`]. Deref exposes the inner UUID.
 ///
 /// References: [`new`](UserId::new), [`User::recognize`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct UserId(uuid::Uuid);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UserId(Did);
 
 impl UserId {
     /// Rebuilds an id from its stored UUID — e.g. a row read back from Postgres.
     /// Minting a *fresh* id happens in [`User::recognize`], not here.
-    pub fn new(id: uuid::Uuid) -> Self {
+    pub fn new(id: Did) -> Self {
         Self(id)
     }
 }
 
 impl Deref for UserId {
-    type Target = uuid::Uuid;
+    type Target = Did;
 
     fn deref(&self) -> &Self::Target {
         &self.0
+    }
+}
+
+impl FromStr for UserId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let did = s
+            .to_string()
+            .parse::<Did>()
+            .map(Self)
+            .map_err(|_| IdError::ParsingError)?;
+
+        Ok(did)
     }
 }
 
@@ -46,7 +66,6 @@ impl Deref for UserId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     pub id: UserId,
-    pub did: Did,
     /// When Zurfur first recognized this DID. Stored as an explicit domain fact,
     /// not derived from the UUIDv7 id: import flows can make recognition time
     /// diverge from key-minting time.
@@ -71,8 +90,7 @@ impl User {
     /// ```
     pub fn recognize(did: Did, now: DateTimeUtc) -> Self {
         Self {
-            id: UserId(uuid::Uuid::now_v7()),
-            did,
+            id: UserId::new(did),
             created_at: now,
         }
     }

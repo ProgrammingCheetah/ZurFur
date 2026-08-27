@@ -41,6 +41,7 @@ async fn founding_persists_the_account_and_seats_the_founder_as_owner() {
 
     let ports = AccountPorts {
         accounts: &*runtime.accounts,
+        users: &*runtime.users,
         did_minter: &*runtime.did_minter,
         database: &*runtime.database,
     };
@@ -68,7 +69,7 @@ async fn founding_persists_the_account_and_seats_the_founder_as_owner() {
         .await
         .expect("read")
         .expect("seated");
-    assert!(matches!(owner, Role::Owner(_)));
+    assert!(matches!(owner, Role::Owner));
 }
 
 #[tokio::test]
@@ -79,6 +80,7 @@ async fn a_live_handle_is_taken() {
     let user = recognized(&*runtime.database, &did).await;
     let ports = || AccountPorts {
         accounts: &*runtime.accounts,
+        users: &*runtime.users,
         did_minter: &*runtime.did_minter,
         database: &*runtime.database,
     };
@@ -130,6 +132,7 @@ async fn a_mint_failure_persists_nothing() {
     let user = recognized(&*runtime.database, &did).await;
     let ports = AccountPorts {
         accounts: &*runtime.accounts,
+        users: &*runtime.users,
         did_minter: &BrokenMinter,
         database: &*runtime.database,
     };
@@ -143,7 +146,7 @@ async fn a_mint_failure_persists_nothing() {
     .await
     .unwrap_err();
 
-    assert!(matches!(error, AccountError::Minter(_)));
+    assert!(matches!(error, AccountError::Infrastructure(_)));
     let handle: Handle = "acme.zurfur.app".parse().expect("valid");
     let claimed = runtime
         .accounts

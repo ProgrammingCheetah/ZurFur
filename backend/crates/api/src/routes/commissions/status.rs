@@ -1,11 +1,6 @@
 //! `PUT`/`DELETE /commissions/{id}/status/direction` — a Participant sets or
-//! clears the commission's **direction-axis Status** (ZMVP-85;
-//! DESIGN/Commission, Status). Direction transitions are ALWAYS an explicit
-//! Participant act (Engineer ruling 2026-07-01): no content event or system
-//! sweep moves this axis — this endpoint is the column's only writer. One
-//! nullable cell (ruling E29), so a set REPLACES the current value and axis
-//! exclusivity holds by construction; the deadline axis (ZMVP-86) is separate
-//! and the two compose freely. Every change is changelog-recorded, atomically.
+//! clears the commission's direction-axis Status. Always an explicit
+//! Participant act; a set replaces the current value.
 
 use axum::{
     Json,
@@ -36,17 +31,9 @@ pub(super) struct SetDirectionStatusBody {
     status: String,
 }
 
-/// Set (or replace) the commission's direction status (ZMVP-85 AC1/AC2).
-///
-/// Any-Participant-gated behind
-/// [`require_participant`](super::require_participant) (uniform 404 for
-/// everyone else — the closed door). A token outside the three-value
-/// vocabulary ([`DirectionStatus`]'s `TryFrom<&str>`) is a `422`. Setting the value
-/// already held changes nothing: `204` with **no** entry appended (a record of
-/// nothing changing would be noise, not audit — the linked-channel precedent).
-/// Otherwise the column write and the `status_changed` changelog entry
-/// (payload carries `from`/`to` tokens, so it renders without joins) land in
-/// **one unit of work** (Changelog DD D4). Returns `204 No Content`.
+/// Sets (or replaces) the commission's direction status. Any-Participant-gated;
+/// `422` for a token outside the vocabulary; idempotent on an unchanged
+/// value. Returns `204 No Content`.
 pub(super) async fn set_direction_status(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -73,12 +60,8 @@ pub(super) async fn set_direction_status(
     apply_direction_status(&state, commission, user.id, Some(status)).await
 }
 
-/// Clear the commission's direction status (ZMVP-85 AC1).
-///
-/// Any-Participant-gated like the set. Clearing an already-clear status is an
-/// idempotent no-op — `204` with no entry; otherwise the column goes `NULL`
-/// and the `status_changed` entry (`to: null`) lands in the same unit of work.
-/// Returns `204 No Content`.
+/// Clears the commission's direction status. Any-Participant-gated and
+/// idempotent. Returns `204 No Content`.
 pub(super) async fn clear_direction_status(
     State(state): State<AppState>,
     Path(id): Path<Uuid>,
@@ -91,13 +74,8 @@ pub(super) async fn clear_direction_status(
     apply_direction_status(&state, commission, user.id, None).await
 }
 
-/// The shared set/clear tail: read the current value, drop a no-op early
-/// (nothing changed — no entry), otherwise write the one nullable column and
-/// append the `status_changed` entry **in one unit of work**.
-///
-/// The participant gate has already passed, so a vanished commission here (a
-/// delete racing this request) surfaces as the same uniform
-/// [`commission_not_found`](Problem::commission_not_found).
+/// Shared set/clear tail: writes the direction status and its changelog
+/// entry in one unit of work, appending only on a real change.
 async fn apply_direction_status(
     state: &AppState,
     commission: CommissionId,
@@ -126,10 +104,6 @@ async fn apply_direction_status(
     );
     state
         .transaction(async move |uow: &mut dyn UnitOfWork| {
-            // Gate the changelog entry on the atomic `changed` flag the write
-            // returns (`… IS DISTINCT FROM`), so a value that raced to `to`
-            // between the read above and this write appends no spurious entry —
-            // the linked-channel contract (PR #102 review).
             if uow
                 .commissions()
                 .set_direction_status(commission, to)

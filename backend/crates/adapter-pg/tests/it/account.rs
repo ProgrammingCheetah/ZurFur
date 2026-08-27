@@ -21,7 +21,7 @@ use domain::{
         did::Did,
         handle::Handle,
         invitation::{Invitation, InvitationId, InvitationState},
-        role::Role,
+        role::{Role, RoleAlias},
         user::{User, UserId},
         user_account::UserAccount,
     },
@@ -237,7 +237,7 @@ async fn create_persists_the_account_and_its_owner_membership() {
     let role = role_of(&pool, owner.id, account_id).await;
     assert_eq!(
         role,
-        Some(Role::Owner(None)),
+        Some(Role::Owner),
         "the creating User is the account's Owner"
     );
 }
@@ -258,13 +258,7 @@ async fn one_unit_of_work_commits_writes_across_aggregates_atomically() {
         "Multi Studio".parse::<AccountName>().unwrap(),
         Utc::now(),
     );
-    let invitation = Invitation::issue(
-        account.id,
-        invitee.id,
-        Role::Member(None),
-        owner.id,
-        Utc::now(),
-    );
+    let invitation = Invitation::issue(account.id, invitee.id, Role::Member, owner.id, Utc::now());
 
     // One unit of work, two writes through two accessor calls — then one commit.
     let db = PgDatabase::new(pool.clone());
@@ -401,7 +395,7 @@ async fn create_then_find_pending_returns_the_invitation() {
     let (pool, _container) = fresh_pool().await;
     let (account, inviter, invitee) = invitation_fixture(&pool, "rt").await;
 
-    let invitation = Invitation::issue(account.id, invitee, Role::Admin(None), inviter, Utc::now());
+    let invitation = Invitation::issue(account.id, invitee, Role::Admin, inviter, Utc::now());
     let id = invitation.id;
     create_invitation(&pool, &invitation).await;
 
@@ -411,11 +405,7 @@ async fn create_then_find_pending_returns_the_invitation() {
     assert_eq!(found.id, id);
     assert_eq!(found.account, account.id);
     assert_eq!(found.invited_user, invitee);
-    assert_eq!(
-        found.role,
-        Role::Admin(None),
-        "the offered role round-trips"
-    );
+    assert_eq!(found.role, Role::Admin, "the offered role round-trips");
     assert_eq!(found.inviter, inviter, "the inviter round-trips (Roles 4a)");
     assert_eq!(found.state, InvitationState::Pending);
 }
@@ -427,8 +417,8 @@ async fn a_second_pending_invitation_for_the_same_pair_is_not_a_second_row() {
     let (pool, _container) = fresh_pool().await;
     let (account, inviter, invitee) = invitation_fixture(&pool, "dup").await;
 
-    let first = Invitation::issue(account.id, invitee, Role::Member(None), inviter, Utc::now());
-    let second = Invitation::issue(account.id, invitee, Role::Admin(None), inviter, Utc::now());
+    let first = Invitation::issue(account.id, invitee, Role::Member, inviter, Utc::now());
+    let second = Invitation::issue(account.id, invitee, Role::Admin, inviter, Utc::now());
     create_invitation(&pool, &first).await;
     create_invitation(&pool, &second).await; // a no-op, not an error
 
@@ -452,8 +442,7 @@ async fn revoke_invitation_flips_state_and_clears_the_pending_offer() {
     let (pool, _container) = fresh_pool().await;
     let (account, inviter, invitee) = invitation_fixture(&pool, "rev").await;
 
-    let invitation =
-        Invitation::issue(account.id, invitee, Role::Member(None), inviter, Utc::now());
+    let invitation = Invitation::issue(account.id, invitee, Role::Member, inviter, Utc::now());
     let id = invitation.id;
     create_invitation(&pool, &invitation).await;
 
@@ -471,7 +460,7 @@ async fn revoke_invitation_flips_state_and_clears_the_pending_offer() {
 
     // With the prior offer revoked (and out of the partial index), a fresh invitation
     // to the same pair is seated.
-    let reissued = Invitation::issue(account.id, invitee, Role::Admin(None), inviter, Utc::now());
+    let reissued = Invitation::issue(account.id, invitee, Role::Admin, inviter, Utc::now());
     create_invitation(&pool, &reissued).await;
     assert_eq!(
         find_pending(&pool, account.id, invitee).await.map(|i| i.id),
@@ -487,7 +476,7 @@ async fn find_unknown_invitation_is_none() {
     let (account, inviter, invitee) = invitation_fixture(&pool, "ghost").await;
 
     // Issued in the domain but never persisted, so its id is genuinely unknown.
-    let unstored = Invitation::issue(account.id, invitee, Role::Member(None), inviter, Utc::now());
+    let unstored = Invitation::issue(account.id, invitee, Role::Member, inviter, Utc::now());
 
     let found = find_invitation(&pool, unstored.id).await;
     assert!(
@@ -513,26 +502,26 @@ async fn accepting_an_invitation_for_an_already_seated_pair_is_a_no_op() {
         &UserAccount {
             account_id: account.id,
             user_id: invitee,
-            role: Role::Admin(None),
+            role: Role::Admin,
+            alias: None,
         },
     )
     .await;
 
     // A stale pending invitation (issued before the grant) offers only Member.
-    let invitation =
-        Invitation::issue(account.id, invitee, Role::Member(None), inviter, Utc::now());
+    let invitation = Invitation::issue(account.id, invitee, Role::Member, inviter, Utc::now());
     create_invitation(&pool, &invitation).await;
 
     // Accepting it must not error, and must not downgrade the already-granted role.
     let seated = accept_invitation(&pool, invitation, false).await;
     assert_eq!(
         seated.role,
-        Role::Admin(None),
+        Role::Admin,
         "the returned membership reflects the original grant, not the invitation's role"
     );
     assert_eq!(
         role_of(&pool, invitee, account.id).await,
-        Some(Role::Admin(None)),
+        Some(Role::Admin),
         "the persisted membership still holds the original grant"
     );
     assert_eq!(
@@ -562,7 +551,7 @@ async fn parent_of(pool: &PgPool, account: AccountId, user: UserId) -> Option<uu
 /// Seats `invited` as a Member under `inviter` (`parent = inviter`) by issuing and
 /// accepting an invitation — the only path that writes `account_members.parent`.
 async fn seat_under(pool: &PgPool, account: AccountId, invited: UserId, inviter: UserId) {
-    let invitation = Invitation::issue(account, invited, Role::Member(None), inviter, Utc::now());
+    let invitation = Invitation::issue(account, invited, Role::Member, inviter, Utc::now());
     create_invitation(pool, &invitation).await;
     accept_invitation(pool, invitation, true).await;
 }
@@ -685,10 +674,9 @@ async fn leave_revokes_the_leavers_pending_issued_invitations() {
     seat_under(&pool, account.id, a.id, owner.id).await;
 
     // A (leaving) has a pending offer out to X; the Owner (staying) has one out to Y.
-    let a_invites_x = Invitation::issue(account.id, x.id, Role::Member(None), a.id, Utc::now());
+    let a_invites_x = Invitation::issue(account.id, x.id, Role::Member, a.id, Utc::now());
     create_invitation(&pool, &a_invites_x).await;
-    let owner_invites_y =
-        Invitation::issue(account.id, y.id, Role::Member(None), owner.id, Utc::now());
+    let owner_invites_y = Invitation::issue(account.id, y.id, Role::Member, owner.id, Utc::now());
     create_invitation(&pool, &owner_invites_y).await;
 
     leave(&pool, a.id, account.id).await; // A leaves
@@ -732,7 +720,7 @@ async fn revoke_role_rehomes_children_and_revokes_issued_invitations() {
     seat_under(&pool, account.id, b.id, a.id).await; // B under A
 
     // A has a pending offer out to X.
-    let a_invites_x = Invitation::issue(account.id, x.id, Role::Member(None), a.id, Utc::now());
+    let a_invites_x = Invitation::issue(account.id, x.id, Role::Member, a.id, Utc::now());
     create_invitation(&pool, &a_invites_x).await;
 
     // An Owner/Admin revokes A's role (authority is the handler's; the store settles).
@@ -888,7 +876,7 @@ async fn transfer_makes_the_heir_owner_and_demotes_the_prior_owner_to_admin() {
 
     assert_eq!(
         role_of(&pool, heir.id, account.id).await,
-        Some(Role::Owner(None)),
+        Some(Role::Owner),
         "the heir is the new Owner",
     );
     assert_eq!(
@@ -898,7 +886,7 @@ async fn transfer_makes_the_heir_owner_and_demotes_the_prior_owner_to_admin() {
     );
     assert_eq!(
         role_of(&pool, owner.id, account.id).await,
-        Some(Role::Admin(None)),
+        Some(Role::Admin),
         "the prior Owner is demoted to Admin",
     );
     assert_eq!(
@@ -941,12 +929,12 @@ async fn transfer_from_a_non_owner_errors_and_changes_nothing() {
 
     assert_eq!(
         role_of(&pool, owner.id, account.id).await,
-        Some(Role::Owner(None)),
+        Some(Role::Owner),
         "the real Owner still owns the account",
     );
     assert_eq!(
         role_of(&pool, heir.id, account.id).await,
-        Some(Role::Member(None)),
+        Some(Role::Member),
         "the would-be heir's role is unchanged",
     );
 }
@@ -981,7 +969,7 @@ async fn transfer_to_a_non_member_errors_and_keeps_the_owner() {
 
     assert_eq!(
         role_of(&pool, owner.id, account.id).await,
-        Some(Role::Owner(None)),
+        Some(Role::Owner),
         "the demotion rolled back with the failed promotion — the Owner is intact",
     );
     assert_eq!(
@@ -1065,13 +1053,7 @@ async fn hard_delete_removes_pending_invitations() {
     );
     create(&pool, &account, &membership).await;
 
-    let invitation = Invitation::issue(
-        account.id,
-        invitee.id,
-        Role::Member(None),
-        owner.id,
-        Utc::now(),
-    );
+    let invitation = Invitation::issue(account.id, invitee.id, Role::Member, owner.id, Utc::now());
     create_invitation(&pool, &invitation).await;
     assert!(
         store
@@ -1563,7 +1545,8 @@ async fn list_for_user_returns_every_live_membership_with_the_callers_own_role()
     let seat = UserAccount {
         user_id: caller.id,
         account_id: joined.id,
-        role: Role::Member(None),
+        role: Role::Member,
+        alias: None,
     };
     grant_role(&pool, &seat).await;
 
@@ -1589,7 +1572,7 @@ async fn list_for_user_returns_every_live_membership_with_the_callers_own_role()
         .expect("the founded account is listed");
     assert_eq!(
         owned_row.role,
-        Role::Owner(None),
+        Role::Owner,
         "the founder's own role rides along"
     );
     assert_eq!(
@@ -1604,7 +1587,7 @@ async fn list_for_user_returns_every_live_membership_with_the_callers_own_role()
         .expect("the granted-only account is listed too — not owned-only");
     assert_eq!(
         joined_row.role,
-        Role::Member(None),
+        Role::Member,
         "the CALLER's role, not the account owner's"
     );
 
@@ -1613,6 +1596,50 @@ async fn list_for_user_returns_every_live_membership_with_the_callers_own_role()
     let mut expected = order.clone();
     expected.sort();
     assert_eq!(order, expected, "rows come back ascending by account id");
+}
+
+// A member's own [`RoleAlias`] round-trips through `grant_role` → `list_for_user`
+// once persisted: `grant_role` itself never sets it (there is no set-alias write
+// path yet, mirroring `grant_role.sql`, which only ever touches the `role`
+// column), so this reaches straight into the `account_members.alias` column with
+// a raw `UPDATE` — the pg-side mirror of `MemBackend::seed_role_alias`. Also
+// proves the unset case reads back `None`, not an empty string.
+#[tokio::test]
+async fn list_for_user_round_trips_a_role_alias() {
+    let (pool, _container) = fresh_pool().await;
+
+    let caller = provision(&pool, "did:plc:pgalias-caller").await;
+    let aliased = found_account(&pool, caller.id, "aliased").await;
+    let unaliased = found_account(&pool, caller.id, "unaliased").await;
+
+    sqlx::query("UPDATE account_members SET alias = $1 WHERE account_id = $2 AND user_id = $3")
+        .bind("Studio Head")
+        .bind(*aliased.id)
+        .bind(*caller.id)
+        .execute(&pool)
+        .await
+        .expect("seed the alias column directly");
+
+    let rows = list_for_user(&pool, caller.id, ListingScope::SelfView).await;
+
+    let aliased_row = rows
+        .iter()
+        .find(|row| row.account.id == aliased.id)
+        .expect("the aliased account is listed");
+    assert_eq!(
+        aliased_row.alias,
+        Some(RoleAlias::new("Studio Head").expect("non-empty")),
+        "the persisted alias round-trips"
+    );
+
+    let unaliased_row = rows
+        .iter()
+        .find(|row| row.account.id == unaliased.id)
+        .expect("the unaliased account is listed too");
+    assert_eq!(
+        unaliased_row.alias, None,
+        "no alias was ever written, so it reads back as None"
+    );
 }
 
 // Soft-deleted accounts are absent, mirroring `find`'s `deleted_at IS NULL`
@@ -1657,8 +1684,7 @@ async fn list_for_user_honors_the_privacy_valve_only_for_a_public_projection() {
     let unlisted = found_account(&pool, owner.id, "unlisted").await;
 
     for (account, listed) in [(&published, true), (&unlisted, false)] {
-        let invitation =
-            Invitation::issue(account.id, member, Role::Member(None), owner.id, Utc::now());
+        let invitation = Invitation::issue(account.id, member, Role::Member, owner.id, Utc::now());
         create_invitation(&pool, &invitation).await;
         accept_invitation(&pool, invitation, listed).await;
     }

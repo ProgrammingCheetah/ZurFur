@@ -1,22 +1,6 @@
 //! `POST /commissions/{id}/files/{file_id}/markup` — a Participant attaches a
-//! Markup to a file entry (ZMVP-90; DESIGN/Commission — "File entries and
-//! Markup"; Engineer ruling E14 2026-07-05).
-//!
-//! Markup is stored RAW and parsed by the frontend: this route validates
-//! **strictly** (typed shapes, normalized 0–1 coordinates, capped text — see
-//! [`Markup`]), then the markup rides the `markup_added` changelog entry's jsonb
-//! payload exactly as submitted, referencing the validated file entry's id. The
-//! changelog is append-only, so this boundary is the only gate the data will
-//! ever pass — and also why markup has no edit or delete (immutability is
-//! settled by ZMVP-87's shape, not a choice made here).
-//!
-//! **No Status side effects (the always-explicit rule; ZMVP-85/89 rulings).**
-//! Adding markup never moves the Lifecycle, the direction axis, or the deadline
-//! axis — the request body is `deny_unknown_fields`, so nothing status-shaped
-//! can even ride along; the submission prompt (two explicit calls) is the path.
-//!
-//! Threading, persistence on file replacement, the annotate-matrix, and
-//! retention are deferred to the File Activity & Markup 1DD.
+//! Markup to a file entry. Validated strictly and stored raw, append-only;
+//! never moves any status.
 
 use axum::{
     Json,
@@ -35,29 +19,13 @@ use uuid::Uuid;
 
 use crate::{AppState, problem::Problem};
 
-/// Attach a Markup to a file entry (ZMVP-90).
+/// Attaches a Markup to a file entry. Any-Participant-gated; `404
+/// file_not_found` for a file not in this commission, `422` for an invalid
+/// markup shape. Lands as a `markup_added` changelog entry. Returns
+/// `201 Created`.
 ///
-/// Any-Participant-gated behind
-/// [`require_participant`](super::require_participant) (uniform 404 for everyone
-/// else — the closed door). The file entry must exist **within this commission**
-/// ([`find_file`](domain::ports::CommissionStore::find_file) is
-/// commission-scoped): an unknown id — including another commission's — is
-/// [`file_not_found`](Problem::file_not_found), never a cross-commission oracle.
-///
-/// The body is one [`Markup`], rejected `422` on any unknown shape/field,
-/// out-of-range coordinate, malformed stroke, or bad text (the strict gate of an
-/// append-only record; the serde/validation message is surfaced in `detail` so a
-/// client can fix its canvas). What passes lands as a `markup_added` entry —
-/// payload `{ file_id, markup }`, the markup **exactly as submitted** — through
-/// the unit of work. The entry is the only write: no status, no lifecycle, no
-/// deadline. Returns `201 Created`.
-///
-/// ⚠️ contract-decision-needed: the `Json<Markup>` request body below is the
-/// *inbound* facet of an unschematized passthrough — `Markup` rides back OUT
-/// through the same hole, opaque inside `ChangelogEntryBody.payload`
-/// (`routes/commissions/changelog.rs`) on `GET /commissions/{id}/changelog`.
-/// Both facets are flagged there; resolution tracks `VERSIONING.md` §8 Q9
-/// (Engineer-deferred).
+/// ⚠️ contract-decision-needed: `Markup` is an unschematized passthrough
+/// (tracks `VERSIONING.md` §8 Q9).
 pub(super) async fn add_markup(
     State(state): State<AppState>,
     Path((id, file_id)): Path<(Uuid, Uuid)>,
@@ -69,7 +37,6 @@ pub(super) async fn add_markup(
     super::require_participant(&state, commission, user.id).await?;
 
     let key = FileKey::new(file_id);
-    // Scoped to the commission: a key from another commission answers None here.
     state
         .commissions
         .find_file(commission, key)

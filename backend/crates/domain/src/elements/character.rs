@@ -12,6 +12,13 @@
 //! unrepresentable, not just unoffered). Only the id type exists so far; the
 //! Character entity is not modelled here yet.
 
+use std::str::FromStr;
+
+use crate::elements::{
+    did::Did,
+    id::{IdError, parse_uuid},
+};
+
 /// The app-private identity of a Character.
 ///
 /// Stub: a UUIDv7 wrapped for type safety. Note the Character's *public*
@@ -19,5 +26,17 @@
 /// the private handle. The entity itself is not modelled here yet; the
 /// commission [`Slot`](crate::elements::commission::Slot) it will occupy gains
 /// its occupant reference in the same change that models assignment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CharacterId(uuid::Uuid);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CharacterId(Did);
+
+impl FromStr for CharacterId {
+    type Err = IdError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let id = s
+            .parse::<Did>()
+            .map(Self)
+            .map_err(|_| IdError::ParsingError)?;
+        Ok(id)
+    }
+}

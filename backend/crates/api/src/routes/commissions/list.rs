@@ -1,15 +1,5 @@
-//! `GET /commissions` — the signed-in user's OWNED commissions, owner-POV only
-//! (ZMVP-157; frontend enablement for ZMVP-153 AC1). The non-participant
-//! projection view (ZMVP-75) is a distinct, later surface this does not
-//! attempt: nothing here answers "what can I see as a seated participant",
-//! only "what do I own".
-//!
-//! The response types are the contract's GENERATED messages (ZMVP-160):
-//! `Commission` / `Maturity` / `ListCommissionsResponse` from
-//! `contract/zurfur/api/v1/commission.proto` — a shape that drifts from the
-//! corpus stops compiling, which is the property the contract exists for.
-//! Their serde is canonical ProtoJSON: lowerCamelCase keys (R1), absent
-//! optionals omit their keys (R4).
+//! `GET /commissions` — the signed-in user's owned commissions, owner-POV
+//! only. Response types are the contract's generated messages.
 
 use axum::{
     Json,
@@ -23,10 +13,7 @@ use super::wire_timestamp;
 use crate::generated::{Commission, ListCommissionsResponse, Maturity};
 use crate::{AppState, problem::Problem};
 
-/// Render a domain commission into the contract's envelope. The ONE mapping
-/// site for the listing row; `create` builds its own response message from the
-/// same fields (the corpus keeps the two messages separate on purpose, so each
-/// endpoint's response can evolve independently).
+/// Renders a domain commission into the contract's envelope.
 pub(super) fn wire_commission(commission: domain::elements::commission::Commission) -> Commission {
     let maturity = commission.maturity.map(|maturity| Maturity {
         rating: maturity.rating.as_str().to_owned(),
@@ -53,18 +40,8 @@ pub(super) fn wire_commission(commission: domain::elements::commission::Commissi
     }
 }
 
-/// List the signed-in user's owned commissions (ZMVP-157).
-///
-/// Resolves the session to the acting [`User`](domain::elements::user::User)
-/// via [`current_user`](super::current_user) — an absent session or vanished
-/// User is a `401`, never a redirect, because the frontend *calls* this
-/// endpoint (consistent with `GET /me`). **Archived commissions are
-/// excluded** — an archived commission is meant to disappear from active
-/// views (Deletion DD `3014657`; ZMVP-68), and this listing is exactly that
-/// active-view filter (`Commission::archived_at`'s documented
-/// listing-projection contract; [`CommissionStore::list_owned_by`](domain::ports::CommissionStore::list_owned_by)).
-/// Ordered by id (UUIDv7 sorts as creation order); no pagination (v1 volumes
-/// are small).
+/// Lists the signed-in user's owned commissions, excluding archived ones.
+/// Ordered by id (creation order); no pagination.
 ///
 /// Outcomes:
 /// - `200 { "commissions": [ { "id", "title", "lifecycle", "visibility",

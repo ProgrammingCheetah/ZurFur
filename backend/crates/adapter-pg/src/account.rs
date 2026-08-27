@@ -18,13 +18,14 @@ use domain::{
         did::Did,
         handle::Handle,
         invitation::{Invitation, InvitationId, InvitationState},
-        role::Role,
+        role::{InvalidRoleAlias, Role, RoleAlias},
         user::UserId,
         user_account::UserAccount,
     },
     ports::{AccountStore, AccountWrites, HandleTaken},
 };
 use sqlx::{PgConnection, PgPool};
+use std::str::FromStr;
 
 use crate::queries::account as sql;
 use crate::queries::actor_identity as actor_sql;
@@ -181,20 +182,38 @@ fn to_account(row: sql::FindRow) -> anyhow::Result<Account> {
     build_account(row.into())
 }
 
+/// Rebuild the caller's optional [`RoleAlias`] from its stored column — `NULL`
+/// (`None`) on the floor (no write endpoint sets it yet), a stored empty/
+/// whitespace-only string means row tampering and surfaces as an `Err`, never
+/// a panic — the same posture as every other re-validated column here.
+fn to_role_alias(alias: Option<String>) -> Result<Option<RoleAlias>, InvalidRoleAlias> {
+    alias.map(RoleAlias::new).transpose()
+}
+
 /// Rebuild an [`AccountMembership`] from either listing row (ZMVP-157): the
-/// account half via [`build_account`], plus the caller's own [`Role`] the join
-/// carries alongside it. Generic over the row shape because the self-view and
-/// public-projection queries return structurally identical rows under different
-/// generated names — both converge through [`AccountFields`]. A stored role
-/// outside its vocabulary means row tampering and surfaces as an `Err`, never a
-/// panic — the same posture as every other re-validated discriminant here.
-fn to_account_membership<Row>(row: Row, role: String) -> anyhow::Result<AccountMembership>
+/// account half via [`build_account`], plus the caller's own [`Role`] and
+/// [`RoleAlias`] the join carries alongside it. Generic over the row shape
+/// because the self-view and public-projection queries return structurally
+/// identical rows under different generated names — both converge through
+/// [`AccountFields`]. A stored role outside its vocabulary means row tampering
+/// and surfaces as an `Err`, never a panic — the same posture as every other
+/// re-validated discriminant here.
+fn to_account_membership<Row>(
+    row: Row,
+    role: String,
+    alias: Option<String>,
+) -> anyhow::Result<AccountMembership>
 where
     AccountFields: From<Row>,
 {
-    let role = Role::try_from(role)?;
+    let role = Role::from_str(&role)?;
+    let alias = to_role_alias(alias)?;
     let account = build_account(AccountFields::from(row))?;
-    Ok(AccountMembership { account, role })
+    Ok(AccountMembership {
+        account,
+        role,
+        alias,
+    })
 }
 
 /// Rebuild a domain [`Invitation`] from its generated row, re-validating the
@@ -204,7 +223,7 @@ fn to_invitation(row: sql::AccountInvitationsRow) -> anyhow::Result<Invitation> 
         id: InvitationId::new(row.id),
         account: AccountId::new(row.account_id),
         invited_user: UserId::new(row.invited_user),
-        role: Role::try_from(row.role)?,
+        role: Role::from_str(&row.role)?,
         inviter: UserId::new(row.inviter),
         state: InvitationState::try_from(row.state)?,
         created_at: row.created_at,
@@ -305,7 +324,7 @@ impl AccountStore for PgAccountStore {
 
     async fn role_of(&self, user: UserId, account: AccountId) -> anyhow::Result<Option<Role>> {
         let role = sql::role_of(&self.pool, *user, *account).await?;
-        Ok(role.map(Role::try_from).transpose()?)
+        Ok(role.map(|role| Role::from_str(&role)).transpose()?)
     }
 
     /// Selects the lone `state = 'pending'` offer for `(account, invited_user)`, or
@@ -401,7 +420,8 @@ impl AccountStore for PgAccountStore {
             .into_iter()
             .map(|row| {
                 let role = row.role.clone();
-                to_account_membership(row, role)
+                let alias = row.alias.clone();
+                to_account_membership(row, role, alias)
             })
             .collect()
     }
@@ -683,9 +703,11 @@ impl AccountWrites for PgAccountWrites<'_> {
         // `ON CONFLICT DO NOTHING` skipped the insert (the pair was already
         // seated), so `RETURNING` gave back no row: fall back to reading the role
         // that's actually persisted rather than assuming this invitation's offer
-        // took effect.
-        let role = match seated {
-            Some(row) => Role::try_from(row.role)?,
+        // took effect. The fallback's alias is always `None`: `role_of` answers
+        // only `Role`, and there is no set-alias endpoint yet for a freshly-seated
+        // row to carry one anyway.
+        let (role, alias) = match seated {
+            Some(row) => (Role::from_str(&row.role)?, to_role_alias(row.alias)?),
             None => {
                 let existing = sql::role_of(
                     &mut *self.conn,
@@ -701,7 +723,7 @@ impl AccountWrites for PgAccountWrites<'_> {
                         *invitation.invited_user
                     )
                 })?;
-                Role::try_from(existing)?
+                (Role::from_str(&existing)?, None)
             }
         };
 
@@ -709,6 +731,7 @@ impl AccountWrites for PgAccountWrites<'_> {
             account_id: invitation.account,
             user_id: invitation.invited_user,
             role,
+            alias,
         })
     }
 
@@ -738,11 +761,11 @@ impl AccountWrites for PgAccountWrites<'_> {
         // leaves this matching zero rows, so we error and roll back.
         let demoted = sql::transfer_demote_owner(
             &mut *self.conn,
-            Role::Admin(None).as_str(),
+            Role::Admin.as_str(),
             *account,
             *old_owner,
             Some(*new_owner),
-            Role::Owner(None).as_str(),
+            Role::Owner.as_str(),
         )
         .await?;
         if demoted != 1 {
@@ -756,13 +779,9 @@ impl AccountWrites for PgAccountWrites<'_> {
         // Promote the incoming member to sole Owner with no parent — but only while
         // they are *still* a member. Zero rows means they vanished mid-transfer, so we
         // error and roll back rather than leave the account with no Owner.
-        let promoted = sql::transfer_promote_heir(
-            &mut *self.conn,
-            Role::Owner(None).as_str(),
-            *account,
-            *new_owner,
-        )
-        .await?;
+        let promoted =
+            sql::transfer_promote_heir(&mut *self.conn, Role::Owner.as_str(), *account, *new_owner)
+                .await?;
         if promoted != 1 {
             anyhow::bail!(
                 "transfer_ownership: user {} is not a member of account {}; nothing transferred",

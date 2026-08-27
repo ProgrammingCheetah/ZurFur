@@ -93,6 +93,13 @@ impl Deref for Did {
     }
 }
 
+/// Delegates to the wrapped string via [`Deref`].
+impl std::fmt::Display for Did {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

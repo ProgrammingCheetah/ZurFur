@@ -113,7 +113,7 @@ async fn signed_in_visitor_founds_an_account_and_becomes_its_owner() {
     let role = backend.role_of(user.id, account).await.expect("role_of");
     assert_eq!(
         role,
-        Some(Role::Owner(None)),
+        Some(Role::Owner),
         "the creating User becomes the account's Owner"
     );
 
@@ -338,7 +338,8 @@ async fn a_non_owner_member_cannot_delete() {
         .grant_role(&UserAccount {
             user_id: me.id,
             account_id: account.id,
-            role: Role::Admin(None),
+            role: Role::Admin,
+            alias: None,
         })
         .await
         .expect("seat me as a non-Owner Admin");
@@ -393,7 +394,7 @@ async fn owner_grants_a_role_and_seats_the_member() {
     let role = backend.role_of(grantee.id, account).await.expect("role_of");
     assert_eq!(
         role,
-        Some(Role::Admin(None)),
+        Some(Role::Admin),
         "the grantee holds the granted role"
     );
 }
@@ -453,7 +454,7 @@ async fn the_owner_cannot_be_demoted_by_a_grant() {
         .expect("provision the owner");
     let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
     let role = backend.role_of(owner.id, account).await.expect("role_of");
-    assert_eq!(role, Some(Role::Owner(None)), "the Owner keeps their role");
+    assert_eq!(role, Some(Role::Owner), "the Owner keeps their role");
 }
 
 // An unknown role discriminant is understood-but-unusable: rejected at the door with
@@ -585,11 +586,7 @@ async fn owner_revokes_a_member_and_unseats_them() {
         .await
         .expect("provision the owner");
     let owner_role = backend.role_of(owner.id, account).await.expect("role_of");
-    assert_eq!(
-        owner_role,
-        Some(Role::Owner(None)),
-        "the Owner is left untouched"
-    );
+    assert_eq!(owner_role, Some(Role::Owner), "the Owner is left untouched");
 
     // A second revoke: the user still exists but is no longer a member → 404.
     let res = client
@@ -626,7 +623,7 @@ async fn the_owner_cannot_be_revoked() {
         .expect("provision the owner");
     let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
     let role = backend.role_of(owner.id, account).await.expect("role_of");
-    assert_eq!(role, Some(Role::Owner(None)), "the Owner keeps their role");
+    assert_eq!(role, Some(Role::Owner), "the Owner keeps their role");
 }
 
 // Revoking someone who isn't a member is a 404 — and resolving them must not mint a
@@ -923,7 +920,8 @@ async fn seat_me_as_admin_on_a_foreign_account(backend: &MemBackend, my_did: &st
         .grant_role(&UserAccount {
             user_id: me.id,
             account_id: account.id,
-            role: Role::Admin(None),
+            role: Role::Admin,
+            alias: None,
         })
         .await
         .expect("seat me as an Admin");
@@ -952,7 +950,8 @@ async fn admin_cannot_demote_a_peer_admin() {
         .grant_role(&UserAccount {
             user_id: peer.id,
             account_id: account.id,
-            role: Role::Admin(None),
+            role: Role::Admin,
+            alias: None,
         })
         .await
         .expect("seat the peer Admin");
@@ -969,7 +968,7 @@ async fn admin_cannot_demote_a_peer_admin() {
     // The peer is untouched — still an Admin.
     assert_eq!(
         backend.role_of(peer.id, account.id).await.expect("role_of"),
-        Some(Role::Admin(None)),
+        Some(Role::Admin),
         "the peer Admin keeps their rank after the refused demotion"
     );
 }
@@ -1002,7 +1001,7 @@ async fn admin_can_grant_to_a_non_member() {
             .role_of(newcomer.id, account.id)
             .await
             .expect("role_of"),
-        Some(Role::Member(None)),
+        Some(Role::Member),
         "the newcomer holds the granted role"
     );
 }
@@ -1027,7 +1026,8 @@ async fn admin_can_re_role_a_member_below_them() {
         .grant_role(&UserAccount {
             user_id: member.id,
             account_id: account.id,
-            role: Role::Member(None),
+            role: Role::Member,
+            alias: None,
         })
         .await
         .expect("seat the member");
@@ -1048,7 +1048,7 @@ async fn admin_can_re_role_a_member_below_them() {
             .role_of(member.id, account.id)
             .await
             .expect("role_of"),
-        Some(Role::Manager(None)),
+        Some(Role::Manager),
         "the member is re-roled to Manager"
     );
 }
@@ -1075,7 +1075,8 @@ async fn owner_can_re_role_an_admin() {
         .grant_role(&UserAccount {
             user_id: admin.id,
             account_id: account,
-            role: Role::Admin(None),
+            role: Role::Admin,
+            alias: None,
         })
         .await
         .expect("seat the admin");
@@ -1090,7 +1091,7 @@ async fn owner_can_re_role_an_admin() {
     assert_eq!(res.status(), 200, "an Owner may re-role an Admin");
     assert_eq!(
         backend.role_of(admin.id, account).await.expect("role_of"),
-        Some(Role::Manager(None)),
+        Some(Role::Manager),
         "the admin is re-roled to Manager by the Owner"
     );
 }

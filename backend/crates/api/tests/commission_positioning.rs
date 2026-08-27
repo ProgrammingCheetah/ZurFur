@@ -125,7 +125,8 @@ async fn seed_account(backend: &MemBackend, handle: &str, member: Option<UserId>
             .grant_role(&UserAccount {
                 user_id: user,
                 account_id: account.id,
-                role: Role::Member(None),
+                role: Role::Member,
+                alias: None,
             })
             .await
             .expect("seat the member");
@@ -347,7 +348,7 @@ async fn a_granted_accounts_member_gains_no_in_commission_authority() {
     // The member is a member of the granted account...
     assert_eq!(
         backend.role_of(member.id, account).await.unwrap(),
-        Some(Role::Member(None)),
+        Some(Role::Member),
         "the actor really is a member of the granted account",
     );
     // ...yet the grant/placement made them no Participant of the commission.

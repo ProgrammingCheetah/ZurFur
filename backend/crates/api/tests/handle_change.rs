@@ -226,7 +226,8 @@ async fn only_the_owner_may_change_the_handle() {
         .grant_role(&UserAccount {
             user_id: me.id,
             account_id: account.id,
-            role: Role::Member(None),
+            role: Role::Member,
+            alias: None,
         })
         .await
         .expect("seat me as a member");

@@ -76,7 +76,7 @@ use domain::elements::{
     invitation::{Invitation, InvitationId, InvitationState},
     plc_operation::PlcOperationRecord,
     profile::Profile,
-    role::Role,
+    role::{Role, RoleAlias},
     user::{User, UserId},
     user_account::UserAccount,
 };
@@ -715,6 +715,21 @@ impl MemBackend {
         MemAccountWrites(self.clone()).grant_role(member).await
     }
 
+    /// Seed a member's [`RoleAlias`] directly onto an already-seated membership
+    /// (test-only). There is no set-alias write path yet — `grant_role` deliberately
+    /// never touches it, mirroring the pg adapter's `grant_role` SQL, which only
+    /// writes `role` — so this reaches straight into the stored map, the mem mirror
+    /// of a direct `UPDATE account_members SET alias = …`. Panics if `(account,
+    /// user)` holds no membership: seeding an alias onto nobody is a test bug.
+    pub fn seed_role_alias(&self, user: UserId, account: AccountId, alias: RoleAlias) {
+        self.memberships
+            .lock()
+            .expect("MemBackend memberships mutex poisoned")
+            .get_mut(&(account, user))
+            .expect("seed_role_alias: no membership for (account, user)")
+            .alias = Some(alias);
+    }
+
     /// Issue a pending invitation (test seed of [`AccountWrites::create_invitation`]).
     pub async fn create_invitation(&self, invitation: &Invitation) -> anyhow::Result<()> {
         MemAccountWrites(self.clone())
@@ -1037,6 +1052,10 @@ struct StoredAccount {
 struct StoredMembership {
     /// The role the member holds in the account.
     role: Role,
+    /// The member's own alias for that role, if they set one. `None` on the
+    /// floor — no write path sets it yet, mirroring the pg column's nullable,
+    /// unset-by-default column.
+    alias: Option<RoleAlias>,
     /// Whether the member chose to publish this membership on their public
     /// profile. Mirrors the pg column's `DEFAULT true`: a membership is listed
     /// unless the member says otherwise.
@@ -1044,12 +1063,13 @@ struct StoredMembership {
 }
 
 impl StoredMembership {
-    /// A membership seated with the column default — listed. Founding and
-    /// `grant_role` both take this path; only invitation-acceptance carries an
-    /// explicit choice.
+    /// A membership seated with the column defaults — listed, no alias.
+    /// Founding and `grant_role` both take this path; only invitation-acceptance
+    /// carries an explicit `listed_on_profile` choice.
     fn listed(role: Role) -> Self {
         Self {
             role,
+            alias: None,
             listed_on_profile: true,
         }
     }
@@ -1278,6 +1298,7 @@ impl AccountStore for MemAccountStore {
                 Some(AccountMembership {
                     account,
                     role: membership.role.clone(),
+                    alias: membership.alias.clone(),
                 })
             })
             .collect();
@@ -1399,10 +1420,15 @@ impl AccountWrites for MemAccountWrites {
         );
         drop(accounts);
 
+        // `alias` is dropped here exactly as `role` alone survives into
+        // `StoredMembership::listed` — the founder is seated with no alias
+        // (`Account::open` always mints `UserAccount { alias: None, .. }`), and
+        // there is no write path yet that would seat one instead.
         let UserAccount {
             user_id,
             account_id,
             role,
+            alias: _,
         } = owner;
         let mut memberships = self
             .0
@@ -1488,10 +1514,15 @@ impl AccountWrites for MemAccountWrites {
         // existing one's role replaced — the in-memory mirror of the pg adapter's
         // `ON CONFLICT ... DO UPDATE`. Granting a role is how a user joins an
         // account (DESIGN/Roles); the role tree (`parent`) is deferred on the floor.
+        // `alias` is dropped here exactly as the pg adapter's `grant_role` SQL
+        // only ever touches the `role` column: a role grant never clobbers a
+        // member's already-set alias, and there is no write path yet that would
+        // seat a fresh one (`StoredMembership::listed` mints `alias: None`).
         let UserAccount {
             user_id: user,
             account_id,
             role,
+            alias: _,
         } = member;
         let mut memberships = self
             .0
@@ -1630,18 +1661,18 @@ impl AccountWrites for MemAccountWrites {
         // is not overwritten on a re-seat.
         let seated = StoredMembership {
             role: invitation.role.clone(),
+            alias: None,
             listed_on_profile,
         };
-        let role = memberships
+        let stored = memberships
             .entry((invitation.account, invitation.invited_user))
-            .or_insert(seated)
-            .role
-            .clone();
+            .or_insert(seated);
 
         Ok(UserAccount {
             account_id: invitation.account,
             user_id: invitation.invited_user,
-            role,
+            role: stored.role.clone(),
+            alias: stored.alias.clone(),
         })
     }
 
@@ -1670,7 +1701,7 @@ impl AccountWrites for MemAccountWrites {
         // Backstop: the outgoing Owner must still be the Owner of this account.
         if !matches!(
             memberships.get(&(account, old_owner)).map(|m| &m.role),
-            Some(Role::Owner(_))
+            Some(Role::Owner)
         ) {
             return Err(anyhow::anyhow!(
                 "user {} is not the Owner of account {}; ownership not transferred",
@@ -1691,10 +1722,10 @@ impl AccountWrites for MemAccountWrites {
         // Only the roles swap — each member keeps their own `listed_on_profile`
         // choice across the transfer; ownership is not a publication decision.
         if let Some(outgoing) = memberships.get_mut(&(account, old_owner)) {
-            outgoing.role = Role::Admin(None);
+            outgoing.role = Role::Admin;
         }
         if let Some(incoming) = memberships.get_mut(&(account, new_owner)) {
-            incoming.role = Role::Owner(None);
+            incoming.role = Role::Owner;
         }
         Ok(())
     }
@@ -2210,7 +2241,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id: account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
 
         let mut uow = database.begin().await.unwrap();
@@ -2243,7 +2275,8 @@ mod tests {
         let owner = UserAccount {
             user_id: owner_id,
             account_id: account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
 
         // Open the unit, stage the (two-write) create, then drop WITHOUT committing.
@@ -2279,7 +2312,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id: account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
 
         let mut uow = database.begin().await.unwrap();
@@ -2307,14 +2341,15 @@ mod tests {
         let owner = UserAccount {
             user_id: owner_id,
             account_id: account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         let account_id = account.id;
 
         backend.create(&account, &owner).await.unwrap();
 
         let role = backend.role_of(owner_id, account_id).await.unwrap();
-        assert_eq!(role, Some(Role::Owner(None)));
+        assert_eq!(role, Some(Role::Owner));
     }
 
     // An account we never founded resolves to nothing.
@@ -2325,7 +2360,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id: account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         backend.create(&account, &owner).await.unwrap();
 
@@ -2350,7 +2386,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         backend.create(&account, &owner).await.unwrap();
 
@@ -2394,7 +2431,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         backend.create(&account, &owner).await.unwrap();
 
@@ -2477,8 +2515,7 @@ mod tests {
     async fn create_then_find_pending_returns_the_invitation() {
         let backend = MemBackend::new();
         let (account, invited, inviter) = (account_id(), user_id(), user_id());
-        let invitation =
-            Invitation::issue(account, invited, Role::Admin(None), inviter, Utc::now());
+        let invitation = Invitation::issue(account, invited, Role::Admin, inviter, Utc::now());
         let id = invitation.id;
 
         backend.create_invitation(&invitation).await.unwrap();
@@ -2490,7 +2527,7 @@ mod tests {
             .unwrap()
             .expect("the pending invitation is found");
         assert_eq!(found.id, id);
-        assert_eq!(found.role, Role::Admin(None));
+        assert_eq!(found.role, Role::Admin);
         assert_eq!(found.inviter, inviter);
         assert_eq!(found.state, InvitationState::Pending);
     }
@@ -2501,8 +2538,8 @@ mod tests {
     async fn a_second_pending_invitation_for_the_same_pair_is_not_a_second_row() {
         let backend = MemBackend::new();
         let (account, invited) = (account_id(), user_id());
-        let first = Invitation::issue(account, invited, Role::Member(None), user_id(), Utc::now());
-        let second = Invitation::issue(account, invited, Role::Admin(None), user_id(), Utc::now());
+        let first = Invitation::issue(account, invited, Role::Member, user_id(), Utc::now());
+        let second = Invitation::issue(account, invited, Role::Admin, user_id(), Utc::now());
 
         backend.create_invitation(&first).await.unwrap();
         backend.create_invitation(&second).await.unwrap();
@@ -2533,8 +2570,7 @@ mod tests {
         let database = backend.database();
         let store = backend.account_store();
         let (account, invited) = (account_id(), user_id());
-        let invitation =
-            Invitation::issue(account, invited, Role::Member(None), user_id(), Utc::now());
+        let invitation = Invitation::issue(account, invited, Role::Member, user_id(), Utc::now());
         let id = invitation.id;
         backend.create_invitation(&invitation).await.unwrap();
 
@@ -2557,8 +2593,7 @@ mod tests {
         );
 
         // With the prior offer revoked, a fresh invitation to the same pair is seated.
-        let reissued =
-            Invitation::issue(account, invited, Role::Admin(None), user_id(), Utc::now());
+        let reissued = Invitation::issue(account, invited, Role::Admin, user_id(), Utc::now());
         backend.create_invitation(&reissued).await.unwrap();
         assert_eq!(
             store
@@ -2598,14 +2633,14 @@ mod tests {
             .grant_role(&UserAccount {
                 account_id: account,
                 user_id: invitee,
-                role: Role::Admin(None),
+                role: Role::Admin,
+                alias: None,
             })
             .await
             .unwrap();
 
         // A stale pending invitation (issued before the grant) offers only Member.
-        let invitation =
-            Invitation::issue(account, invitee, Role::Member(None), inviter, Utc::now());
+        let invitation = Invitation::issue(account, invitee, Role::Member, inviter, Utc::now());
         backend.create_invitation(&invitation).await.unwrap();
 
         let database = backend.database();
@@ -2619,12 +2654,12 @@ mod tests {
 
         assert_eq!(
             seated.role,
-            Role::Admin(None),
+            Role::Admin,
             "the returned membership reflects the original grant, not the invitation's role"
         );
         assert_eq!(
             backend.role_of(invitee, account).await.unwrap(),
-            Some(Role::Admin(None)),
+            Some(Role::Admin),
             "the persisted membership still holds the original grant"
         );
     }
@@ -2644,7 +2679,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         backend.create(&account, &owner).await.unwrap();
 
@@ -2748,7 +2784,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         backend.create(&account, &owner).await.unwrap();
 
@@ -2769,7 +2806,8 @@ mod tests {
         let other_owner = UserAccount {
             user_id: user_id(),
             account_id: other_account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         unit_a
             .accounts()
@@ -2807,7 +2845,8 @@ mod tests {
         let owner = UserAccount {
             user_id: user_id(),
             account_id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         backend.create(&account, &owner).await.unwrap();
 
@@ -2823,7 +2862,8 @@ mod tests {
         let other_owner = UserAccount {
             user_id: user_id(),
             account_id: other_account.id,
-            role: Role::Owner(None),
+            role: Role::Owner,
+            alias: None,
         };
         unit_a
             .accounts()

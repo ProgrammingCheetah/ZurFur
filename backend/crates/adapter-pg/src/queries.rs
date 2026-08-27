@@ -13,6 +13,7 @@ pub mod account {
         pub account_id: uuid::Uuid,
         pub user_id: uuid::Uuid,
         pub role: String,
+        pub alias: Option<String>,
     }
 
     /// Row shape read back from the prepared statement's metadata.
@@ -51,6 +52,7 @@ pub mod account {
         pub updated_at: chrono::DateTime<chrono::Utc>,
         pub deleted_at: Option<chrono::DateTime<chrono::Utc>>,
         pub role: String,
+        pub alias: Option<String>,
     }
 
     /// `queries/account/accept_invitation_flip.sql`, contract inferred from the SQL against the migrated schema.

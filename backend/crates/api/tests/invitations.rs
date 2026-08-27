@@ -374,7 +374,7 @@ async fn seed_pending_invite(
     let invitation = Invitation::issue(
         account.id,
         invitee.id,
-        Role::Member(None),
+        Role::Member,
         owner.id,
         chrono::Utc::now(),
     );
@@ -488,7 +488,7 @@ async fn invitee_accepts_and_becomes_a_member() {
         .await
         .expect("role_of");
     assert!(
-        matches!(role, Some(Role::Member(_))),
+        matches!(role, Some(Role::Member)),
         "accepting mints a Member membership at the offered role"
     );
 }
