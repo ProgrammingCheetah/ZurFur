@@ -1,13 +1,13 @@
 //! `zurfur account create` / `delete` in process (ZMVP-205 slices 4 and 5):
-//! the CLI calls the same `application::account::{create_account,
-//! delete_account}` as `POST /accounts` / `DELETE /accounts/{id}`, and
-//! projects them with the same keys.
+//! the CLI calls the same `application::account::Accounts::{create,
+//! delete}` as `POST /accounts` / `DELETE /accounts/{id}`, and projects them
+//! with the same keys.
 
 use std::path::{Path, PathBuf};
 
 use cli::{BackendCommand, ExitClass, commands::account::AccountOp, identity};
 use composition::Runtime;
-use domain::elements::did::Did;
+use domain::elements::{account::AccountId, did::Did};
 use domain::ports::UnitOfWork;
 use test_support::runtime::DATABASE_URL;
 use uuid::Uuid;
@@ -66,7 +66,7 @@ fn create(name: &str, handle: &str) -> BackendCommand {
 /// would prompt the developer and block. That path is pinned deterministically
 /// instead by `tests/account_process.rs`, which pipes stdin, and by the unit
 /// tests in `src/confirm.rs`.
-fn delete(account_id: Uuid) -> BackendCommand {
+fn delete(account_id: AccountId) -> BackendCommand {
     BackendCommand::Account {
         op: AccountOp::Delete {
             account_id,
@@ -76,11 +76,18 @@ fn delete(account_id: Uuid) -> BackendCommand {
 }
 
 /// Found an account as the signed-in identity at `path` and hand back its id.
-async fn founded_account(runtime: &Runtime, path: &Path, handle: &str) -> Uuid {
+async fn founded_account(runtime: &Runtime, path: &Path, handle: &str) -> AccountId {
     let founded = cli::dispatch(runtime, path, create("Acme Studio", handle))
         .await
         .unwrap();
     founded["id"].as_str().unwrap().parse().unwrap()
+}
+
+/// A syntactically valid account id that names no live account — a random
+/// did:plc nothing ever mints (`AccountId` is a DID, DD 57081857, not a
+/// bare UUID).
+fn unknown_account_id() -> AccountId {
+    AccountId::new(Did::new(format!("did:plc:{}", Uuid::now_v7())))
 }
 
 #[tokio::test]
@@ -183,11 +190,14 @@ async fn the_owner_deletes_an_empty_account_hard() {
 }
 
 #[tokio::test]
-async fn deleting_an_unknown_account_is_account_not_found() {
+async fn deleting_an_unknown_account_is_not_found() {
+    // `Accounts::delete` looks the account up before it weighs the caller's
+    // standing, so a missing account answers `account_not_found` rather than
+    // borrowing the refusal meant for a caller who has no role on a real one.
     let runtime = mem_runtime();
     let (_dir, path) = signed_in(&runtime).await;
 
-    let error = cli::dispatch(&runtime, &path, delete(Uuid::now_v7()))
+    let error = cli::dispatch(&runtime, &path, delete(unknown_account_id()))
         .await
         .unwrap_err();
 
@@ -217,7 +227,7 @@ async fn delete_without_an_identity_is_not_authenticated() {
     let runtime = mem_runtime();
     let (_dir, path) = identity_path();
 
-    let error = cli::dispatch(&runtime, &path, delete(Uuid::now_v7()))
+    let error = cli::dispatch(&runtime, &path, delete(unknown_account_id()))
         .await
         .unwrap_err();
 

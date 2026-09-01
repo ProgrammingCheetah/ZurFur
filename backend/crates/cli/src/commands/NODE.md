@@ -6,7 +6,7 @@ fs:
     role: declares the account/health/migrate/session submodules
     node: false
   - name: account.rs
-    role: account namespace — create/delete, thin CLI face over application::account::{create_account, delete_account}, delete gated by crate::confirm
+    role: account namespace — create/delete, thin CLI face over runtime.app().accounts().{create, delete}, delete gated by crate::confirm
     node: false
   - name: health.rs
     role: zurfur health — same probe as GET /health via adapter_pg::is_reachable plus latency

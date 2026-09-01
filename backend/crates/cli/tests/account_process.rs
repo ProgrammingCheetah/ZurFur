@@ -158,8 +158,11 @@ async fn account_delete_over_the_binary() {
         assert_eq!(stdout.lines().count(), 1, "one compact line: {stdout:?}");
         assert_eq!(stdout.trim(), r#"{"outcome":"hard"}"#);
 
-        // The same id again, this time through the short spelling of the flag:
-        // the account is gone, a domain problem, exit 1.
+        // The same id again, this time through the short spelling of the
+        // flag: the account is gone, a domain problem, exit 1. `delete`
+        // looks the account up before it weighs the caller's standing, so a
+        // gone account answers `account_not_found` rather than borrowing the
+        // refusal meant for a caller who has no role on a real one.
         let output = zurfur(&url, home.path())
             .args(["account", "delete", &account_id, "-y"])
             .assert()
