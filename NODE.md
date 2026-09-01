@@ -1,6 +1,6 @@
 ---
 path: .
-charted: 2026-08-29
+charted: 2026-09-06
 fs:
   - name: backend/
     role: Rust workspace: domain core + adapters + axum api
@@ -61,6 +61,12 @@ fs:
     node: false
   - name: .env.example
     role: ZURFUR_* env template (env overrides backend/config/<profile>.toml)
+    node: false
+  - name: .gitattributes
+    role: marks the two committed generated trees linguist-generated (collapsed in GitHub diffs)
+    node: false
+  - name: .vscode/
+    role: rust-analyzer settings + the `usecase` Rust snippet (application-layer Command/Output/run shape)
     node: false
   - name: .gitmodules
     role: one submodule: proto/googleapis
