@@ -17,7 +17,7 @@
 -- Deletion DD 3014657).
 --
 -- Immutability is NOT enforced here. It used to be free — the changelog is
--- append-only, so a payload could never be edited. A table can be UPDATEd, so
+-- append-only, so a payload could never be edited. A table takes an UPDATE, so
 -- "no edit, no delete" becomes a policy the write port must keep: no update or
 -- delete method is exposed on CommissionWrites. The deferred File Activity &
 -- Markup DD owns whether that ever relaxes (threading, resolution state,

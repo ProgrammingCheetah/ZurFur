@@ -745,7 +745,7 @@ mod tests {
     }
 
     #[test]
-    fn namespace_membership_refuses_the_apex_and_look_alikes() {
+    fn namespace_membership_refuses_the_apex_and_lookalikes() {
         let zurfur = domain("zurfur.app");
         // The apex is not a member of its own namespace. `zurfur.app` is not a
         // constructible Handle (the reserved-label gate), so a differently-named
