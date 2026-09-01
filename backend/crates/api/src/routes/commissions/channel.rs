@@ -14,11 +14,9 @@ use domain::{
 };
 use serde::Deserialize;
 use serde_json::json;
-use tower_sessions::Session;
-use uuid::Uuid;
 
 use super::require_owner;
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// The `PUT /commissions/{id}/channel` request body: the raw pointer text.
 #[derive(Deserialize)]
@@ -29,24 +27,27 @@ pub(super) struct LinkChannelBody {
 /// Declares (or replaces) the commission's linked channel. Owner-only;
 /// `422` on an invalid pointer. Idempotent — re-declaring the same pointer is
 /// a no-op. Returns `204 No Content`.
+#[deprecated(note = "Moving completely to a plugin")]
 pub(super) async fn link_channel(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<LinkChannelBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
+    // TODO(engineer): no `application::commission::channel` use case exists, so
+    // this act still authorizes and transacts in the driver — the two things DD
+    // 55836674 D6/D7 place in the application layer. Migrating it needs the use
+    // case first; this is wiring, not a design change.
+    require_owner(&state, &commission_id, &actor_id).await?;
 
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
     let pointer = ChannelPointer::try_from(body.channel)
         .map_err(|e| Problem::invalid_request(e.to_string()))?;
 
     let entry = NewChangelogEntry::event(
-        commission,
+        commission_id,
         ChangelogEntryKind::ChannelLinked,
-        user.id,
+        actor_id,
         json!({ "channel": pointer.as_str() }),
         Utc::now(),
     );
@@ -54,7 +55,7 @@ pub(super) async fn link_channel(
         .transaction(async move |uow: &mut dyn UnitOfWork| {
             let changed = uow
                 .commissions()
-                .set_linked_channel(commission, Some(&pointer))
+                .set_linked_channel(&commission_id, Some(&pointer))
                 .await?;
             if changed {
                 uow.changelog().append(&entry).await?;
@@ -70,21 +71,21 @@ pub(super) async fn link_channel(
 /// entry is appended if there was nothing to clear. Returns `204 No Content`.
 pub(super) async fn clear_channel(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    let found = require_owner(&state, commission, &user).await?;
+    // TODO(engineer): unmigrated for the same reason as `link_channel` above —
+    // no use case covers the linked-channel pointer yet.
+    let found = require_owner(&state, &commission_id, &actor_id).await?;
 
     let Some(previous) = found.linked_channel else {
         return Ok(StatusCode::NO_CONTENT.into_response());
     };
 
     let entry = NewChangelogEntry::event(
-        commission,
+        commission_id,
         ChangelogEntryKind::ChannelUnlinked,
-        user.id,
+        actor_id,
         json!({ "channel": previous.as_str() }),
         Utc::now(),
     );
@@ -92,7 +93,7 @@ pub(super) async fn clear_channel(
         .transaction(async move |uow: &mut dyn UnitOfWork| {
             let changed = uow
                 .commissions()
-                .set_linked_channel(commission, None)
+                .set_linked_channel(&commission_id, None)
                 .await?;
             if changed {
                 uow.changelog().append(&entry).await?;

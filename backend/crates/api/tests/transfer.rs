@@ -109,10 +109,8 @@ async fn owner_transfers_ownership_and_the_roles_swap() {
         .expect("sign-in provisioned owner");
     backend
         .grant_role(&UserAccount {
-            user_id: heir.id,
-            account_id: domain::elements::account::AccountId::new(
-                Uuid::parse_str(&account_id).unwrap(),
-            ),
+            user_id: heir.id.clone(),
+            account_id: domain::elements::account::AccountId::new(Did::new(account_id.clone())),
             role: Role::Member,
             alias: None,
         })
@@ -131,11 +129,11 @@ async fn owner_transfers_ownership_and_the_roles_swap() {
     assert_eq!(body["owner"].as_str(), Some("did:plc:heir"));
     assert_eq!(body["previous_owner"].as_str(), Some("did:plc:xferowner"));
 
-    let account = domain::elements::account::AccountId::new(Uuid::parse_str(&account_id).unwrap());
+    let account = domain::elements::account::AccountId::new(Did::new(account_id));
     // AC: the named member is now the sole Owner; the prior Owner is now Admin.
     assert_eq!(
         backend
-            .role_of(heir.id, account)
+            .role_of(&heir.id, &account)
             .await
             .expect("role_of heir"),
         Some(Role::Owner),
@@ -143,7 +141,7 @@ async fn owner_transfers_ownership_and_the_roles_swap() {
     );
     assert_eq!(
         backend
-            .role_of(owner.id, account)
+            .role_of(&owner.id, &account)
             .await
             .expect("role_of owner"),
         Some(Role::Admin),
@@ -181,7 +179,7 @@ async fn only_the_owner_may_transfer() {
     backend
         .grant_role(&UserAccount {
             user_id: me.id,
-            account_id: account.id,
+            account_id: account.id.clone(),
             role: Role::Member,
             alias: None,
         })
@@ -280,7 +278,7 @@ async fn after_transfer_the_former_owner_can_leave() {
     sign_in(&client, &base).await;
 
     let account_id = found_account(&client, &base, "Exit Studio", "exit.zurfur.app").await;
-    let account = domain::elements::account::AccountId::new(Uuid::parse_str(&account_id).unwrap());
+    let account = domain::elements::account::AccountId::new(Did::new(account_id.clone()));
 
     let heir = backend
         .provision(&Did::new("did:plc:successor".to_string()))

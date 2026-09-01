@@ -2,50 +2,35 @@
 //! owner archives, or un-archives, a commission (the soft-delete path, DD
 //! `3014657`).
 
-use application::commission::{
-    CommissionError, archive::ArchiveCommissionCommand, unarchive::UnarchiveCommissionCommand,
-};
+use application::commission::{archive, unarchive};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::commission::{ChangelogEntryKind, CommissionId, NewChangelogEntry},
-    ports::UnitOfWork,
-};
-use serde_json::json;
-use tower_sessions::Session;
-use uuid::Uuid;
+use domain::elements::commission::CommissionId;
 
-use super::require_owner;
-use crate::{AppState, problem::Problem, routes::commissions::ports::commission_ports};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// Archives the commission: owner-only, leaves the active views while the
 /// record survives. Idempotent — archiving an already-archived commission is
 /// a no-op. Returns `204 No Content`.
 pub(super) async fn archive_commission(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission_id = CommissionId::new(id);
-    let now = Utc::now();
-
-    let command = ArchiveCommissionCommand {
-        actor_id: user.id,
+    let command = archive::Command {
+        actor_id,
         commission_id,
     };
 
-    let ports = commission_ports(&state);
-    let outcome = application::commission::archive(command, ports, now).await;
-    match outcome {
-        // Idempotent: archiving an archived commission is a no-op.
-        Ok(_) | Err(CommissionError::CommissionAlreadyAtState) => {}
-        Err(err) => return Err(Problem::from(err)),
-    }
+    state
+        .app()
+        .commissions()
+        .archive(command, Utc::now())
+        .await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -54,21 +39,19 @@ pub(super) async fn archive_commission(
 /// idempotent, mirroring [`archive_commission`]. Returns `204 No Content`.
 pub(super) async fn unarchive_commission(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-
-    let command = UnarchiveCommissionCommand {
-        commission_id: CommissionId::new(id),
-        actor_id: user.id,
+    let command = unarchive::Command {
+        actor_id,
+        commission_id,
     };
-    let ports = commission_ports(&state);
 
-    let now = Utc::now();
-    application::commission::unarchive(command, ports, now)
-        .await
-        // FIXME: CLAUDE -- Add the correct errors in here, please
-        .map_err(Problem::service_unavailable)?;
+    state
+        .app()
+        .commissions()
+        .unarchive(command, Utc::now())
+        .await?;
+
     Ok(StatusCode::NO_CONTENT.into_response())
 }

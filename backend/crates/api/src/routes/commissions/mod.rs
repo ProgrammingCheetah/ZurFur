@@ -3,35 +3,74 @@
 //! elements, slots, seats, invitations, status, deadline, files, markup,
 //! positioning). Mounted under the first-party-`Origin` (CSRF) layer.
 
+use application::commission::CommissionError;
 use axum::{
     Router,
     extract::DefaultBodyLimit,
-    routing::{delete, get, post, put},
+    routing::{MethodRouter, delete, get, post, put},
 };
 use domain::elements::{
     commission::{Commission, CommissionId},
-    user::{User, UserId},
+    user::UserId,
 };
-use tower_sessions::Session;
-use uuid::Uuid;
 
-use application::commission::CommissionError;
-
-use crate::{AppState, SESSION_USER_KEY, problem::Problem};
+use crate::{AppState, problem::Problem};
 
 /// Maps a commission use-case error onto the wire problem: `404` for a missing
-/// commission, `403` for insufficient standing, `401` when the session's user
-/// no longer exists, `500` for the store.
+/// commission (or one that hides a non-participant, the closed-door policy),
+/// `403` for insufficient standing, `401` when the session's user no longer
+/// exists, `422` for a malformed request, `500` for the store.
 impl From<CommissionError> for Problem {
     fn from(err: CommissionError) -> Self {
         match err {
             CommissionError::Infrastructure(err) => Problem::from(err),
             CommissionError::UserNotFound => Problem::not_authenticated(),
             CommissionError::CommissionNotFound => Problem::commission_not_found(),
-            CommissionError::CommissionAlreadyArchived => {
-                Problem::invalid_request("This commission is already archived.")
+            CommissionError::CommissionAlreadyAtState => {
+                Problem::invalid_request("This commission is already in this state.")
             }
             CommissionError::InsufficientPermissions => Problem::forbidden(),
+            // The closed-door policy: a non-participant answers exactly like an
+            // absent commission (never 403, which would confirm something exists
+            // to be forbidden from).
+            CommissionError::NotAMember => Problem::commission_not_found(),
+            CommissionError::InvalidStateRequested => Problem::invalid_request(err.to_string()),
+            CommissionError::InvalidFileName(e) => {
+                Problem::invalid_request(format!("Invalid filename: {e}."))
+            }
+            // The exact `{max}`-byte message lives at the upload call site, which
+            // holds `max_upload_bytes`; this is the generic fallback.
+            CommissionError::FileTooLarge => {
+                Problem::invalid_request("The file exceeds the upload limit.")
+            }
+            CommissionError::FileEmpty => Problem::invalid_request("The uploaded file is empty."),
+            CommissionError::FileNotFound => Problem::file_not_found(),
+            CommissionError::InvalidMarkup(e) => {
+                Problem::invalid_request(format!("Invalid markup: {e}."))
+            }
+            // The entry survives but its bytes do not: server-side data loss,
+            // never the caller's doing.
+            CommissionError::FileBlobMissing => {
+                Problem::internal_error("The file's contents could not be retrieved.")
+            }
+            // A Seat is an Element, so a seat absent from this commission
+            // answers as the element it is (the invitation routes' `404
+            // element_not_found`).
+            CommissionError::SeatNotFound => Problem::element_not_found(),
+            CommissionError::SeatFilled => Problem::seat_filled(),
+            // The composition-address gates: a fabricated tab and a foreign one
+            // are deliberately indistinguishable (404), while an undeclared
+            // surface under a real tab is the honest 422.
+            CommissionError::TabNotFound => Problem::tab_not_found(),
+            CommissionError::UnknownSurface => Problem::unknown_surface(),
+            CommissionError::ElementNotFound => Problem::element_not_found(),
+            CommissionError::NoDeadline => Problem::no_deadline(),
+            CommissionError::CommissionLate => Problem::commission_late(),
+            CommissionError::DidBelongsToAnotherActor => Problem::did_belongs_to_another_actor(),
+            CommissionError::IncorrectContent => {
+                Problem::invalid_request("The submitted content is empty.")
+            }
+            CommissionError::AccountNotFound => Problem::account_not_found(),
         }
     }
 }
@@ -62,7 +101,6 @@ mod list;
 mod markup;
 mod maturity;
 mod notes;
-mod ports;
 mod positioning;
 mod seats;
 mod slots;
@@ -92,10 +130,7 @@ pub(crate) fn commissions_router(max_upload_bytes: usize) -> Router<AppState> {
             get(changelog::read_changelog),
         )
         .route("/commissions/{id}/notes", post(notes::write_note))
-        .route(
-            "/commissions/{id}/channel",
-            put(channel::link_channel).delete(channel::clear_channel),
-        )
+        .route("/commissions/{id}/channel", channel_methods())
         .route(
             "/commissions/{id}/archive",
             post(archive::archive_commission),
@@ -151,60 +186,38 @@ pub(crate) fn commissions_router(max_upload_bytes: usize) -> Router<AppState> {
         )
 }
 
-/// Resolves the session to the acting [`User`], or `401` if unauthenticated
-/// or the User has vanished.
-async fn current_user(state: &AppState, session: &Session) -> Result<User, Problem> {
-    let id = session
-        .get::<Uuid>(SESSION_USER_KEY)
-        .await
-        .ok()
-        .flatten()
-        .ok_or_else(Problem::not_authenticated)?;
-    state
-        .users
-        .find(UserId::new(id))
-        .await
-        .ok()
-        .flatten()
-        .ok_or_else(Problem::not_authenticated)
+/// The linked-channel pointer's methods. Pulled out so the deprecation
+/// allowance covers exactly [`link_channel`](channel::link_channel) — the act
+/// is on its way to a plugin (DD `6848513`) but still mounted, so the route
+/// stays and only the warning is silenced.
+#[allow(deprecated)]
+fn channel_methods() -> MethodRouter<AppState> {
+    put(channel::link_channel).delete(channel::clear_channel)
 }
 
-/// Admits `user` only if they are a participant of `commission`; otherwise
-/// `404 commission_not_found` — never `403`, which would leak existence.
-async fn require_participant(
-    state: &AppState,
-    commission: CommissionId,
-    user: UserId,
-) -> Result<(), Problem> {
-    if state.commissions.is_participant(commission, user).await? {
-        Ok(())
-    } else {
-        Err(Problem::commission_not_found())
-    }
-}
-
-/// Admits only the commission's owner. A non-participant gets `404
-/// commission_not_found`; a non-owner participant gets `403`. Returns the
-/// resolved [`Commission`] so callers needn't re-read it.
+/// Admits only the commission's owner, returning the resolved [`Commission`].
+/// A non-participant gets `404 commission_not_found`; a non-owner participant
+/// gets `403`.
+///
+/// ⚠️ Driver-side authorization, which DD 55836674 D7 places in the
+/// application layer instead. It survives only for the two acts that have no
+/// use case yet — `channel` and `elements` — and dies with them; every
+/// migrated handler authorizes inside its use case.
 async fn require_owner(
     state: &AppState,
-    commission: CommissionId,
-    user: &User,
+    commission: &CommissionId,
+    user: &UserId,
 ) -> Result<Commission, Problem> {
     let found = state
         .commissions
         .find(commission)
         .await?
         .ok_or_else(Problem::commission_not_found)?;
-    if found.owner_id == user.id {
+    if found.owner_id == *user {
         return Ok(found);
     }
     Err(
-        if state
-            .commissions
-            .is_participant(commission, user.id)
-            .await?
-        {
+        if state.commissions.is_participant(commission, user).await? {
             Problem::forbidden()
         } else {
             Problem::commission_not_found()

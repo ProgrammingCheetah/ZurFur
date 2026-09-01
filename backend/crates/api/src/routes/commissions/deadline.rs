@@ -2,9 +2,7 @@
 //! envelope field) and `PUT`/`DELETE /commissions/{id}/status/deadline` (the
 //! manual Delayed flag). `Late` is system-derived and never accepted here.
 
-use application::commission::deadline::{
-    ClearDeadlineCommand, SetDeadlineCommand, SetDeadlineStatusCommand,
-};
+use application::commission::deadline;
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -12,20 +10,10 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    datetime::DateTimeUtc,
-    elements::{
-        commission::{ChangelogEntryKind, CommissionId, DeadlineStatus, NewChangelogEntry},
-        user::UserId,
-    },
-    ports::UnitOfWork,
-};
+use domain::elements::commission::{CommissionId, DeadlineStatus};
 use serde::Deserialize;
-use serde_json::json;
-use tower_sessions::Session;
-use uuid::Uuid;
 
-use crate::{AppState, problem::Problem, routes::commissions::ports::commission_ports};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// The `PUT /commissions/{id}/deadline` request body: the new deadline as an
 /// RFC 3339 timestamp. Clearing is `DELETE`, not a null body.
@@ -47,27 +35,29 @@ pub(super) struct SetDeadlineStatusBody {
 /// `deadline_extended`. Returns `204 No Content`.
 pub(super) async fn set_deadline(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<SetDeadlineBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
-    let deadline = super::from_wire_timestamp(body.deadline)
-        .ok_or_else(|| Problem::invalid_request("Deadline outside the representable range."))?;
-    let command = SetDeadlineCommand {
-        actor_id: user.id,
-        commission_id: CommissionId::new(id),
+    let deadline = body
+        .deadline
+        .try_into()
+        .map_err(|err| Problem::invalid_request(format!("Invalid deadline: {err}.")))?;
+
+    let command = deadline::set::Command {
+        actor_id,
+        commission_id,
         deadline,
     };
 
-    let ports = commission_ports(&state);
-    let now = Utc::now();
-    application::commission::deadline::set(command, ports, now)
-        .await
-        // FIXME: Claude -- Fix errors
-        .map_err(Problem::service_unavailable)?;
+    state
+        .app()
+        .commissions()
+        .deadline()
+        .set(command, Utc::now())
+        .await?;
+
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -75,23 +65,21 @@ pub(super) async fn set_deadline(
 /// Any-Participant-gated and idempotent. Returns `204 No Content`.
 pub(super) async fn clear_deadline(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-
-    let command = ClearDeadlineCommand {
-        actor_id: user.id,
-        commission_id: CommissionId::new(id),
+    let command = deadline::clear::Command {
+        actor_id,
+        commission_id,
     };
 
-    let ports = commission_ports(&state);
+    state
+        .app()
+        .commissions()
+        .deadline()
+        .clear(command, Utc::now())
+        .await?;
 
-    let now = Utc::now();
-    application::commission::deadline::clear(command, ports, now)
-        .await
-        // FIXME: Claude -- Fix errors
-        .map_err(Problem::service_unavailable)?;
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
@@ -100,26 +88,33 @@ pub(super) async fn clear_deadline(
 /// already Late. Idempotent. Returns `204 No Content`.
 pub(super) async fn set_deadline_status(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<SetDeadlineStatusBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
+    // The vocabulary gate is the wire's; `late` parses here and the use case
+    // refuses it as the system's word alone.
+    let status = body.status.parse::<DeadlineStatus>().map_err(|_| {
+        Problem::invalid_request(format!(
+            "{:?} is not a deadline status; expected: delayed.",
+            body.status,
+        ))
+    })?;
 
-    let command = SetDeadlineStatusCommand {
-        actor_id: user.id,
-        commission_id: CommissionId::new(id),
-        status: body.status.parse::<DeadlineStatus>()?,
+    let command = deadline::status::set::Command {
+        actor_id,
+        commission_id,
+        status,
     };
-    let ports = commission_ports(&state);
 
-    let now = Utc::now();
-    application::commission::deadline::set_status(command, ports, now)
-        .await
-        // FIXME: Claude -- Add errors
-        .map_err(Problem::service_unavailable)?;
+    state
+        .app()
+        .commissions()
+        .deadline()
+        .status()
+        .set(command, Utc::now())
+        .await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
@@ -129,21 +124,21 @@ pub(super) async fn set_deadline_status(
 /// deadline instead. Returns `204 No Content`.
 pub(super) async fn clear_deadline_status(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let command = ClearDeadlineCommand {
-        actor_id: user.id,
-        commission_id: CommissionId::new(id),
+    let command = deadline::status::clear::Command {
+        actor_id,
+        commission_id,
     };
 
-    let ports = commission_ports(&state);
-    let now = Utc::now();
-    application::commission::deadline::clear(command, ports, now)
-        .await
-        // FIXME: Claude -- Fix error
-        .map_err(Problem::service_unavailable)?;
+    state
+        .app()
+        .commissions()
+        .deadline()
+        .status()
+        .clear(command, Utc::now())
+        .await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }

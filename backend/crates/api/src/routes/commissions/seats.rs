@@ -2,6 +2,7 @@
 //! commission (Referenceable/Slot/Seat DD `28311564`): a structural
 //! participant position, born vacant, typed by an open kind.
 
+use application::commission::seats::declare;
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -9,20 +10,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::commission::{
-        ChangelogEntryKind, CommissionId, NewChangelogEntry, NewSeat, SeatKind, SeatLink,
-        SeatPrompt,
-    },
-    ports::UnitOfWork,
-};
+use domain::elements::commission::{CommissionId, SeatKind, SeatLink, SeatPrompt};
 use serde::{Deserialize, Serialize};
-use serde_json::json;
-use tower_sessions::Session;
 use uuid::Uuid;
 
-use super::require_owner;
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// `POST /commissions/{id}/seats`'s `201` body: the new seat's element id — see
 /// [`declare_seat`].
@@ -49,14 +41,10 @@ pub(super) struct DeclareSeatBody {
 /// `201 Created` with `{"id": "…"}`.
 pub(super) async fn declare_seat(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<DeclareSeatBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
     let kind =
         SeatKind::try_from(body.kind).map_err(|e| Problem::invalid_request(e.to_string()))?;
@@ -67,32 +55,31 @@ pub(super) async fn declare_seat(
         .map_err(|e| Problem::invalid_request(e.to_string()))?;
     let link = body
         .link
-        .map(SeatLink::try_from)
+        .map(SeatLink::try_from) // If possible, I'd like to use parse
         .transpose()
         .map_err(|e| Problem::invalid_request(e.to_string()))?;
 
     let address = super::elements::address(body.tab, body.surface)?;
 
     let now = Utc::now();
-    let seat = NewSeat::contributed_at(commission, address, kind, prompt, link, user.id, now);
-    let seat_id = *seat.id;
-    let entry = NewChangelogEntry::event(
-        commission,
-        ChangelogEntryKind::SeatDeclared,
-        user.id,
-        json!({ "kind": seat.kind.as_str(), "seat": seat_id }),
-        now,
-    );
 
-    state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions().declare_seat(&seat).await?;
-            uow.changelog().append(&entry).await
-        })
-        .await
-        .map_err(super::elements::to_problem)?;
+    let command = declare::Command {
+        actor_id,
+        commission_id,
+        link,
+        seat_kind: kind,
+        prompt,
+        surface_address: address,
+    };
 
-    let body = DeclareSeatResponse { id: seat_id };
+    let declare::Output { seat_id } = state
+        .app()
+        .commissions()
+        .seats()
+        .declare(command, now)
+        .await?;
+
+    let body = DeclareSeatResponse { id: *seat_id };
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }
 

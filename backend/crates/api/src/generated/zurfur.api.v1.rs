@@ -194,6 +194,24 @@ pub struct ListCommissionsRequest {}
 pub struct CreateCommissionResponse {
     #[prost(string, tag = "1")]
     pub id: ::prost::alloc::string::String,
+    #[prost(string, tag = "2")]
+    pub title: ::prost::alloc::string::String,
+    #[prost(string, tag = "3")]
+    pub lifecycle: ::prost::alloc::string::String,
+    #[prost(string, tag = "4")]
+    pub visibility: ::prost::alloc::string::String,
+    #[prost(message, optional, tag = "5")]
+    pub deadline: ::core::option::Option<crate::wire_time::WireTimestamp>,
+    #[prost(message, optional, tag = "6")]
+    pub maturity: ::core::option::Option<Maturity>,
+    #[prost(string, optional, tag = "7")]
+    pub direction_status: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "8")]
+    pub deadline_status: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(string, optional, tag = "9")]
+    pub linked_channel: ::core::option::Option<::prost::alloc::string::String>,
+    #[prost(message, optional, tag = "10")]
+    pub created_at: ::core::option::Option<crate::wire_time::WireTimestamp>,
 }
 /// A commission's maturity posture (DD 29982722): the atproto self-label axis
 /// plus the orthogonal graphic flag.

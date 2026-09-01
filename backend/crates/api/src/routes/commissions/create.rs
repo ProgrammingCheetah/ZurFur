@@ -3,7 +3,7 @@
 //! and the act itself is the changelog's genesis entry (ZMVP-87; the Changelog
 //! DD's taxonomy includes "creation itself").
 
-use application::commission::create::CreateCommissionCommand;
+use application::commission::{create, list};
 use axum::{
     Json,
     extract::{State, rejection::JsonRejection},
@@ -11,36 +11,59 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::{
-        commission::{ChangelogEntryKind, Commission, CommissionTitle, NewChangelogEntry},
-        maturity::{Maturity, MaturityRating},
-    },
-    ports::UnitOfWork,
+use domain::elements::{
+    commission::CommissionTitle,
+    maturity::{Maturity, MaturityRating},
 };
-use serde_json::json;
-use tower_sessions::Session;
 
 use super::{from_wire_timestamp, list::wire_commission};
-use crate::{AppState, problem::Problem};
-use crate::{
-    generated::{CreateCommissionRequest, CreateCommissionResponse},
-    routes::commissions::ports::commission_ports,
-};
+use crate::generated::{Commission, CreateCommissionRequest, CreateCommissionResponse};
+use crate::{AppState, extract::CallingUser, problem::Problem};
+
+/// The created resource, in the create response's envelope. Both messages
+/// carry the same ten fields, so the create body is the listing row moved
+/// across — one projection ([`wire_commission`]), never two that can drift
+/// (`golden_wire` asserts the two render identically).
+impl From<Commission> for CreateCommissionResponse {
+    fn from(commission: Commission) -> Self {
+        let Commission {
+            id,
+            title,
+            lifecycle,
+            visibility,
+            deadline,
+            maturity,
+            direction_status,
+            deadline_status,
+            linked_channel,
+            created_at,
+        } = commission;
+        CreateCommissionResponse {
+            id,
+            title,
+            lifecycle,
+            visibility,
+            deadline,
+            maturity,
+            direction_status,
+            deadline_status,
+            linked_channel,
+            created_at,
+        }
+    }
+}
 
 /// Creates a commission owned by the signed-in caller (Draft lifecycle), and
 /// records its `created` changelog entry atomically with the row.
 ///
-/// `201 Created` on success; `422 invalid_request` for a missing/malformed
-/// body or blank title; `422 unknown_maturity_rating` for an out-of-vocabulary
-/// `maturity.rating`.
+/// `201 Created` carrying the created resource on success; `422
+/// invalid_request` for a missing/malformed body or blank title; `422
+/// unknown_maturity_rating` for an out-of-vocabulary `maturity.rating`.
 pub(super) async fn create_commission(
     State(state): State<AppState>,
-    session: Session,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<CreateCommissionRequest>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
     let title = CommissionTitle::try_from(body.title)
         .map_err(|e| Problem::invalid_request(e.to_string()))?;
@@ -68,22 +91,37 @@ pub(super) async fn create_commission(
         })
         .transpose()?;
 
-    let now = Utc::now();
-
-    let command = CreateCommissionCommand {
+    let command = create::Command {
         maturity,
         deadline,
-        actor_id: user.id,
+        actor_id: actor_id.clone(),
         title,
     };
 
-    let ports = commission_ports(&state);
+    let created = state
+        .app()
+        .commissions()
+        .create(command, Utc::now())
+        .await?;
 
-    let commission = application::commission::create(command, ports, now).await?;
+    // ⚠️ GAP (ZMVP-205): the contract's `CreateCommissionResponse` is the whole
+    // resource — "create returns the created resource" (ruling 2026-07-25,
+    // pinned by `golden_wire`) — but `create::Output` carries only the id, and
+    // the birth lifecycle/visibility are the domain's to state, not this
+    // driver's to assume. Until `create::Output` carries the commission's
+    // values, the resource is read back through the one use case that projects
+    // commissions, so the response can never disagree with the stored row.
+    let owned = list::Command { user_id: actor_id };
+    let listed = state.app().commissions().list(owned).await?;
+    let commission = listed
+        .commissions
+        .into_iter()
+        .find(|commission| commission.id == created.id)
+        .ok_or_else(|| {
+            Problem::internal_error("The commission was created but could not be read back.")
+        })?;
 
-    let body = CreateCommissionResponse {
-        id: commission.into(),
-    };
+    let body = CreateCommissionResponse::from(wire_commission(commission));
     let response = (StatusCode::CREATED, Json(body)).into_response();
     Ok(response)
 }

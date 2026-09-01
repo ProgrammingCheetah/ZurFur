@@ -1,6 +1,6 @@
 ---
 path: backend/crates/api/src/routes
-charted: 2026-08-29
+charted: 2026-09-06
 fs:
   - name: mod.rs
     role: group index + require_first_party_origin CSRF middleware
@@ -9,7 +9,7 @@ fs:
     role: browser sign-in: POST /signin, GET /signin-callback, GET /me, POST /logout
     node: false
   - name: accounts.rs
-    role: account/membership/invitation JSON API; thin HTTP driver over application::account use cases (ZMVP-205)
+    role: account/membership/invitation JSON API; thin driver: CallingUser → application::account::* → wire projection (ZMVP-205)
     node: false
   - name: commissions/
     role: the commission JSON API, one file per act

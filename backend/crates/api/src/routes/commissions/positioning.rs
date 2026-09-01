@@ -1,7 +1,8 @@
 //! Account positioning endpoints (Ownership Separation DD `29130754`): the
-//! owner places a commission in an account's position, and manages that
-//! account's view grants (`/placements`, `/grants`). Owner-only in v1.
+//! owner places a commission in an account's position, and manages the view
+//! grants over it (`/placements`, `/grants`). Owner-only in v1.
 
+use application::commission::{place, view};
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -9,20 +10,14 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::{
-        account::{Account, AccountId},
-        commission::{ChangelogEntryKind, CommissionId, GrantLevel, NewChangelogEntry},
-    },
-    ports::UnitOfWork,
+use domain::elements::{
+    account::AccountId,
+    commission::{CommissionId, GrantLevel},
+    user::UserId,
 };
 use serde::Deserialize;
-use serde_json::json;
-use tower_sessions::Session;
-use uuid::Uuid;
 
-use super::require_owner;
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// The `POST /commissions/{id}/placements` body: the target account.
 #[derive(Deserialize)]
@@ -30,26 +25,20 @@ pub(super) struct PlaceBody {
     account_id: String,
 }
 
-/// The `POST /commissions/{id}/grants` body: the target account and the key's
-/// level (`presentation` / `description` / `total`).
+/// The `POST /commissions/{id}/grants` body: the target user and the key's
+/// level (`presentation` / `description` / `total`). Grants are issued to a
+/// User, never an Account (DD `29130754`, amended 2026-09-04).
 #[derive(Deserialize)]
 pub(super) struct GrantBody {
-    account_id: String,
+    target_user_id: String,
     level: String,
 }
 
-/// Parses a body-supplied account id and resolves it to a live [`Account`].
-/// `422` for a malformed id; `404 account_not_found` for one that resolves to
-/// nothing (absent or soft-deleted).
-async fn resolve_live_account(state: &AppState, raw: &str) -> Result<Account, Problem> {
-    let account = AccountId::new(
-        Uuid::parse_str(raw).map_err(|_| Problem::invalid_request("Malformed account id."))?,
-    );
-    state
-        .accounts
-        .find(account)
-        .await?
-        .ok_or_else(Problem::account_not_found)
+/// The `DELETE /commissions/{id}/grants/{account_id}` body: the user whose
+/// key to revoke.
+#[derive(Deserialize)]
+pub(super) struct RevokeBody {
+    pub target_user_id: String,
 }
 
 /// Places the commission in an account's position: appends a placement-log
@@ -57,108 +46,95 @@ async fn resolve_live_account(state: &AppState, raw: &str) -> Result<Account, Pr
 /// No changelog entry. Returns `204 No Content`.
 pub(super) async fn place_commission(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<PlaceBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
-    let account = resolve_live_account(&state, &body.account_id).await?.id;
+    let account_id = body
+        .account_id
+        .parse::<AccountId>()
+        .map_err(|_| Problem::invalid_request("The account must be a DID, e.g. \"did:plc:…\"."))?;
 
-    let now = Utc::now();
-    state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions()
-                .place(commission, account, user.id, now)
-                .await
-        })
-        .await?;
+    let command = place::Command {
+        account_id,
+        actor_id,
+        commission_id,
+    };
+
+    state.app().commissions().place(command, Utc::now()).await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// Issues an account a view grant at an explicit level (`presentation` /
+/// Issues a User a view grant at an explicit level (`presentation` /
 /// `description` / `total`). Owner-only; `422` for an unrecognized level.
 /// Re-granting replaces the level. Returns `204 No Content`.
 pub(super) async fn grant_view(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<GrantBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
-    let level = GrantLevel::parse(&body.level).ok_or_else(|| {
-        Problem::invalid_request(
-            "level must be one of: presentation, description, total.".to_string(),
-        )
+    let level = body.level.parse::<GrantLevel>().map_err(|_| {
+        Problem::invalid_request(format!(
+            "{:?} is not a grant level; expected one of: presentation, description, total.",
+            body.level,
+        ))
     })?;
-    let account = resolve_live_account(&state, &body.account_id).await?;
-    let account_id = account.id;
+    let target_user_id = body
+        .target_user_id
+        .parse::<UserId>()
+        .map_err(|_| Problem::invalid_request("The user must be a DID, e.g. \"did:plc:…\"."))?;
 
-    let entry = NewChangelogEntry::event(
-        commission,
-        ChangelogEntryKind::ViewGrantIssued,
-        user.id,
-        json!({
-            "account_id": *account_id,
-            "account_handle": account.handle.as_str(),
-            "level": level.as_str(),
-        }),
-        Utc::now(),
-    );
+    let command = view::grant::Command {
+        actor_id,
+        commission_id,
+        level,
+        target_user_id,
+    };
+
     state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions()
-                .grant_view(commission, account_id, level)
-                .await?;
-            uow.changelog().append(&entry).await
-        })
+        .app()
+        .commissions()
+        .view()
+        .grant(command, Utc::now())
         .await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())
 }
 
-/// Revokes an account's view grant, hard-deleting the key. Owner-only and
-/// idempotent — revoking an account with no key is a no-op. Returns `204 No
+/// Revokes a User's view grant, hard-deleting the key. Owner-only and
+/// idempotent — revoking a user with no key is a no-op. Returns `204 No
 /// Content`.
 pub(super) async fn revoke_view(
     State(state): State<AppState>,
-    Path((id, account_id)): Path<(Uuid, Uuid)>,
-    session: Session,
+    // TODO(engineer): the `{account_id}` path segment predates the 2026-09-04
+    // amendment to DD 29130754 (grants are per-User, never per-Account) and is
+    // now dead — the target rides in the body. Deciding whether the segment
+    // becomes the target user's DID, or the route drops it, is a contract call.
+    Path((commission_id, _account_id)): Path<(CommissionId, AccountId)>,
+    CallingUser(actor_id): CallingUser,
+    body: Result<Json<RevokeBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-    let account = AccountId::new(account_id);
+    let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
+    let target_user_id = body
+        .target_user_id
+        .parse::<UserId>()
+        .map_err(|_| Problem::invalid_request("The user must be a DID, e.g. \"did:plc:…\"."))?;
 
-    let handle = state
-        .accounts
-        .find(account)
-        .await?
-        .map(|a| a.handle.as_str().to_owned());
-    let entry = NewChangelogEntry::event(
-        commission,
-        ChangelogEntryKind::ViewGrantRevoked,
-        user.id,
-        json!({ "account_id": *account, "account_handle": handle }),
-        Utc::now(),
-    );
+    let command = view::revoke::Command {
+        actor_id,
+        commission_id,
+        target_user_id,
+    };
+
     state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            let mut commissions = uow.commissions();
-            if commissions.revoke_view(commission, account).await? {
-                drop(commissions);
-                uow.changelog().append(&entry).await?;
-            }
-            Ok(())
-        })
+        .app()
+        .commissions()
+        .view()
+        .revoke(command, Utc::now())
         .await?;
 
     Ok(StatusCode::NO_CONTENT.into_response())

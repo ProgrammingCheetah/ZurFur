@@ -20,11 +20,10 @@ use domain::{
     ports::{ElementNotFound, UnitOfWork, UnknownSurface, UnknownTab},
 };
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 use uuid::Uuid;
 
 use super::require_owner;
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// The `POST /commissions/{id}/elements` request body: where the element goes
 /// (`tab` by id, `surface` by declared name), what it is (`type`), and its
@@ -59,13 +58,15 @@ fn empty_object() -> serde_json::Value {
 /// pair, `422` for a malformed body. Returns `201 Created` with `{"id": "…"}`.
 pub(super) async fn add_element(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<AddElementBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
+    // TODO(engineer): no `application::commission::elements` use case exists, so
+    // this act still authorizes and transacts in the driver — the two things DD
+    // 55836674 D6/D7 place in the application layer. Migrating it needs the use
+    // case first; this is wiring, not a design change.
+    require_owner(&state, &commission_id, &actor_id).await?;
 
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
     let element_type = ElementType::try_from(body.r#type)
@@ -74,11 +75,11 @@ pub(super) async fn add_element(
 
     let payload = ElementPayload::from(body.payload);
     let element = NewElement::contributed(
-        commission,
+        commission_id,
         address,
         element_type,
         payload,
-        user.id,
+        actor_id,
         Utc::now(),
     );
     let element_id = *element.id;
@@ -100,17 +101,18 @@ pub(super) async fn add_element(
 /// No Content`.
 pub(super) async fn remove_element(
     State(state): State<AppState>,
-    Path((id, element)): Path<(Uuid, Uuid)>,
-    session: Session,
+    Path((commission_id, element)): Path<(CommissionId, ElementId)>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
+    // TODO(engineer): unmigrated for the same reason as `add_element` above —
+    // no use case covers the composition writes yet.
+    require_owner(&state, &commission_id, &actor_id).await?;
 
-    let element = ElementId::new(element);
     state
         .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions().remove_element(commission, element).await
+            uow.commissions()
+                .remove_element(&commission_id, &element)
+                .await
         })
         .await
         .map_err(to_problem)?;

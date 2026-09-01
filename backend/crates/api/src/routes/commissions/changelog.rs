@@ -2,21 +2,16 @@
 //! stream in order (ZMVP-87 AC5). Read-only by design: the changelog's HTTP
 //! surface has no other method (append happens as a side of domain acts; AC4).
 
-use application::commission::changelog::{ReadChangelogQuery, ReadChangelogResult};
+use application::commission::changelog::read;
 use axum::{
     Json,
     extract::{Path, State},
     response::{IntoResponse, Response},
 };
-use domain::elements::{commission::CommissionId, did::Did, user::UserId};
+use domain::elements::commission::CommissionId;
 use serde::Serialize;
-use tower_sessions::Session;
-use uuid::Uuid;
 
-use crate::{
-    AppState, problem::Problem, routes::commissions::ports::commission_ports,
-    wire_time::WireTimestamp,
-};
+use crate::{AppState, extract::CallingUser, problem::Problem, wire_time::WireTimestamp};
 
 /// One changelog entry as the API serves it: the stored envelope, kind as its
 /// stable token, actor as a bare id (`null` = a system entry), `seq` as the
@@ -28,7 +23,7 @@ use crate::{
 struct ChangelogEntryBody {
     seq: i64,
     kind: &'static str,
-    actor_id: Option<Did>,
+    actor_id: Option<String>,
     payload: serde_json::Value,
     note: Option<String>,
     created_at: WireTimestamp,
@@ -38,27 +33,23 @@ struct ChangelogEntryBody {
 /// entries, ascending `seq`. Participant-only; `404` otherwise. Unpaginated.
 pub(super) async fn read_changelog(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let query = ReadChangelogQuery {
-        actor_id: user.id,
-        commission_id: CommissionId::new(id),
+    let query = read::Query {
+        actor_id,
+        commission_id,
     };
 
-    let ports = commission_ports(&state);
+    let entries = state.app().commissions().changelog().read(query).await?;
 
-    let result: Vec<ChangelogEntryBody> = application::commission::changelog::read(query, ports)
-        .await
-        .map(|v| v.entries)
-        // FIXME: Claude -- Add the correct errors in here
-        .map_err(Problem::service_unavailable)?
+    let result: Vec<ChangelogEntryBody> = entries
+        .entries
         .into_iter()
         .map(|cl| ChangelogEntryBody {
             seq: cl.seq,
             kind: cl.kind.as_str(),
-            actor_id: cl.actor_id.map(|a| *a),
+            actor_id: cl.actor_id.map(|a| a.to_string()),
             payload: cl.payload,
             note: cl.note,
             created_at: WireTimestamp::from(cl.created_at),

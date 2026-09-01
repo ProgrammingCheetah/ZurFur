@@ -3,6 +3,7 @@
 //! `5931025`). The body is an array; the batch lands all-or-nothing. No fill
 //! surface exists here — an empty Slot is a valid, permanent state.
 
+use application::commission::slots::declare::{self, SlotBody};
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -10,16 +11,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::commission::{CommissionId, NewSlot, SlotTitle},
-    ports::UnitOfWork,
-};
+use domain::elements::commission::{CommissionId, SlotTitle, TabId};
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 use uuid::Uuid;
 
-use super::require_owner;
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// `POST /commissions/{id}/slots`'s `201` body: the id of each newly declared
 /// slot's carrying element, in request order — see [`declare_slots`].
@@ -46,14 +42,10 @@ pub(super) struct DeclareSlotBody {
 /// `{"ids": ["…", …]}` in request order.
 pub(super) async fn declare_slots(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(user_id): CallingUser,
     body: Result<Json<Vec<DeclareSlotBody>>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-
     let Json(body) = body.map_err(|_| Problem::invalid_request("Malformed request body."))?;
     if body.is_empty() {
         return Err(Problem::invalid_request(
@@ -61,32 +53,38 @@ pub(super) async fn declare_slots(
         ));
     }
 
-    let now = Utc::now();
-    let mut slots = Vec::with_capacity(body.len());
-    for entry in body {
-        let title = SlotTitle::try_from(entry.title)
-            .map_err(|err| Problem::invalid_request(format!("Invalid slot title: {err}.")))?;
-        let notes = entry
-            .notes
-            .as_deref()
-            .map(str::trim)
-            .filter(|notes| !notes.is_empty())
-            .map(str::to_owned);
-        let address = super::elements::address(entry.tab, entry.surface)?;
-        slots.push(NewSlot::contributed_at(
-            commission, address, title, notes, user.id, now,
-        ));
-    }
-    let element_ids: Vec<Uuid> = slots.iter().map(|slot| *slot.id).collect();
+    let all_slots: Vec<SlotBody> =
+        body.into_iter()
+            .map(|entry| {
+                let title = entry.title.parse::<SlotTitle>().map_err(|err| {
+                    Problem::invalid_request(format!("Invalid slot title: {err}."))
+                })?;
+                let surface = super::elements::address(entry.tab, entry.surface)?;
+                let slot = SlotBody {
+                    tab: TabId::new(entry.tab),
+                    surface,
+                    title,
+                    notes: entry.notes,
+                };
+                Ok(slot)
+            })
+            .collect::<Result<_, Problem>>()?;
 
-    state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions().declare_slots(&slots).await
-        })
-        .await
-        .map_err(super::elements::to_problem)?;
+    let command = declare::Command {
+        commission_id,
+        slots: all_slots,
+        user_id,
+    };
 
-    let body = DeclareSlotsResponse { ids: element_ids };
+    let declared = state
+        .app()
+        .commissions()
+        .slots()
+        .declare(command, Utc::now())
+        .await?;
+    let ids: Vec<Uuid> = declared.slot_ids.into_iter().map(|slot| *slot).collect();
+
+    let body = DeclareSlotsResponse { ids };
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }
 

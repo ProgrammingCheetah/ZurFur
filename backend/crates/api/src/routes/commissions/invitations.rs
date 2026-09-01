@@ -2,6 +2,7 @@
 //! a vacant Seat, or revokes a pending offer (issue + revoke only; accept and
 //! decline are separate).
 
+use application::commission::invitations::{self, issue::InvitationOutput};
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -9,20 +10,14 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::{
-        commission::{CommissionId, ElementId, SeatInvitation},
-        did::Did,
-        invitation::InvitationState,
-    },
-    ports::{DidBelongsToAnotherActor, UnitOfWork},
+use domain::elements::{
+    commission::{CommissionId, element::SeatId},
+    user::UserId,
 };
 use serde::{Deserialize, Serialize};
-use tower_sessions::Session;
 use uuid::Uuid;
 
-use super::require_owner;
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// `POST /commissions/{id}/invitations`'s body: the seat offer, in full — see
 /// [`invite_to_seat`].
@@ -33,6 +28,18 @@ struct InviteToSeatResponse {
     seat: String,
     state: &'static str,
     user: String,
+}
+
+impl From<InvitationOutput> for InviteToSeatResponse {
+    fn from(invitation: InvitationOutput) -> Self {
+        Self {
+            commission: invitation.commission_id.to_string(),
+            id: invitation.invitation_id.to_string(),
+            seat: invitation.seat_id.to_string(),
+            state: invitation.invitation_state.as_str(),
+            user: invitation.invited_user_id.to_string(),
+        }
+    }
 }
 
 /// `DELETE /commissions/{id}/invitations`'s `200` body — see
@@ -58,90 +65,41 @@ pub(super) struct InviteToSeatBody {
 /// pending user returns the existing offer (`200`); otherwise `201 Created`.
 pub(super) async fn invite_to_seat(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<InviteToSeatBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-
     let Json(body) = body.map_err(|_| {
         Problem::invalid_request(
             "Provide a seat and a user to invite, e.g. {\"seat\": \"…\", \"user\": \"did:plc:…\"}.",
         )
     })?;
-    let seat_id = body.seat;
-    let seat = ElementId::new(seat_id);
+    let command = invitations::issue::Command {
+        commission_id,
+        actor_id,
+        target_id: body
+            .user
+            .parse::<UserId>()
+            .map_err(|_| Problem::invalid_request("Invalid target user DID"))?,
+        seat_id: SeatId::new(body.seat),
+    };
 
-    let seats = state.commissions.seats(commission).await?;
-    let target = seats
-        .iter()
-        .find(|s| s.id == seat)
-        .ok_or_else(Problem::element_not_found)?;
-    if target.occupant.is_some() {
-        return Err(Problem::seat_filled());
-    }
-
-    let invited = state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.users().provision(&Did::new(body.user)).await
-        })
-        .await
-        .map_err(|err| match err.downcast_ref::<DidBelongsToAnotherActor>() {
-            Some(_) => Problem::did_belongs_to_another_actor(),
-            None => Problem::from(err),
-        })?;
-
-    if let Some(existing) = state
-        .commissions
-        .find_pending_seat_invitation(commission, seat, invited.id)
-        .await?
-    {
-        let existing_offer = InviteToSeatResponse {
-            commission: id.to_string(),
-            id: existing.id.to_string(),
-            seat: seat_id.to_string(),
-            state: existing.state.as_str(),
-            user: invited.did.as_str().to_owned(),
-        };
-        let response = (StatusCode::OK, Json(existing_offer)).into_response();
-        return Ok(response);
-    }
-
-    let invitation = SeatInvitation::issue(commission, seat, invited.id, user.id, Utc::now());
-    let minted = invitation.id;
-    state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions().create_seat_invitation(&invitation).await
-        })
+    let issued = state
+        .app()
+        .commissions()
+        .invitations()
+        .issue(command, Utc::now())
         .await?;
 
-    // A duplicate invite racing past the pending check is dropped by the store
-    // (ON CONFLICT DO NOTHING); re-read to answer 200/201 from the row that
-    // actually survives, not the one this call minted.
-    let (status, offer_id, offer_state) = match state
-        .commissions
-        .find_pending_seat_invitation(commission, seat, invited.id)
-        .await?
-    {
-        Some(stored) if stored.id == minted => {
-            let state = stored.state;
-            (StatusCode::CREATED, stored.id, state)
+    let (status, offer) = match issued {
+        invitations::issue::Output::Created(invitation) => {
+            (StatusCode::CREATED, InviteToSeatResponse::from(invitation))
         }
-        Some(stored) => {
-            let state = stored.state;
-            (StatusCode::OK, stored.id, state)
+        invitations::issue::Output::PreExisting(invitation) => {
+            (StatusCode::OK, InviteToSeatResponse::from(invitation))
         }
-        None => (StatusCode::CREATED, minted, InvitationState::Pending),
     };
-    let offer = InviteToSeatResponse {
-        commission: id.to_string(),
-        id: offer_id.to_string(),
-        seat: seat_id.to_string(),
-        state: offer_state.as_str(),
-        user: invited.did.as_str().to_owned(),
-    };
+
     let response = (status, Json(offer)).into_response();
     Ok(response)
 }
@@ -159,59 +117,39 @@ pub(super) struct RevokeSeatInvitationBody {
 /// no-op. Every path echoes `{ commission, seat, user }`.
 pub(super) async fn revoke_seat_invitation(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<RevokeSeatInvitationBody>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    require_owner(&state, commission, &user).await?;
-
     let Json(body) = body.map_err(|_| {
         Problem::invalid_request(
             "Provide the seat and invited user to revoke, e.g. {\"seat\": \"…\", \"user\": \"did:plc:…\"}.",
         )
     })?;
-    let seat = ElementId::new(body.seat);
-    let invited_did = body.user;
-
-    let revoked = || {
-        let response_body = RevokeSeatInvitationResponse {
-            commission: id.to_string(),
-            seat: body.seat.to_string(),
-            user: invited_did.clone(),
-        };
-        (StatusCode::OK, Json(response_body)).into_response()
+    let command = invitations::revoke::Command {
+        commission_id,
+        target_id: body
+            .user
+            .parse::<UserId>()
+            .map_err(|_| Problem::invalid_request("Invalid request"))?,
+        actor_id,
+        seat_id: SeatId::new(body.seat),
     };
 
-    let Some(invited_user) = state
-        .users
-        .find_by_did(&Did::new(invited_did.clone()))
-        .await?
-    else {
-        return Ok(revoked());
-    };
-
-    let Some(mut invitation) = state
-        .commissions
-        .find_pending_seat_invitation(commission, seat, invited_user.id)
-        .await?
-    else {
-        return Ok(revoked());
-    };
-
-    invitation.revoke(Utc::now()).map_err(|_| {
-        Problem::internal_error("Could not revoke the invitation. Please try again.")
-    })?;
-    state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions()
-                .revoke_seat_invitation(invitation.id)
-                .await
-        })
+    let output = state
+        .app()
+        .commissions()
+        .invitations()
+        .revoke(command, Utc::now())
         .await?;
 
-    Ok(revoked())
+    let response = RevokeSeatInvitationResponse {
+        seat: output.seat_id.to_string(),
+        commission: output.commission_id.to_string(),
+        user: output.user_id.to_string(),
+    };
+
+    Ok((StatusCode::OK, Json(response)).into_response())
 }
 
 #[cfg(test)]

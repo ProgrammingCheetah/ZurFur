@@ -1,28 +1,30 @@
 //! `POST /commissions/{id}/files` and `GET /commissions/{id}/files/{file_id}` —
 //! a Participant uploads a work-in-progress file entry, and a Participant
-//! retrieves one. Uploading never mutates any status.
+//! retrieves one. Routing only (ZMVP-205): the use case lives in
+//! `application::commission::files`; this file decodes the request, adapts
+//! axum's multipart/body types to the streaming `FileStore` seam, and renders
+//! the response — including the download hardening headers (presentation
+//! stays the driver's).
 
+use application::commission::{
+    CommissionError,
+    files::{download, upload},
+};
 use axum::{
     Json,
     body::Body,
-    extract::{Multipart, Path, State},
+    extract::{Multipart, Path, State, multipart::Field},
     http::{HeaderValue, StatusCode, header},
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::commission::{
-        ChangelogEntryKind, CommissionFile, CommissionId, FileKey, FileMetadata, FileName,
-        NewChangelogEntry,
-    },
-    ports::UnitOfWork,
-};
+use domain::elements::commission::{CommissionId, FileKey, FileMetadata};
+use futures_util::TryStreamExt;
 use serde::Serialize;
-use serde_json::json;
-use tower_sessions::Session;
+use tokio_util::io::{ReaderStream, StreamReader};
 use uuid::Uuid;
 
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// `POST /commissions/{id}/files`'s `201` body: the uploaded entry's key — see
 /// [`upload_file`].
@@ -36,64 +38,63 @@ struct UploadFileResponse {
 /// `201 Created` with `{ "id": "<uuid>" }`.
 pub(super) async fn upload_file(
     State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    session: Session,
-    multipart: Multipart,
+    Path(commission_id): Path<CommissionId>,
+    CallingUser(actor_id): CallingUser,
+    mut multipart: Multipart,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    super::require_participant(&state, commission, user.id).await?;
-
-    let upload = read_file_part(multipart).await?;
-    let max = state.config.max_upload_bytes;
-    if upload.bytes.len() as u64 > max {
-        return Err(Problem::payload_too_large(format!(
-            "The file exceeds the {max}-byte upload limit."
-        )));
-    }
-    if upload.bytes.is_empty() {
-        return Err(Problem::invalid_request("The uploaded file is empty."));
-    }
-
-    let filename = FileName::try_new(upload.filename.unwrap_or_default())
-        .map_err(|e| Problem::invalid_request(format!("Invalid filename: {e}.")))?;
-    let metadata = FileMetadata::new(
-        filename,
-        upload.content_type.unwrap_or_default(),
-        upload.bytes.len() as i64,
-    );
-
-    let key = FileKey::generate();
-    // Precedes the transaction: bytes can't ride a unit of work.
-    state.files.put(key, &metadata, &upload.bytes).await?;
-
-    let now = Utc::now();
-    let entry = NewChangelogEntry::event(
-        commission,
-        ChangelogEntryKind::FileAdded,
-        user.id,
-        json!({
-            "file_id": *key,
-            "filename": metadata.filename.as_str(),
-            "content_type": metadata.content_type,
-            "byte_size": metadata.byte_size,
-        }),
-        now,
-    );
-    let file = CommissionFile {
-        id: key,
-        commission_id: commission,
-        uploaded_by: user.id,
-        created_at: now,
+    let part: UploadPart<'_> = loop {
+        let Some(field) = multipart
+            .next_field()
+            .await
+            .map_err(|_| Problem::invalid_request("Malformed multipart body."))?
+        else {
+            return Err(Problem::invalid_request(
+                "Expected a 'file' part in the multipart body.",
+            ));
+        };
+        if field.name() != Some("file") {
+            continue;
+        }
+        let filename = field.file_name().map(str::to_owned);
+        let content_type = field.content_type().map(str::to_owned);
+        break UploadPart {
+            filename,
+            content_type,
+            field,
+        };
     };
-    state
-        .transaction(async move |uow: &mut dyn UnitOfWork| {
-            uow.commissions().add_file(&file).await?;
-            uow.changelog().append(&entry).await
-        })
-        .await?;
+    let max = state.config.max_upload_bytes;
 
-    let body = UploadFileResponse { id: *key };
+    let command = upload::Command {
+        actor_id,
+        commission_id,
+        filename: part.filename,
+        content_type: part.content_type,
+    };
+    // The reader is lazy — nothing is pulled from the wire until the use case
+    // has authorized the caller (`upload`'s "nothing consumed before authz").
+    let reader = StreamReader::new(part.field.map_err(std::io::Error::other));
+
+    let outcome = state
+        .app()
+        .commissions()
+        .files()
+        .upload(command, reader, max, Utc::now())
+        .await;
+    let result = match outcome {
+        Ok(result) => result,
+        // The exact byte count lives here (the use case only knows the cap
+        // was exceeded, not its value), so this stays a call-site special case
+        // rather than the shared `From<CommissionError> for Problem`.
+        Err(CommissionError::FileTooLarge) => {
+            return Err(Problem::payload_too_large(format!(
+                "The file exceeds the {max}-byte upload limit."
+            )));
+        }
+        Err(err) => return Err(Problem::from(err)),
+    };
+
+    let body = UploadFileResponse { id: *result.id };
     Ok((StatusCode::CREATED, Json(body)).into_response())
 }
 
@@ -103,30 +104,22 @@ pub(super) async fn upload_file(
 /// a stored SVG/HTML can never execute in the app origin.
 pub(super) async fn download_file(
     State(state): State<AppState>,
-    Path((id, file_id)): Path<(Uuid, Uuid)>,
-    session: Session,
+    Path((commission_id, file_key)): Path<(CommissionId, FileKey)>,
+    CallingUser(actor_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    super::require_participant(&state, commission, user.id).await?;
+    let query = download::Query {
+        actor_id,
+        commission_id,
+        file_id: file_key,
+    };
 
-    let key = FileKey::new(file_id);
-    state
-        .commissions
-        .find_file(commission, key)
-        .await?
-        .ok_or_else(Problem::file_not_found)?;
+    let download::Output { result: download } =
+        state.app().commissions().files().download(query).await?;
 
-    let stored = state
-        .files
-        .get(key)
-        .await?
-        .ok_or_else(|| Problem::internal_error("The file's contents are unavailable."))?;
-
-    let content_type = HeaderValue::from_str(&stored.metadata.content_type)
+    let content_type = HeaderValue::from_str(&download.metadata.content_type)
         .unwrap_or_else(|_| HeaderValue::from_static(FileMetadata::DEFAULT_CONTENT_TYPE));
     let disposition =
-        HeaderValue::from_str(&content_disposition(stored.metadata.filename.as_str()))
+        HeaderValue::from_str(&content_disposition(download.metadata.filename.as_str()))
             .unwrap_or_else(|_| HeaderValue::from_static("attachment"));
 
     Ok((
@@ -138,46 +131,18 @@ pub(super) async fn download_file(
                 HeaderValue::from_static("nosniff"),
             ),
         ],
-        Body::from(stored.bytes),
+        Body::from_stream(ReaderStream::new(download.content)),
     )
         .into_response())
 }
 
-/// The `file` part of a multipart upload: its declared filename and content type
-/// (both optional at the wire level) and its bytes.
-struct UploadPart {
+/// The `file` part of a multipart upload, as scanned for in [`upload_file`]:
+/// its declared filename and content type (both optional at the wire level)
+/// and the unconsumed field stream.
+struct UploadPart<'a> {
     filename: Option<String>,
     content_type: Option<String>,
-    bytes: Vec<u8>,
-}
-
-/// Pulls the `file` part out of a `multipart/form-data` body. `422` if the
-/// body isn't multipart, is malformed, or carries no `file` part.
-async fn read_file_part(mut multipart: Multipart) -> Result<UploadPart, Problem> {
-    while let Some(field) = multipart
-        .next_field()
-        .await
-        .map_err(|_| Problem::invalid_request("Malformed multipart body."))?
-    {
-        if field.name() != Some("file") {
-            continue;
-        }
-        let filename = field.file_name().map(str::to_owned);
-        let content_type = field.content_type().map(str::to_owned);
-        let bytes = field
-            .bytes()
-            .await
-            .map_err(|_| Problem::invalid_request("Could not read the uploaded file."))?
-            .to_vec();
-        return Ok(UploadPart {
-            filename,
-            content_type,
-            bytes,
-        });
-    }
-    Err(Problem::invalid_request(
-        "Expected a 'file' part in the multipart body.",
-    ))
+    field: Field<'a>,
 }
 
 /// Builds a `Content-Disposition: attachment` header value carrying the

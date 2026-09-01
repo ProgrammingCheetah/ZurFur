@@ -133,7 +133,7 @@ async fn lists_every_live_account_the_caller_holds_a_role_in_with_that_role() {
     backend
         .grant_role(&UserAccount {
             user_id: me.id,
-            account_id: granted.id,
+            account_id: granted.id.clone(),
             role: Role::Member,
             alias: None,
         })
@@ -218,8 +218,8 @@ async fn excludes_a_soft_deleted_account_the_caller_holds_a_role_in() {
     let live = seed_account(&backend, did, "live.zurfur.app").await;
     backend
         .grant_role(&UserAccount {
-            user_id: me.id,
-            account_id: live.id,
+            user_id: me.id.clone(),
+            account_id: live.id.clone(),
             role: Role::Owner,
             alias: None,
         })
@@ -232,7 +232,7 @@ async fn excludes_a_soft_deleted_account_the_caller_holds_a_role_in() {
     backend
         .grant_role(&UserAccount {
             user_id: me.id,
-            account_id: tombstoned.id,
+            account_id: tombstoned.id.clone(),
             role: Role::Member,
             alias: None,
         })
@@ -240,7 +240,7 @@ async fn excludes_a_soft_deleted_account_the_caller_holds_a_role_in() {
         .expect("seed tombstoned membership");
     let mut uow = backend.database().begin().await.expect("begin");
     uow.accounts()
-        .soft_delete(tombstoned.id)
+        .soft_delete(&tombstoned.id)
         .await
         .expect("soft delete");
     uow.commit().await.expect("commit soft delete");
@@ -282,16 +282,16 @@ async fn a_members_role_alias_rides_along_when_set_and_is_absent_when_not() {
     let aliased = seed_account(&backend, "did:plc:aliased-owner", "aliased.zurfur.app").await;
     backend
         .grant_role(&UserAccount {
-            user_id: me.id,
-            account_id: aliased.id,
+            user_id: me.id.clone(),
+            account_id: aliased.id.clone(),
             role: Role::Manager,
             alias: None,
         })
         .await
         .expect("seat me as a manager");
     backend.seed_role_alias(
-        me.id,
-        aliased.id,
+        me.id.clone(),
+        aliased.id.clone(),
         RoleAlias::new("Studio Head").expect("non-empty alias"),
     );
 
@@ -299,7 +299,7 @@ async fn a_members_role_alias_rides_along_when_set_and_is_absent_when_not() {
     backend
         .grant_role(&UserAccount {
             user_id: me.id,
-            account_id: unaliased.id,
+            account_id: unaliased.id.clone(),
             role: Role::Member,
             alias: None,
         })

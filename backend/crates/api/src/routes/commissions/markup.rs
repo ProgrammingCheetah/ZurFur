@@ -1,7 +1,13 @@
 //! `POST /commissions/{id}/files/{file_id}/markup` — a Participant attaches a
-//! Markup to a file entry. Validated strictly and stored raw, append-only;
-//! never moves any status.
+//! Markup to a file entry. Routing only (ZMVP-205): the use case lives in
+//! `application::commission::markup`; this file decodes the request and renders
+//! the response.
+//!
+//! The strict shape gate is `serde`'s, so it fires **here**, at the wire: an
+//! unknown shape kind, an unknown field, or a missing coordinate never becomes a
+//! [`Markup`] at all. The numeric bounds are the use case's.
 
+use application::commission::markup;
 use axum::{
     Json,
     extract::{Path, State, rejection::JsonRejection},
@@ -9,57 +15,36 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use chrono::Utc;
-use domain::{
-    elements::commission::{ChangelogEntryKind, CommissionId, FileKey, Markup, NewChangelogEntry},
-    ports::UnitOfWork,
-};
-use serde_json::json;
-use tower_sessions::Session;
-use uuid::Uuid;
+use domain::elements::commission::{CommissionId, FileKey, Markup};
 
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// Attaches a Markup to a file entry. Any-Participant-gated; `404
 /// file_not_found` for a file not in this commission, `422` for an invalid
-/// markup shape. Lands as a `markup_added` changelog entry. Returns
-/// `201 Created`.
+/// markup shape. Lands as a `commission_markup` row plus the `markup_added`
+/// changelog entry that accompanies it. Returns `201 Created`.
 ///
 /// ⚠️ contract-decision-needed: `Markup` is an unschematized passthrough
 /// (tracks `VERSIONING.md` §8 Q9).
 pub(super) async fn add_markup(
     State(state): State<AppState>,
-    Path((id, file_id)): Path<(Uuid, Uuid)>,
-    session: Session,
+    Path((commission_id, file_key)): Path<(CommissionId, FileKey)>,
+    CallingUser(actor_id): CallingUser,
     body: Result<Json<Markup>, JsonRejection>,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
-    let commission = CommissionId::new(id);
-    super::require_participant(&state, commission, user.id).await?;
-
-    let key = FileKey::new(file_id);
-    state
-        .commissions
-        .find_file(commission, key)
-        .await?
-        .ok_or_else(Problem::file_not_found)?;
-
     let Json(markup) = body.map_err(|rejection| Problem::invalid_request(rejection.body_text()))?;
-    markup
-        .validate()
-        .map_err(|e| Problem::invalid_request(format!("Invalid markup: {e}.")))?;
 
-    let entry = NewChangelogEntry::event(
-        commission,
-        ChangelogEntryKind::MarkupAdded,
-        user.id,
-        json!({
-            "file_id": *key,
-            "markup": markup,
-        }),
-        Utc::now(),
-    );
+    let command = markup::Command {
+        actor_id,
+        commission_id,
+        file_key,
+        markup,
+    };
+
     state
-        .transaction(async move |uow: &mut dyn UnitOfWork| uow.changelog().append(&entry).await)
+        .app()
+        .commissions()
+        .markup(command, Utc::now())
         .await?;
 
     Ok(StatusCode::CREATED.into_response())

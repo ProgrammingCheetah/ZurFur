@@ -131,9 +131,9 @@ async fn owner_invites_a_user_and_a_pending_invitation_is_recorded() {
         .provision(&Did::new(did.to_string()))
         .await
         .expect("provision the owner");
-    let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
+    let account = AccountId::new(Did::new(account_id));
     let pending = backend
-        .find_pending_invitation(account, invitee.id)
+        .find_pending_invitation(&account, &invitee.id)
         .await
         .expect("find_pending_invitation")
         .expect("a pending invitation exists");
@@ -167,10 +167,10 @@ async fn inviting_at_owner_is_refused() {
         .provision(&Did::new(invitee_did.to_string()))
         .await
         .expect("provision");
-    let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
+    let account = AccountId::new(Did::new(account_id));
     assert!(
         backend
-            .find_pending_invitation(account, invitee.id)
+            .find_pending_invitation(&account, &invitee.id)
             .await
             .expect("find_pending_invitation")
             .is_none(),
@@ -221,9 +221,9 @@ async fn re_inviting_a_pending_user_is_idempotent() {
         .provision(&Did::new(invitee_did.to_string()))
         .await
         .expect("provision the invitee");
-    let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
+    let account = AccountId::new(Did::new(account_id));
     let pending = backend
-        .find_pending_invitation(account, invitee.id)
+        .find_pending_invitation(&account, &invitee.id)
         .await
         .expect("find_pending_invitation")
         .expect("a pending invitation exists");
@@ -272,10 +272,10 @@ async fn issuer_revokes_a_pending_invitation() {
         .provision(&Did::new(invitee_did.to_string()))
         .await
         .expect("provision the invitee");
-    let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
+    let account = AccountId::new(Did::new(account_id));
     assert!(
         backend
-            .find_pending_invitation(account, invitee.id)
+            .find_pending_invitation(&account, &invitee.id)
             .await
             .expect("find_pending_invitation")
             .is_none(),
@@ -319,10 +319,10 @@ async fn inviting_an_existing_member_is_a_conflict() {
         .provision(&Did::new(invitee_did.to_string()))
         .await
         .expect("provision the invitee");
-    let account = AccountId::new(Uuid::parse_str(&account_id).expect("id is a uuid"));
+    let account = AccountId::new(Did::new(account_id));
     assert!(
         backend
-            .find_pending_invitation(account, invitee.id)
+            .find_pending_invitation(&account, &invitee.id)
             .await
             .expect("find_pending_invitation")
             .is_none(),
@@ -361,7 +361,7 @@ async fn seed_pending_invite(
         .await
         .expect("provision invitee");
     let (account, owner_membership) = Account::open(
-        owner.id,
+        owner.id.clone(),
         Did::new("did:plc:seedacct".to_string()),
         "acme.zurfur.app".parse::<Handle>().unwrap(),
         "Acme Studio".parse::<AccountName>().expect("account name"),
@@ -372,10 +372,10 @@ async fn seed_pending_invite(
         .await
         .expect("found the account");
     let invitation = Invitation::issue(
-        account.id,
-        invitee.id,
+        account.id.clone(),
+        invitee.id.clone(),
         Role::Member,
-        owner.id,
+        owner.id.clone(),
         chrono::Utc::now(),
     );
     backend
@@ -411,7 +411,7 @@ async fn invitee_declines_a_pending_invitation() {
 
     assert!(
         backend
-            .find_pending_invitation(account_id, invitee_id)
+            .find_pending_invitation(&account_id, &invitee_id)
             .await
             .expect("find_pending_invitation")
             .is_none(),
@@ -419,7 +419,7 @@ async fn invitee_declines_a_pending_invitation() {
     );
     assert!(
         backend
-            .role_of(invitee_id, account_id)
+            .role_of(&invitee_id, &account_id)
             .await
             .expect("role_of")
             .is_none(),
@@ -484,7 +484,7 @@ async fn invitee_accepts_and_becomes_a_member() {
 
     // The invitee is now a member at the offered role.
     let role = backend
-        .role_of(invitee_id, account_id)
+        .role_of(&invitee_id, &account_id)
         .await
         .expect("role_of");
     assert!(
@@ -506,14 +506,14 @@ async fn inviting_an_accounts_own_did_is_a_did_conflict() {
     let account_id = found_account(&client, &base, "Conflict Studio").await;
 
     let account = backend
-        .find(AccountId::new(account_id.parse().expect("uuid id")))
+        .find(&AccountId::new(Did::new(account_id.clone())))
         .await
         .expect("find")
         .expect("the founded account exists");
 
     let res = client
         .post(format!("{base}/accounts/{account_id}/invitations"))
-        .json(&serde_json::json!({ "user": account.did.as_str(), "role": "member" }))
+        .json(&serde_json::json!({ "user": account.id.as_str(), "role": "member" }))
         .send()
         .await
         .expect("POST invite with an account's DID");

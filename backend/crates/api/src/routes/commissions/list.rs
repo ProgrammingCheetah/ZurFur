@@ -1,17 +1,17 @@
 //! `GET /commissions` — the signed-in user's owned commissions, owner-POV
 //! only. Response types are the contract's generated messages.
 
+use application::commission::list;
 use axum::{
     Json,
     extract::State,
     http::StatusCode,
     response::{IntoResponse, Response},
 };
-use tower_sessions::Session;
 
 use super::wire_timestamp;
 use crate::generated::{Commission, ListCommissionsResponse, Maturity};
-use crate::{AppState, problem::Problem};
+use crate::{AppState, extract::CallingUser, problem::Problem};
 
 /// Renders a domain commission into the contract's envelope.
 pub(super) fn wire_commission(commission: domain::elements::commission::Commission) -> Commission {
@@ -50,12 +50,16 @@ pub(super) fn wire_commission(commission: domain::elements::commission::Commissi
 /// - `401` — not signed in
 pub(super) async fn list_commissions(
     State(state): State<AppState>,
-    session: Session,
+    CallingUser(user_id): CallingUser,
 ) -> Result<Response, Problem> {
-    let user = super::current_user(&state, &session).await?;
+    let command = list::Command { user_id };
 
-    let commissions = state.commissions.list_owned_by(user.id).await?;
-    let commissions: Vec<Commission> = commissions.into_iter().map(wire_commission).collect();
+    let listed = state.app().commissions().list(command).await?;
+    let commissions: Vec<Commission> = listed
+        .commissions
+        .into_iter()
+        .map(wire_commission)
+        .collect();
 
     let body = ListCommissionsResponse { commissions };
     let response = (StatusCode::OK, Json(body)).into_response();
