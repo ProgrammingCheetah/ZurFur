@@ -40,8 +40,8 @@ impl From<&Runtime> for Ports {
             changelog: state.changelog.clone(),
             profile_source: state.profile_source.clone(),
             profile_cache: state.profile_cache.clone(),
-            did_minter: Some(state.did_minter.clone()),
-            files: Some(state.files.clone()),
+            did_minter: state.did_minter.clone(),
+            files: state.files.clone(),
         }
     }
 }
