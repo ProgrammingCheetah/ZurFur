@@ -17,7 +17,7 @@ use crate::{
     elements::{
         did::Did,
         handle::Handle,
-        id::{IdError, parse_uuid},
+        id::IdError,
         role::{Role, RoleAlias},
         user::UserId,
         user_account::UserAccount,
@@ -209,7 +209,7 @@ impl Account {
     /// use chrono::Utc;
     /// use domain::elements::{account::{Account, AccountName}, did::Did, handle::Handle, role::Role, user::UserId};
     ///
-    /// let owner = UserId::new(uuid::Uuid::now_v7());
+    /// let owner = UserId::new(Did::new("did:plc:owner".to_string()));
     /// let (account, membership) = Account::open(
     ///     owner,
     ///     Did::new("did:plc:example".to_string()),

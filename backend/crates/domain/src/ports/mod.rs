@@ -554,11 +554,8 @@ pub trait AccountReads: Send {
     async fn find_for_update(&mut self, id: &AccountId) -> anyhow::Result<Option<Account>>;
 
     /// `user`'s role in `account`, or `None`; as [`AccountStore::role_of`].
-    async fn role_of(
-        &mut self,
-        user: &UserId,
-        account: &AccountId,
-    ) -> anyhow::Result<Option<Role>>;
+    async fn role_of(&mut self, user: &UserId, account: &AccountId)
+    -> anyhow::Result<Option<Role>>;
 }
 
 /// An account unit of work: [`AccountReads`] + [`AccountWrites`] on one

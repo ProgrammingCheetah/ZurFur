@@ -159,6 +159,7 @@ impl NewSlot {
     /// use chrono::Utc;
     /// use domain::elements::{
     ///     commission::{CommissionId, NewSlot, SlotTitle, SurfaceAddress, SurfaceName, TabId},
+    ///     did::Did,
     ///     user::UserId,
     /// };
     ///
@@ -167,7 +168,7 @@ impl NewSlot {
     ///     TabId::new(uuid::Uuid::now_v7()),
     ///     "content".parse::<SurfaceName>().unwrap(),
     /// );
-    /// let owner = UserId::new(uuid::Uuid::now_v7());
+    /// let owner = UserId::new(Did::new("did:plc:alice".to_string()));
     /// let title = "The knight".parse::<SlotTitle>().unwrap();
     /// let slot = NewSlot::contributed_at(commission, address.clone(), title, None, owner, Utc::now());
     /// assert_eq!(slot.address, address);
@@ -220,6 +221,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
+    use crate::elements::did::Did;
 
     // AC1 — the title is required and validated: trimmed on the way in, a
     // blank one refused rather than stored.
@@ -242,7 +244,7 @@ mod tests {
             super::super::element::TabId::new(uuid::Uuid::now_v7()),
             "content".parse().unwrap(),
         );
-        let owner = UserId::new(uuid::Uuid::now_v7());
+        let owner = UserId::new(Did::new(format!("did:plc:{}", uuid::Uuid::now_v7())));
         let title = "The mage".parse::<SlotTitle>().unwrap();
 
         let slot = NewSlot::contributed_at(
@@ -250,7 +252,7 @@ mod tests {
             address.clone(),
             title.clone(),
             Some("robes, not armor".to_string()),
-            owner,
+            owner.clone(),
             Utc::now(),
         );
 

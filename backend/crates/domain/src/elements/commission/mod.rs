@@ -318,11 +318,13 @@ impl Commission {
     ///
     /// ```
     /// use chrono::Utc;
-    /// use domain::elements::{commission::{Commission, CommissionTitle, LifecycleStep}, user::UserId};
+    /// use domain::elements::{
+    ///     commission::{Commission, CommissionTitle, LifecycleStep}, did::Did, user::UserId,
+    /// };
     ///
-    /// let owner = UserId::new(uuid::Uuid::now_v7());
+    /// let owner = UserId::new(Did::new("did:plc:alice".to_string()));
     /// let title = "A ref sheet".parse::<CommissionTitle>().unwrap();
-    /// let c = Commission::create(title, owner, Utc::now(), None);
+    /// let c = Commission::create(title, owner.clone(), Utc::now(), None);
     /// assert_eq!(c.owner_id, owner);                             // the creator owns it
     /// assert!(matches!(c.lifecycle_step, LifecycleStep::Draft)); // born in Draft
     /// assert_eq!(c.title.as_str(), "A ref sheet");
@@ -582,6 +584,7 @@ impl std::fmt::Display for DeadlineStatus {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum DeadlineStatusError {
     ParseError,
     InvalidValue,
@@ -700,11 +703,17 @@ mod tests {
     fn unknown_deadline_status_tokens_do_not_parse() {
         assert_eq!(
             DeadlineStatus::try_from("waiting_for_input"),
-            Err(UnknownDeadlineStatus),
+            Err(DeadlineStatusError::InvalidValue),
             "direction axis ≠ deadline axis"
         );
-        assert_eq!(DeadlineStatus::try_from(""), Err(UnknownDeadlineStatus));
-        assert_eq!(DeadlineStatus::try_from("Late"), Err(UnknownDeadlineStatus));
+        assert_eq!(
+            DeadlineStatus::try_from(""),
+            Err(DeadlineStatusError::InvalidValue)
+        );
+        assert_eq!(
+            DeadlineStatus::try_from("Late"),
+            Err(DeadlineStatusError::InvalidValue)
+        );
     }
 
     // A fresh commission carries no deadline status, even when born with a
@@ -713,7 +722,10 @@ mod tests {
     fn a_fresh_commission_has_no_deadline_status() {
         let c = Commission::create(
             "Ref".parse::<CommissionTitle>().unwrap(),
-            crate::elements::user::UserId::new(uuid::Uuid::now_v7()),
+            crate::elements::user::UserId::new(crate::elements::did::Did::new(format!(
+                "did:plc:{}",
+                uuid::Uuid::now_v7()
+            ))),
             chrono::Utc::now(),
             Some(chrono::Utc::now()),
         );
@@ -782,7 +794,10 @@ mod tests {
     fn a_fresh_commission_has_no_direction_status() {
         let c = Commission::create(
             "Ref".parse::<CommissionTitle>().unwrap(),
-            crate::elements::user::UserId::new(uuid::Uuid::now_v7()),
+            crate::elements::user::UserId::new(crate::elements::did::Did::new(format!(
+                "did:plc:{}",
+                uuid::Uuid::now_v7()
+            ))),
             chrono::Utc::now(),
             None,
         );

@@ -115,22 +115,32 @@ mod tests {
 
     use super::*;
 
+    // The closed grant-level vocabulary, in declaration order. `GrantLevel`
+    // deliberately dropped its public `ALL` with the move to `Display`/`FromStr`
+    // (only the wire tokens are public API); the round-trip test below still
+    // needs every variant, so it names its own local, test-only list.
+    const ALL_GRANT_LEVELS: &[GrantLevel] = &[
+        GrantLevel::Presentation,
+        GrantLevel::Description,
+        GrantLevel::Total,
+    ];
+
     // The grant-level tokens are a closed, collision-free vocabulary that
     // round-trips — the same contract the changelog kinds hold.
     #[test]
     fn grant_level_tokens_round_trip_and_never_collide() {
         let mut seen = BTreeSet::new();
-        for level in GrantLevel::ALL {
-            let token = level.as_str();
-            assert!(seen.insert(token), "duplicate token {token:?}");
+        for level in ALL_GRANT_LEVELS {
+            let token = level.to_string();
+            assert!(seen.insert(token.clone()), "duplicate token {token:?}");
+            let parsed: GrantLevel = token.parse().expect("a valid token must parse");
             assert_eq!(
-                GrantLevel::parse(token),
-                Some(*level),
-                "token {token:?} must parse back to its level",
+                parsed, *level,
+                "token {token:?} must parse back to its level"
             );
         }
         assert_eq!(
-            GrantLevel::ALL.len(),
+            ALL_GRANT_LEVELS.len(),
             3,
             "exactly three modes exist (DD D3)"
         );
@@ -140,13 +150,15 @@ mod tests {
     // vocabulary is the raw modes, never the Visibility aliases.
     #[test]
     fn unknown_and_alias_tokens_do_not_parse() {
-        assert_eq!(GrantLevel::parse(""), None);
-        assert_eq!(GrantLevel::parse("Total"), None, "tokens are lowercase");
-        assert_eq!(
-            GrantLevel::parse("private"),
-            None,
+        assert!("".parse::<GrantLevel>().is_err());
+        assert!(
+            "Total".parse::<GrantLevel>().is_err(),
+            "tokens are lowercase"
+        );
+        assert!(
+            "private".parse::<GrantLevel>().is_err(),
             "a grant speaks raw modes, never the Private/Listed/Public aliases",
         );
-        assert_eq!(GrantLevel::parse("listed"), None);
+        assert!("listed".parse::<GrantLevel>().is_err());
     }
 }

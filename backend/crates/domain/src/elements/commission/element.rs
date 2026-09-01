@@ -778,6 +778,7 @@ impl NewElement {
     ///         Band, CommissionId, ElementPayload, ElementType, NewElement, SurfaceAddress,
     ///         SurfaceName, TabId,
     ///     },
+    ///     did::Did,
     ///     user::UserId,
     /// };
     ///
@@ -787,7 +788,7 @@ impl NewElement {
     ///     "content".parse::<SurfaceName>().unwrap(),
     /// );
     /// let element_type = "note".parse::<ElementType>().unwrap();
-    /// let owner = UserId::new(uuid::Uuid::now_v7());
+    /// let owner = UserId::new(Did::new("did:plc:alice".to_string()));
     /// let body = serde_json::json!({ "body": "hi" });
     /// let payload = ElementPayload::from(body.clone());
     ///
@@ -968,6 +969,7 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::elements::did::Did;
 
     fn element(surface: &str, mode: VisibilityMode, tab: TabId) -> ElementRow {
         ElementRow {
@@ -977,7 +979,7 @@ mod tests {
             mode,
             band: Band::default(),
             position: 0,
-            created_by: UserId::new(uuid::Uuid::now_v7()),
+            created_by: UserId::new(Did::new(format!("did:plc:{}", uuid::Uuid::now_v7()))),
             created_at: Utc::now(),
             payload: ElementPayload::default(),
         }
@@ -1281,7 +1283,7 @@ mod tests {
         let surface = "content".parse::<SurfaceName>().expect("valid");
         let address = SurfaceAddress::new(tab, surface.clone());
         let element_type = "note".parse::<ElementType>().expect("valid");
-        let owner = UserId::new(uuid::Uuid::now_v7());
+        let owner = UserId::new(Did::new(format!("did:plc:{}", uuid::Uuid::now_v7())));
         let body = json!({ "body": "Reference: 三毛猫 🐾", "revision": 3 });
         let payload = ElementPayload::from(body.clone());
 
@@ -1290,7 +1292,7 @@ mod tests {
             address.clone(),
             element_type.clone(),
             payload.clone(),
-            owner,
+            owner.clone(),
             Utc::now(),
         );
 

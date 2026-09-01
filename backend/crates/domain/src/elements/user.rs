@@ -12,10 +12,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     datetime::DateTimeUtc,
-    elements::{
-        did::{Did, DidParseError},
-        id::{IdError, parse_uuid},
-    },
+    elements::{did::Did, id::IdError},
 };
 
 /// The app-private, stable handle for a [`User`].
@@ -94,7 +91,7 @@ impl User {
     /// use domain::elements::{did::Did, user::User};
     ///
     /// let user = User::recognize(Did::new("did:plc:example".to_string()), Utc::now());
-    /// assert_eq!(&**user.did, "did:plc:example");
+    /// assert_eq!(&**user.id, "did:plc:example");
     /// ```
     pub fn recognize(did: Did, now: DateTimeUtc) -> Self {
         Self {

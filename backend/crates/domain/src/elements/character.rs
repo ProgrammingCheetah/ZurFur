@@ -14,10 +14,7 @@
 
 use std::str::FromStr;
 
-use crate::elements::{
-    did::Did,
-    id::{IdError, parse_uuid},
-};
+use crate::elements::{did::Did, id::IdError};
 
 /// The app-private identity of a Character.
 ///

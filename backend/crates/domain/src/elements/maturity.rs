@@ -75,6 +75,7 @@ impl MaturityRating {
     }
 }
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum MaturityRatingError {
     UnknownRating,
 }

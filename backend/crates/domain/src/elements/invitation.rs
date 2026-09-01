@@ -223,12 +223,13 @@ impl Invitation {
     /// ```
     /// use chrono::Utc;
     /// use domain::elements::{
-    ///     account::AccountId, invitation::{Invitation, InvitationState}, role::Role, user::UserId,
+    ///     account::AccountId, did::Did, invitation::{Invitation, InvitationState}, role::Role,
+    ///     user::UserId,
     /// };
     ///
-    /// let account = AccountId::new(uuid::Uuid::now_v7());
-    /// let invited = UserId::new(uuid::Uuid::now_v7());
-    /// let inviter = UserId::new(uuid::Uuid::now_v7());
+    /// let account = AccountId::new(Did::new("did:plc:acme".to_string()));
+    /// let invited = UserId::new(Did::new("did:plc:alice".to_string()));
+    /// let inviter = UserId::new(Did::new("did:plc:bob".to_string()));
     /// let invitation = Invitation::issue(account, invited, Role::Member, inviter, Utc::now());
     ///
     /// assert_eq!(invitation.state, InvitationState::Pending); // issued pending
@@ -269,15 +270,15 @@ impl Invitation {
     /// ```
     /// use chrono::Utc;
     /// use domain::elements::{
-    ///     account::AccountId, invitation::{Invitation, InvitationError, InvitationState},
+    ///     account::AccountId, did::Did, invitation::{Invitation, InvitationError, InvitationState},
     ///     role::Role, user::UserId,
     /// };
     ///
     /// let mut invitation = Invitation::issue(
-    ///     AccountId::new(uuid::Uuid::now_v7()),
-    ///     UserId::new(uuid::Uuid::now_v7()),
+    ///     AccountId::new(Did::new("did:plc:acme".to_string())),
+    ///     UserId::new(Did::new("did:plc:alice".to_string())),
     ///     Role::Member,
-    ///     UserId::new(uuid::Uuid::now_v7()),
+    ///     UserId::new(Did::new("did:plc:bob".to_string())),
     ///     Utc::now(),
     /// );
     /// assert!(invitation.revoke(Utc::now()).is_ok());
@@ -298,14 +299,15 @@ impl Invitation {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::elements::did::Did;
     use chrono::{Duration, Utc};
 
     fn account() -> AccountId {
-        AccountId::new(uuid::Uuid::now_v7())
+        AccountId::new(Did::new(format!("did:plc:{}", uuid::Uuid::now_v7())))
     }
 
     fn user() -> UserId {
-        UserId::new(uuid::Uuid::now_v7())
+        UserId::new(Did::new(format!("did:plc:{}", uuid::Uuid::now_v7())))
     }
 
     // AC3 — "a pending invitation records the invited User, the Account, the
@@ -316,7 +318,13 @@ mod tests {
         let (account, invited, inviter) = (account(), user(), user());
         let now = Utc::now();
 
-        let invitation = Invitation::issue(account, invited, Role::Admin, inviter, now);
+        let invitation = Invitation::issue(
+            account.clone(),
+            invited.clone(),
+            Role::Admin,
+            inviter.clone(),
+            now,
+        );
 
         assert_eq!(invitation.account, account);
         assert_eq!(invitation.invited_user, invited);
