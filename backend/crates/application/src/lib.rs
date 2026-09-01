@@ -52,8 +52,11 @@
 //! an injected `now`, its timer left to the driver.
 
 pub mod account;
+pub mod app;
 pub mod commission;
+pub(crate) mod ports;
 mod transaction;
 pub mod user;
 
+pub use app::{App, MissingPort, Ports};
 pub use transaction::transaction;

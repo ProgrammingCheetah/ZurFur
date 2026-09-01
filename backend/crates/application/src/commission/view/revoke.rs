@@ -9,54 +9,51 @@ use domain::{
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
+    commission::{CommissionError, CommissionPorts, CommissionResult, view::View},
+    ports::WithPorts,
     transaction,
 };
 
 pub struct Command {
     pub actor_id: UserId,
+    pub target_user_id: UserId,
     pub commission_id: CommissionId,
 }
-pub struct Output {
-    pub commission_id: CommissionId,
-}
+pub struct Output;
 
-impl Commissions<'_> {
-    pub async fn unarchive(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
+impl View<'_> {
+    pub async fn revoke(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let ports = self.ports();
         let Command {
             actor_id,
+            target_user_id,
             commission_id,
         } = cmd;
+        let mut uow = self.ports().database.begin().await?;
+        let target_user = uow.users().provision(&target_user_id).await?;
         let commission = ports
             .commissions
             .find(&commission_id)
             .await?
+            .filter(|c| c.is_owned_by(&actor_id))
             .ok_or(CommissionError::CommissionNotFound)?;
-
-        if !commission.is_archived() {
-            return Err(CommissionError::CommissionAlreadyAtState);
-        }
-
-        if actor_id != commission.owner_id {
-            return Err(CommissionError::InsufficientPermissions);
-        }
 
         let entry = NewChangelogEntry::event(
             commission.id,
-            ChangelogEntryKind::Unarchived,
+            ChangelogEntryKind::ViewGrantRevoked,
             actor_id,
-            json!({ "title": commission.title.as_str() }),
+            json!({
+                "target_id": target_user.id,
+
+            }),
             now,
         );
-        let mut uow = self.ports().database.begin().await?;
+
         uow.commissions()
-            .set_archived(&commission.id, Some(now))
+            .revoke_view(&commission.id, &target_user.id)
             .await?;
         uow.changelog().append(&entry).await?;
         uow.commit().await?;
-        Ok(Output {
-            commission_id: commission.id,
-        })
+        Ok(Output)
     }
 }

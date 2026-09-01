@@ -12,51 +12,43 @@ use domain::{
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult},
+    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
     transaction,
 };
 
-pub struct CreateCommissionCommand {
+pub struct Command {
     pub actor_id: UserId,
     pub title: CommissionTitle,
     pub maturity: Option<Maturity>,
     pub deadline: Option<DateTimeUtc>,
 }
-pub struct CreateCommissionResult {
+pub struct Output {
     pub id: CommissionId,
 }
 
-pub async fn create(
-    command: CreateCommissionCommand,
-    ports: CommissionPorts<'_>,
-    now: DateTimeUtc,
-) -> CommissionResult<CreateCommissionResult> {
-    let Some(actor) = ports
-        .users
-        .find_by_did(&command.actor_id)
-        .await
-        .map_err(CommissionError::Infrastructure)?
-    else {
-        return Err(CommissionError::UserNotFound);
-    };
-    let mut commission = Commission::create(command.title, actor.id.clone(), now, command.deadline);
-    commission.maturity = command.maturity;
-    let entry = NewChangelogEntry::event(
-        commission.id,
-        ChangelogEntryKind::Created,
-        actor.id,
-        json!({ "title": commission.title.as_str() }),
-        now,
-    );
+impl Commissions<'_> {
+    pub async fn create(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
+        let Command {
+            actor_id,
+            title,
+            maturity,
+            deadline,
+        } = cmd;
 
-    let result = transaction(ports.database, async move |uow: &mut dyn UnitOfWork| {
+        let mut commission = Commission::create(title, actor_id.clone(), now, deadline);
+        commission.maturity = maturity;
+        let entry = NewChangelogEntry::event(
+            commission.id,
+            ChangelogEntryKind::Created,
+            actor_id,
+            json!({ "title": commission.title.as_str() }),
+            now,
+        );
+
+        let mut uow = self.ports().database.begin().await?;
         uow.commissions().create(&commission).await?;
         uow.changelog().append(&entry).await?;
-        Ok(commission)
-    })
-    .await
-    .map(|c| CreateCommissionResult { id: c.id })
-    .map_err(CommissionError::Infrastructure)?;
 
-    Ok(result)
+        Ok(Output { id: commission.id })
+    }
 }

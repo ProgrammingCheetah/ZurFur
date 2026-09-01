@@ -1,52 +1,57 @@
 use domain::{
-    elements::{commission::CommissionId, user::UserId},
+    elements::{
+        commission::{Commission, CommissionId},
+        user::UserId,
+    },
     ports::UnitOfWork,
 };
 
 use crate::{
-    commission::{
-        CommissionError, CommissionPorts, CommissionResult,
-        getters::{get_commission, get_user},
-    },
+    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
     transaction,
 };
 
-pub enum DeleteOutcome {
+pub enum Outcome {
     Deleted,
     HasFacts,
 }
-pub struct DeleteCommissionCommand {
+pub struct Command {
     pub actor_id: UserId,
     pub commission_id: CommissionId,
 }
-pub struct DeleteCommissionResult {
-    pub outcome: DeleteOutcome,
+pub struct Output {
+    pub outcome: Outcome,
 }
 
-pub async fn delete(
-    command: DeleteCommissionCommand,
-    ports: CommissionPorts<'_>,
-) -> CommissionResult<DeleteCommissionResult> {
-    let user = get_user(command.actor_id, &ports).await?;
-    let commission = get_commission(command.commission_id, &ports).await?;
+impl Commissions<'_> {
+    pub async fn delete(&self, cmd: Command) -> CommissionResult<Output> {
+        let ports = self.ports();
+        let Command {
+            actor_id,
+            commission_id,
+        } = cmd;
+        let commission = ports
+            .commissions
+            .find(&commission_id)
+            .await?
+            .filter(|c| c.is_owned_by(&actor_id))
+            .ok_or(CommissionError::CommissionNotFound)?;
 
-    if !commission.is_owned_by(&user.id) {
-        return Err(CommissionError::InsufficientPermissions);
-    };
-
-    let outcome = transaction(ports.database, async move |uow: &mut dyn UnitOfWork| {
+        let mut uow = self.ports().database.begin().await?;
         if uow
             .commissions()
-            .commission_has_facts(commission.id)
+            .commission_has_facts(&commission.id)
             .await?
         {
-            return Ok(DeleteOutcome::HasFacts);
+            return Ok(Output {
+                outcome: Outcome::HasFacts,
+            });
         }
-        uow.commissions().delete(commission.id).await?;
-        Ok(DeleteOutcome::Deleted)
-    })
-    .await
-    .map_err(CommissionError::Infrastructure)?;
+        uow.commissions().delete(&commission.id).await?;
 
-    Ok(DeleteCommissionResult { outcome })
+        uow.commit().await?;
+        Ok(Output {
+            outcome: Outcome::Deleted,
+        })
+    }
 }

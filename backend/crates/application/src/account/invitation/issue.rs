@@ -1,0 +1,101 @@
+use domain::{
+    datetime::DateTimeUtc,
+    elements::{
+        account::AccountId,
+        invitation::{Invitation, InvitationId, InvitationState},
+        role::Role,
+        user::UserId,
+    },
+    ports::UnitOfWork,
+};
+
+use crate::{
+    account::{AccountError, AccountPorts, AccountResult, Accounts, invitation::Invitations},
+    ports::WithPorts,
+    transaction,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Command {
+    pub account_id: AccountId,
+    pub target_id: UserId,
+    pub actor_id: UserId,
+    pub role: Role,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InviteOutcome {
+    Minted,
+    AlreadyPending,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Output {
+    pub outcome: InviteOutcome,
+    pub invitation_id: InvitationId,
+    pub account_id: AccountId,
+    pub role: Role,
+    pub state: InvitationState,
+    pub target_id: UserId,
+}
+
+impl Invitations<'_> {
+    pub async fn issue(&self, cmd: Command, now: DateTimeUtc) -> AccountResult<Output> {
+        let ports = self.ports();
+        let Command {
+            account_id,
+            target_id,
+            actor_id,
+            role,
+        } = cmd;
+        ports
+            .accounts
+            .role_of(&actor_id, &account_id)
+            .await?
+            .filter(|r| r.can_grant(&role))
+            .ok_or(AccountError::IncorrectRole)?;
+        let mut uow = self.ports().database.begin().await?;
+        let target = uow.users().provision(&target_id).await?;
+        if ports
+            .accounts
+            .role_of(&target.id, &account_id)
+            .await?
+            .is_some()
+        {
+            return Err(AccountError::AlreadyMember);
+        };
+
+        if let Some(existing_invitation) = ports
+            .accounts
+            .find_pending_invitation(&account_id, &target.id)
+            .await?
+        {
+            return Ok(Output {
+                account_id,
+                invitation_id: existing_invitation.id,
+                outcome: InviteOutcome::AlreadyPending,
+                role: existing_invitation.role,
+                state: existing_invitation.state,
+                target_id: target.id,
+            });
+        }
+
+        let invitation = Invitation::issue(account_id, target.id, role, actor_id, now);
+
+        let stored = uow.accounts().create_invitation(&invitation).await?;
+
+        let outcome = if invitation.id == stored.id {
+            InviteOutcome::Minted
+        } else {
+            InviteOutcome::AlreadyPending
+        };
+
+        Ok(Output {
+            outcome,
+            invitation_id: stored.id,
+            account_id: stored.account,
+            role: stored.role,
+            state: stored.state,
+            target_id: stored.invited_user,
+        })
+    }
+}

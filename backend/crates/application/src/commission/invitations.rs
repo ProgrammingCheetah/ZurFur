@@ -1,19 +1,20 @@
 use crate::{commission::Commissions, ports::WithPorts};
 
-pub mod read;
+pub mod issue;
+pub mod revoke;
 
-pub struct Changelog<'a> {
+pub struct Invitations<'a> {
     commissions: &'a Commissions<'a>,
 }
 
-impl<'a> WithPorts<'a> for Changelog<'a> {
+impl<'a> WithPorts<'a> for Invitations<'a> {
     fn ports(&self) -> &'a crate::Ports {
         self.commissions.ports()
     }
 }
 
 impl<'a> Commissions<'a> {
-    pub fn changelog(&'a self) -> Changelog<'a> {
-        Changelog { commissions: self }
+    pub fn invitations(&'a self) -> Invitations<'a> {
+        Invitations { commissions: self }
     }
 }

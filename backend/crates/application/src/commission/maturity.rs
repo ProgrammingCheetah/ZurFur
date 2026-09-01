@@ -1,19 +1,19 @@
 use crate::{commission::Commissions, ports::WithPorts};
 
-pub mod read;
+pub mod set;
 
-pub struct Changelog<'a> {
+pub struct Maturity<'a> {
     commissions: &'a Commissions<'a>,
 }
 
-impl<'a> WithPorts<'a> for Changelog<'a> {
+impl<'a> WithPorts<'a> for Maturity<'a> {
     fn ports(&self) -> &'a crate::Ports {
         self.commissions.ports()
     }
 }
 
 impl<'a> Commissions<'a> {
-    pub fn changelog(&'a self) -> Changelog<'a> {
-        Changelog { commissions: self }
+    pub fn maturity(&'a self) -> Maturity<'a> {
+        Maturity { commissions: self }
     }
 }

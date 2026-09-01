@@ -18,33 +18,85 @@
 
 use domain::{
     datetime::DateTimeUtc,
-    elements::commission::{ChangelogEntryKind, NewChangelogEntry},
-    ports::{ChangelogStore, CommissionStore, Database, DidMinter, UnitOfWork, UserStore},
+    elements::commission::{
+        ChangelogEntryKind, Commission, FileNameError, MarkupError, NewChangelogEntry,
+    },
+    ports::{
+        AccountStore, ChangelogStore, CommissionStore, Database, DidMinter, FileStore, UnitOfWork,
+        UserStore,
+    },
 };
 use serde_json::json;
 
-use crate::transaction;
+use crate::{ports::WithPorts, transaction};
 pub mod archive;
 pub mod changelog;
 pub mod create;
 pub mod deadline;
 pub mod delete;
 pub mod files;
+pub mod invitations;
+pub mod list;
+pub mod markup;
+pub mod maturity;
+pub mod notes;
+pub mod place;
+pub mod seats;
+pub mod slots;
+pub mod status;
 pub mod unarchive;
+pub mod view;
 
-pub(crate) mod getters;
+/// Commission use cases, with the ports already bound. A namespace, not a
+/// mediator: every use-case file adds its own `impl Commissions<'_>` block
+/// holding exactly one use case; helpers stay free functions.
+#[derive(Clone, Copy)]
+pub struct Commissions<'a> {
+    ports: &'a crate::Ports,
+}
 
-pub use archive::archive;
-pub use create::create;
-pub use delete::delete;
-pub use unarchive::unarchive;
+impl<'a> Commissions<'a> {
+    /// Bind the namespace to resolved dependencies.
+    pub fn new(ports: &'a crate::Ports) -> Self {
+        Self { ports }
+    }
+
+    /// The bag this namespace was built over.
+    pub fn ports(&self) -> &'a crate::Ports {
+        self.ports
+    }
+}
+
+impl<'a> TryFrom<&'a crate::Ports> for Commissions<'a> {
+    type Error = crate::MissingPort;
+
+    /// Fails when the bag carries no blob store.
+    fn try_from(ports: &'a crate::Ports) -> Result<Self, Self::Error> {
+        Ok(Self::new(ports))
+    }
+}
+
+impl<'a> From<&'a crate::App> for Commissions<'a> {
+    /// Panics on a bag without a blob store — the composition root's contract.
+    fn from(app: &'a crate::App) -> Self {
+        Self::try_from(app.ports()).expect("composition root supplies the blob store")
+    }
+}
+
+impl<'a> WithPorts<'a> for Commissions<'a> {
+    fn ports(&self) -> &'a crate::Ports {
+        self.ports
+    }
+}
 
 pub struct CommissionPorts<'a> {
     pub commissions: &'a dyn CommissionStore,
     pub changelog: &'a dyn ChangelogStore,
     pub users: &'a dyn UserStore,
+    pub accounts: &'a dyn AccountStore,
     pub did_minter: &'a dyn DidMinter,
     pub database: &'a dyn Database,
+    pub files: &'a dyn FileStore,
 }
 
 pub type CommissionResult<T> = Result<T, CommissionError>;
@@ -67,6 +119,25 @@ pub enum CommissionError {
     InsufficientPermissions,
     NotAMember,
     InvalidStateRequested,
+    /// The uploaded filename failed [`FileName`](domain::elements::commission::FileName)'s
+    /// validation gate; the cause rides [`source`](std::error::Error::source).
+    InvalidFileName(FileNameError),
+    /// The uploaded content exceeded the caller's configured upload cap.
+    FileTooLarge,
+    /// The uploaded content was zero bytes.
+    FileEmpty,
+    /// No such file entry on this commission.
+    FileNotFound,
+    FileBlobMissing,
+    SeatNotFound,
+    /// The annotation failed [`Markup`](domain::elements::commission::Markup)'s
+    /// numeric gate — a coordinate outside normalized 0–1 space, a degenerate
+    /// extent, a blank or over-long comment. The cause rides
+    /// [`source`](std::error::Error::source), mirroring
+    /// [`InvalidFileName`](Self::InvalidFileName).
+    InvalidMarkup(MarkupError),
+    IncorrectContent,
+    AccountNotFound,
 }
 
 impl std::fmt::Display for CommissionError {
@@ -79,7 +150,23 @@ impl std::fmt::Display for CommissionError {
             Self::InsufficientPermissions => write!(f, "Insufficient permissions to do this"),
             Self::NotAMember => write!(f, "Not a member of this commission"),
             Self::InvalidStateRequested => write!(f, "The state couldn't get set"),
+            Self::InvalidFileName(_) => write!(f, "The filename is invalid"),
+            Self::FileTooLarge => write!(f, "The file exceeds the upload limit"),
+            Self::FileEmpty => write!(f, "The uploaded file is empty"),
+            Self::FileNotFound => write!(f, "The file could not be found"),
+            Self::FileBlobMissing => write!(f, "The blob seems to be missing"),
+            Self::SeatNotFound => write!(f, "Seat not found"),
+            Self::InvalidMarkup(_) => write!(f, "This markup is not valid"),
+            Self::IncorrectContent => write!(f, "No content"),
+            Self::AccountNotFound => write!(f, "Account not found"),
         }
+    }
+}
+
+// FIXME: Claude -- Check that htis is correct
+impl From<anyhow::Error> for CommissionError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Infrastructure(err)
     }
 }
 
@@ -87,6 +174,8 @@ impl std::error::Error for CommissionError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             Self::Infrastructure(e) => Some(e.as_ref()),
+            Self::InvalidFileName(e) => Some(e),
+            Self::InvalidMarkup(e) => Some(e),
             _ => None,
         }
     }

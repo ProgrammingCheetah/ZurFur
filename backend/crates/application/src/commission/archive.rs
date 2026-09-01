@@ -9,65 +9,52 @@ use domain::{
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult},
+    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
     transaction,
 };
 
-pub struct ArchiveCommissionCommand {
+pub struct Command {
     pub actor_id: UserId,
     pub commission_id: CommissionId,
 }
-pub struct ArchiveCommissionResult;
+pub struct Outcome;
 
-pub async fn archive(
-    command: ArchiveCommissionCommand,
-    ports: CommissionPorts<'_>,
-    now: DateTimeUtc,
-) -> CommissionResult<ArchiveCommissionResult> {
-    let Some(user) = ports
-        .users
-        .find_by_did(&command.actor_id)
-        .await
-        .map_err(CommissionError::Infrastructure)?
-    else {
-        return Err(CommissionError::UserNotFound);
-    };
+impl Commissions<'_> {
+    pub async fn archive(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Outcome> {
+        let ports = self.ports();
+        let Command {
+            actor_id,
+            commission_id,
+        } = cmd;
+        let commission = ports
+            .commissions
+            .find(&commission_id)
+            .await?
+            .ok_or(CommissionError::CommissionNotFound)?;
 
-    let Some(commission) = ports
-        .commissions
-        .find(command.commission_id)
-        .await
-        .map_err(CommissionError::Infrastructure)?
-    else {
-        return Err(CommissionError::CommissionNotFound);
-    };
+        if commission.is_archived() {
+            return Err(CommissionError::CommissionAlreadyAtState);
+        }
 
-    if commission.is_archived() {
-        return Err(CommissionError::CommissionAlreadyAtState);
-    }
+        if actor_id != commission.owner_id {
+            return Err(CommissionError::InsufficientPermissions);
+        }
 
-    if user.id != commission.owner_id {
-        return Err(CommissionError::InsufficientPermissions);
-    }
+        // FIXME: This needs to be called using ports.changelog().event().new()
+        let entry = NewChangelogEntry::event(
+            commission.id,
+            ChangelogEntryKind::Archived,
+            actor_id,
+            json!({ "title": commission.title.as_str() }),
+            now,
+        );
 
-    let entry = NewChangelogEntry::event(
-        commission.id,
-        ChangelogEntryKind::Archived,
-        user.id,
-        json!({ "title": commission.title.as_str() }),
-        now,
-    );
-
-    let result = transaction(ports.database, async move |uow: &mut dyn UnitOfWork| {
+        let mut uow = self.ports().database.begin().await?;
         uow.commissions()
-            .set_archived(commission.id, Some(now))
+            .set_archived(&commission.id, Some(now))
             .await?;
         uow.changelog().append(&entry).await?;
-        Ok(())
-    })
-    .await
-    .map(|_| ArchiveCommissionResult)
-    .map_err(CommissionError::Infrastructure)?;
-
-    Ok(result)
+        uow.commit().await?;
+        Ok(Outcome)
+    }
 }

@@ -9,7 +9,8 @@ use domain::{
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
+    commission::{CommissionError, CommissionPorts, CommissionResult, deadline::Deadline},
+    ports::WithPorts,
     transaction,
 };
 
@@ -17,12 +18,11 @@ pub struct Command {
     pub actor_id: UserId,
     pub commission_id: CommissionId,
 }
-pub struct Output {
-    pub commission_id: CommissionId,
-}
 
-impl Commissions<'_> {
-    pub async fn unarchive(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
+pub struct Output;
+
+impl Deadline<'_> {
+    pub async fn clear(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let ports = self.ports();
         let Command {
             actor_id,
@@ -34,29 +34,31 @@ impl Commissions<'_> {
             .await?
             .ok_or(CommissionError::CommissionNotFound)?;
 
-        if !commission.is_archived() {
-            return Err(CommissionError::CommissionAlreadyAtState);
+        if !ports
+            .commissions
+            .is_participant(&commission.id, &actor_id)
+            .await
+            .map_err(CommissionError::Infrastructure)?
+        {
+            return Err(CommissionError::NotAMember);
         }
 
-        if actor_id != commission.owner_id {
-            return Err(CommissionError::InsufficientPermissions);
+        if commission.deadline.is_none() {
+            return Err(CommissionError::CommissionAlreadyAtState);
         }
 
         let entry = NewChangelogEntry::event(
             commission.id,
-            ChangelogEntryKind::Unarchived,
+            ChangelogEntryKind::DeadlineSet,
             actor_id,
-            json!({ "title": commission.title.as_str() }),
+            json!({ "from": commission.deadline, "to": None as Option<DateTimeUtc>}),
             now,
         );
         let mut uow = self.ports().database.begin().await?;
-        uow.commissions()
-            .set_archived(&commission.id, Some(now))
-            .await?;
+        uow.commissions().set_deadline(&commission.id, None).await?;
         uow.changelog().append(&entry).await?;
+
         uow.commit().await?;
-        Ok(Output {
-            commission_id: commission.id,
-        })
+        Ok(Output)
     }
 }
