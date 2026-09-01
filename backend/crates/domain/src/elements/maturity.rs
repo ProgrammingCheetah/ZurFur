@@ -75,10 +75,26 @@ impl MaturityRating {
     }
 }
 
+/// Why a token was rejected as a [`MaturityRating`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum MaturityRatingError {
+    /// The token is outside the four-value vocabulary. Example: `"explicit"`
+    /// (the superseded pre-DD name) or `"porn"` (a derived *label*, never a
+    /// rating).
     UnknownRating,
 }
+
+impl std::fmt::Display for MaturityRatingError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownRating => {
+                write!(f, "expected one of: safe, suggestive, nudity, adult")
+            }
+        }
+    }
+}
+
+impl std::error::Error for MaturityRatingError {}
 
 impl TryFrom<&str> for MaturityRating {
     type Error = MaturityRatingError;
@@ -86,7 +102,8 @@ impl TryFrom<&str> for MaturityRating {
     /// Resolve a stored/submitted token back to its rating — an explicit `match`
     /// on the closed vocabulary, the mirror of [`as_str`](Self::as_str) and the
     /// same shape as [`LifecycleStep`] / [`Visibility`]. A token outside the four
-    /// values is [`UnknownMaturityRating`], never a silent default.
+    /// values is [`UnknownRating`](MaturityRatingError::UnknownRating), never a
+    /// silent default.
     ///
     /// [`LifecycleStep`]: crate::elements::commission::LifecycleStep
     /// [`Visibility`]: crate::elements::commission::Visibility

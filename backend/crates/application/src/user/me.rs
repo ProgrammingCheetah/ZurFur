@@ -22,7 +22,7 @@ pub struct Output {
     pub profile: Option<MeProfile>,
 }
 
-/// The public-profile facts `me` surfaces. No `did` — it's on [`MeResult`].
+/// The public-profile facts `me` surfaces. No `did` — it's on [`Output`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeProfile {
     pub handle: String,

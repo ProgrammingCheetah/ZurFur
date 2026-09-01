@@ -15,19 +15,20 @@ use crate::{
     elements::{did::Did, id::IdError},
 };
 
-/// The app-private, stable handle for a [`User`].
+/// The identity of a [`User`]: their [`Did`], wrapped so a user id cannot be
+/// passed where some other actor's id is wanted.
 ///
-/// A UUIDv7 wrapped for type safety, so a user id can't be passed where some
-/// other id is wanted. Public callers (sessions, foreign keys) hold this; the
-/// public-facing identity is the user's [`Did`]. Deref exposes the inner UUID.
+/// The DID *is* the key — there is no separate private surrogate (DD
+/// `57081857`). `Deref` exposes the inner [`Did`].
 ///
 /// References: [`new`](UserId::new), [`User::recognize`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UserId(Did);
 
 impl UserId {
-    /// Rebuilds an id from its stored UUID — e.g. a row read back from Postgres.
-    /// Minting a *fresh* id happens in [`User::recognize`], not here.
+    /// Wraps a [`Did`] as a user id — a session subject, a row read back from
+    /// Postgres, a DID freshly minted for this actor. Deterministic: the same
+    /// DID always yields the same id.
     pub fn new(id: Did) -> Self {
         Self(id)
     }
@@ -61,8 +62,8 @@ impl From<Did> for UserId {
     }
 }
 
-/// A recognized visitor: the binding of a public [`Did`] to an app-private
-/// [`UserId`], stamped with when Zurfur first saw it.
+/// A recognized visitor: their [`Did`] as a [`UserId`], stamped with when
+/// Zurfur first saw it.
 ///
 /// One DID maps to one User forever (see [`crate::ports::UserWrites::provision`]).
 /// The struct holds no profile data — handle, display name, and avatar are
@@ -71,20 +72,20 @@ impl From<Did> for UserId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     pub id: UserId,
-    /// When Zurfur first recognized this DID. Stored as an explicit domain fact,
-    /// not derived from the UUIDv7 id: import flows can make recognition time
-    /// diverge from key-minting time.
+    /// When Zurfur first recognized this DID. Stored as an explicit domain
+    /// fact: the id carries no timestamp, and import flows can make recognition
+    /// time diverge from when the DID itself was minted.
     pub created_at: DateTimeUtc,
 }
 
 impl User {
-    /// The act of first recognition: mint a fresh UUIDv7 key and stamp the
+    /// The act of first recognition: key the User on `did` and stamp the
     /// moment. `now` is injected so tests and import flows stay deterministic.
     ///
     /// Pure: this only builds the value — persisting it (and enforcing the
     /// one-DID-one-User rule) is [`crate::ports::UserWrites::provision`]'s job.
-    /// Each call mints a *new* id, so calling it twice for the same DID yields
-    /// two distinct Users; go through the repo to recognize idempotently.
+    /// The id is the DID, so calling it twice for one DID yields two Users that
+    /// differ only in `created_at`; go through the repo to recognize idempotently.
     ///
     /// ```
     /// use chrono::Utc;

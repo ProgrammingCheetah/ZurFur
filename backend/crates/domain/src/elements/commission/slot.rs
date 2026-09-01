@@ -68,8 +68,10 @@ impl std::fmt::Display for SlotTitleError {
 
 impl std::error::Error for SlotTitleError {}
 
-/// Replaced the `TryFrom<String>`. If benchmarks start messing with this one,
-/// reimplement the `TryFrom<String>`, as that one does not remake memory
+/// Parses a Slot title: trimmed, then non-empty or [`SlotTitleError::Empty`].
+/// `FromStr` rather than `TryFrom<String>` so `"…".parse()` reads naturally;
+/// the trade is one allocation an owned-input impl could have reused, which
+/// only matters if titles are ever parsed in bulk.
 impl FromStr for SlotTitle {
     type Err = SlotTitleError;
 
@@ -89,7 +91,7 @@ impl FromStr for SlotTitle {
                     // onto the only existing variant rather than panic.
                     debug_assert!(
                         false,
-                        "SlotTitle's TryFrom chain only applies trimmed().non_empty()"
+                        "SlotTitle's FromStr chain only applies trimmed().non_empty()"
                     );
                     SlotTitleError::Empty
                 }

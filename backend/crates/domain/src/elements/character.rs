@@ -16,13 +16,13 @@ use std::str::FromStr;
 
 use crate::elements::{did::Did, id::IdError};
 
-/// The app-private identity of a Character.
+/// The identity of a Character: its own [`Did`], wrapped for type safety.
 ///
-/// Stub: a UUIDv7 wrapped for type safety. Note the Character's *public*
-/// identity is a [`crate::elements::did::Did`] (per DESIGN/Character); this is
-/// the private handle. The entity itself is not modelled here yet; the
-/// commission [`Slot`](crate::elements::commission::Slot) it will occupy gains
-/// its occupant reference in the same change that models assignment.
+/// Stub. Every actor mints a DID and the DID *is* the key, Characters included
+/// — there is no separate private id (DD `57081857`). The entity itself is not
+/// modelled here yet; the commission
+/// [`Slot`](crate::elements::commission::Slot) it will occupy gains its
+/// occupant reference in the same change that models assignment.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CharacterId(Did);
 

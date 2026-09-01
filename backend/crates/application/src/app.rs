@@ -13,9 +13,9 @@ use crate::{account::Accounts, commission::Commissions, user::Users};
 
 /// Every port the orchestrator may use, built once by the composition root.
 /// Reads are pool-side (outside a unit); writes and in-unit reads come from
-/// [`Database::begin`]. Optional entries are adapters a driver profile may lack
-/// (a CLI without a blob store); a namespace that needs one fails to build
-/// with [`MissingPort`] rather than at first use.
+/// [`Database::begin`]. Every entry is **required**: a driver profile that
+/// cannot supply one does not assemble a [`Ports`] at all, so no namespace can
+/// discover a missing port at first use.
 pub struct Ports {
     pub database: Arc<dyn Database>,
     pub users: Arc<dyn UserStore>,
@@ -46,13 +46,12 @@ impl App {
         &self.ports
     }
 
-    /// Commission use cases. Panics if the composition root omitted the blob
-    /// store — a boot-time misconfiguration, not a runtime path.
+    /// Commission use cases, with the bag's ports already bound.
     pub fn commissions(&self) -> Commissions<'_> {
         Commissions::from(self)
     }
 
-    /// Account use cases. Panics if the composition root omitted the DID minter.
+    /// Account use cases, with the bag's ports already bound.
     pub fn accounts(&self) -> Accounts<'_> {
         Accounts::from(self)
     }
@@ -63,7 +62,11 @@ impl App {
     }
 }
 
-/// A namespace needs an optional port the composition root did not supply.
+/// A namespace needs a port the composition root did not supply.
+///
+/// Currently **unreachable**: every [`Ports`] entry is required, so both
+/// `TryFrom<&Ports>` impls always succeed. The type is kept as the home for the
+/// first port a driver profile is allowed to omit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MissingPort {
     Files,
