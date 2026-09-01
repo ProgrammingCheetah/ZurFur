@@ -1,24 +1,10 @@
 //! Use cases about [`Account`]s.
 
-use domain::{
-    datetime::DateTimeUtc,
-    elements::{
-        account::{Account, AccountId, AccountName, ListingScope},
-        did::Did,
-        handle::{Handle, HandleDomain},
-        invitation::{Invitation, InvitationId, InvitationState},
-        role::{Role, RoleAlias},
-        user::{User, UserId},
-        user_account::UserAccount,
-    },
-    ports::{
-        AccountStore, Database, DidBelongsToAnotherActor, DidMinter, HandleTaken, UnitOfWork,
-        UserStore,
-    },
+use domain::ports::{
+    AccountStore, Database, DidBelongsToAnotherActor, DidMinter, HandleTaken, UserStore,
 };
-use shared::settings::{HANDLE_CHANGE_LIMIT, HANDLE_CHANGE_WINDOW, HANDLE_QUARANTINE_WINDOW};
 
-use crate::{ports::WithPorts, transaction};
+use crate::ports::WithPorts;
 
 pub mod change_handle;
 pub mod create;
@@ -29,14 +15,6 @@ pub mod leave;
 pub mod list;
 pub mod role;
 pub mod transfer_ownership;
-/// Why an account use case could not answer. One enum per module: a driver
-/// maps each variant to its own surface (problem+json, `{class, code}`).
-///
-/// `Display` is deliberately terse and never interpolates the cause — a
-/// store error can carry SQL, constraint names or custody paths, and a
-/// driver printing `{err}` must not leak them. The cause stays on
-/// [`source`](std::error::Error::source) for tracing.
-
 /// Account use cases, with the ports already bound. A namespace, not a
 /// mediator: one `impl Accounts<'_>` block per use-case file, one use case each.
 #[derive(Clone, Copy)]
@@ -85,6 +63,13 @@ impl<'a> From<&'a crate::App> for Accounts<'a> {
     }
 }
 
+/// Why an account use case could not answer. One enum per module: a driver
+/// maps each variant to its own surface (problem+json, `{class, code}`).
+///
+/// `Display` is deliberately terse and never interpolates the cause — a
+/// store error can carry SQL, constraint names or custody paths, and a
+/// driver printing `{err}` must not leak them. The cause stays on
+/// [`source`](std::error::Error::source) for tracing.
 #[derive(Debug)]
 pub enum AccountError {
     /// The handle is claimed — by a live account, a tombstoned one (the
@@ -181,9 +166,25 @@ impl std::error::Error for AccountError {
     }
 }
 
+/// The **one** place a store error becomes a use-case error.
+///
+/// Two store errors are typed precisely because the wire owes them a precise
+/// answer: [`HandleTaken`] is the store's own backstop against a handle that a
+/// pre-flight read could not see was spoken for (a soft-deleted account still
+/// holds its handle), and [`DidBelongsToAnotherActor`] is a DID already interned
+/// as a different kind of actor. Both are `409` state conflicts, and both
+/// degrade into a `500` if they are swallowed as infrastructure. Doing the
+/// translation here, on the `?` path every use case takes, is what keeps that
+/// from happening one call site at a time.
 impl From<anyhow::Error> for AccountError {
     fn from(err: anyhow::Error) -> Self {
-        Self::Infrastructure(err)
+        if err.downcast_ref::<HandleTaken>().is_some() {
+            Self::HandleTaken
+        } else if err.downcast_ref::<DidBelongsToAnotherActor>().is_some() {
+            Self::DidBelongsToAnotherActor
+        } else {
+            Self::Infrastructure(err)
+        }
     }
 }
 

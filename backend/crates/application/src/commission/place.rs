@@ -1,13 +1,9 @@
 use domain::{
     datetime::DateTimeUtc,
     elements::{account::AccountId, commission::CommissionId, user::UserId},
-    ports::{AccountStore, UnitOfWork},
 };
 
-use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
-    transaction,
-};
+use crate::commission::{CommissionError, CommissionResult, Commissions};
 
 pub struct Command {
     pub actor_id: UserId,
@@ -41,6 +37,7 @@ impl Commissions<'_> {
         uow.commissions()
             .place(&commission.id, &account.id, &actor_id, now)
             .await?;
+        uow.commit().await?;
 
         Ok(Output)
     }

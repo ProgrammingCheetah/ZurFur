@@ -1,15 +1,11 @@
-use domain::{
-    datetime::DateTimeUtc,
-    elements::{
-        account::{AccountId, AccountName, ListingScope},
-        did::Did,
-        handle::Handle,
-        role::{Role, RoleAlias},
-        user::UserId,
-    },
+use domain::elements::{
+    account::{AccountId, AccountName, ListingScope},
+    handle::Handle,
+    role::{Role, RoleAlias},
+    user::UserId,
 };
 
-use crate::account::{AccountPorts, AccountResult, Accounts, invitation::Invitations};
+use crate::account::{AccountResult, Accounts};
 
 pub struct Query {
     pub user_id: UserId,

@@ -6,15 +6,13 @@ use domain::{
         },
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, files::Files},
+    commission::{CommissionError, CommissionResult, files::Files},
     ports::WithPorts,
-    transaction,
 };
 
 /// `upload`'s input: the acting Participant, the target commission, and the
@@ -32,15 +30,14 @@ pub struct Output {
     pub id: FileKey,
 }
 
-/// Uploads a file entry: any Participant, any time, never a status side
-/// effect. Authorizes **before** a byte of `content` is read. `content` is
-/// capped at `max_upload_bytes` (+1, to prove an over-cap stream is over
-/// without buffering the whole overage); the blob write runs **before** the
-/// transaction (bytes cannot ride a Postgres unit of work), so a rejected
-/// upload's orphaned blob is deleted before answering. Commits the
-/// [`CommissionFile`] link and the `file_added` changelog entry atomically.
-
 impl Files<'_> {
+    /// Uploads a file entry: any Participant, any time, never a status side
+    /// effect. Authorizes **before** a byte of `content` is read. `content` is
+    /// capped at `max_upload_bytes` (+1, to prove an over-cap stream is over
+    /// without buffering the whole overage); the blob write runs **before** the
+    /// transaction (bytes cannot ride a Postgres unit of work), so a rejected
+    /// upload's orphaned blob is deleted before answering. Commits the
+    /// [`CommissionFile`] link and the `file_added` changelog entry atomically.
     pub async fn upload(
         &self,
         cmd: Command,

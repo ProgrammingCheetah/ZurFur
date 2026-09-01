@@ -4,14 +4,12 @@ use domain::{
         commission::{ChangelogEntryKind, CommissionId, GrantLevel, NewChangelogEntry},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, view::View},
+    commission::{CommissionError, CommissionResult, view::View},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -52,7 +50,6 @@ impl View<'_> {
             now,
         );
 
-        let mut uow = self.ports().database.begin().await?;
         uow.commissions()
             .grant_view(&commission.id, &target_user.id, level)
             .await?;

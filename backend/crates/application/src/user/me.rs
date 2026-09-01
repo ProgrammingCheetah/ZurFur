@@ -1,10 +1,12 @@
 use domain::{
-    elements::{did::Did, profile::Profile, user::UserId},
+    elements::{profile::Profile, user::UserId},
     ports::{ProfileCache, ProfileSource},
 };
 
 use crate::user::Users;
 
+/// `me`'s input: the caller whose identity to report. How `user_id` was
+/// established — a session, an identity file — is the driver's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MeQuery {
     pub user_id: UserId,

@@ -7,14 +7,12 @@ use domain::{
         },
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, seats::Seats},
+    commission::{CommissionResult, require_owner, seats::Seats},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -40,15 +38,7 @@ impl Seats<'_> {
             link,
             surface_address,
         } = cmd;
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::CommissionNotFound)?;
-
-        if !commission.is_owned_by(&actor_id) {
-            return Err(CommissionError::InsufficientPermissions);
-        };
+        let commission = require_owner(ports, &commission_id, &actor_id).await?;
 
         let seat = NewSeat::contributed_at(
             commission.id,

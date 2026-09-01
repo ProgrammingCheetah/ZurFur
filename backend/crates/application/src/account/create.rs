@@ -2,18 +2,13 @@ use domain::{
     datetime::DateTimeUtc,
     elements::{
         account::{Account, AccountId, AccountName},
-        did::Did,
         handle::{Handle, HandleDomain},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use shared::settings::HANDLE_QUARANTINE_WINDOW;
 
-use crate::{
-    account::{AccountError, AccountPorts, AccountResult, Accounts},
-    transaction,
-};
+use crate::account::{AccountError, AccountResult, Accounts};
 
 pub struct Command {
     pub actor_id: UserId,

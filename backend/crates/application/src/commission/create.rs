@@ -7,14 +7,10 @@ use domain::{
         maturity::Maturity,
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
-use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
-    transaction,
-};
+use crate::commission::{CommissionResult, Commissions};
 
 pub struct Command {
     pub actor_id: UserId,
@@ -48,6 +44,7 @@ impl Commissions<'_> {
         let mut uow = self.ports().database.begin().await?;
         uow.commissions().create(&commission).await?;
         uow.changelog().append(&entry).await?;
+        uow.commit().await?;
 
         Ok(Output { id: commission.id })
     }

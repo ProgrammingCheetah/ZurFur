@@ -22,14 +22,10 @@ use domain::{
         },
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
-use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
-    transaction,
-};
+use crate::commission::{CommissionError, CommissionResult, Commissions};
 
 /// `run`'s input: the annotating Participant, the commission whose review loop
 /// this is, the file entry being annotated, and the already-decoded annotation.

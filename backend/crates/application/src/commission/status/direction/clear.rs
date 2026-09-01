@@ -1,6 +1,6 @@
 use domain::datetime::DateTimeUtc;
 
-use crate::commission::{CommissionPorts, CommissionResult, status::direction::Direction};
+use crate::commission::{CommissionResult, status::direction::Direction};
 
 pub type Command = super::set::Command;
 

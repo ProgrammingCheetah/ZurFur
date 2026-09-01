@@ -1,5 +1,3 @@
-use domain::ports::DidMinter;
-
 use crate::{account::Accounts, ports::WithPorts};
 
 pub mod accept;

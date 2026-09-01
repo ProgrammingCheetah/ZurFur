@@ -1,12 +1,6 @@
-use domain::{
-    elements::{account::AccountId, role::Role, user::UserId},
-    ports::UnitOfWork,
-};
+use domain::elements::{account::AccountId, role::Role, user::UserId};
 
-use crate::{
-    account::{AccountError, AccountPorts, AccountResult, Accounts},
-    transaction,
-};
+use crate::account::{AccountError, AccountResult, Accounts};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command {

@@ -1,16 +1,8 @@
-use domain::{
-    datetime::DateTimeUtc,
-    elements::{
-        account::AccountId, commission::NewChangelogEntry, role::Role, user::UserId,
-        user_account::UserAccount,
-    },
-    ports::UnitOfWork,
-};
+use domain::elements::{account::AccountId, role::Role, user::UserId, user_account::UserAccount};
 
 use crate::{
-    account::{AccountError, AccountPorts, AccountResult, role::Roles},
+    account::{AccountError, AccountResult, role::Roles},
     ports::WithPorts,
-    transaction,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,13 +27,20 @@ impl Roles<'_> {
             actor_id,
             role,
         } = cmd;
-        if !matches!(role, Role::Owner) {
+        // Owner is the one role a grant may never mint: handing over ownership
+        // is a *transfer*, with its own use case and its own rules ("an Owner
+        // never has a parent, even when transferred"). The guard refused every
+        // role *except* Owner, which — since `can_grant` also never permits
+        // Owner — meant no grant of any kind could succeed.
+        if matches!(role, Role::Owner) {
             return Err(AccountError::IncorrectTransferOfAccount);
         };
 
-        let mut uow = self.ports().database.begin().await?;
-
-        let target = uow.users().provision(&target_id).await?;
+        ports
+            .accounts
+            .find(&account_id)
+            .await?
+            .ok_or(AccountError::AccountNotFound)?;
 
         let actor_role = ports
             .accounts
@@ -50,13 +49,17 @@ impl Roles<'_> {
             .filter(|r| r.can_grant(&role))
             .ok_or(AccountError::IncorrectRole)?;
 
-        uow.users().provision(&target.id).await?;
-
-        if let Some(current_role) = ports.accounts.role_of(&target.id, &account_id).await?
+        if let Some(current_role) = ports.accounts.role_of(&target_id, &account_id).await?
             && !actor_role.can_grant(&current_role)
         {
             return Err(AccountError::IncorrectRole);
         }
+
+        // Provisioning is a write, so it happens only once the actor's standing
+        // is settled: an unauthorized grant must not leave a User row behind for
+        // the DID it named.
+        let mut uow = self.ports().database.begin().await?;
+        let target = uow.users().provision(&target_id).await?;
 
         let member = UserAccount {
             user_id: target.id.clone(),

@@ -1,7 +1,4 @@
-use crate::{
-    commission::{Commissions, status::Status},
-    ports::WithPorts,
-};
+use crate::{commission::status::Status, ports::WithPorts};
 
 pub mod clear;
 pub mod set;

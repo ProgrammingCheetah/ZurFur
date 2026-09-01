@@ -4,16 +4,12 @@ use domain::{
         commission::{ChangelogEntryKind, CommissionId, DirectionStatus, NewChangelogEntry},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
 use crate::{
-    commission::{
-        CommissionError, CommissionPorts, CommissionResult, status::direction::Direction,
-    },
+    commission::{CommissionResult, require_participant, status::direction::Direction},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -31,19 +27,13 @@ impl Direction<'_> {
             commission_id,
             direction,
         } = cmd;
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .filter(|c| c.direction_status != direction)
-            .ok_or(CommissionError::CommissionNotFound)?;
+        // Authorize first, *then* notice the no-op: answering "already at that
+        // value" before the membership check would hand an outsider a different
+        // reply than the closed door gives, which is an existence oracle.
+        let commission = require_participant(ports, &commission_id, &user_id).await?;
 
-        if ports
-            .commissions
-            .is_participant(&commission.id, &user_id)
-            .await?
-        {
-            return Err(CommissionError::NotAMember);
+        if commission.direction_status == direction {
+            return Ok(Output);
         }
 
         let entry = NewChangelogEntry::event(
@@ -57,11 +47,15 @@ impl Direction<'_> {
             now,
         );
 
-        let mut uow = self.ports().database.begin().await?;
-        uow.commissions()
+        let mut uow = ports.database.begin().await?;
+        let mut commissions = uow.commissions();
+        let moved = commissions
             .set_direction_status(&commission.id, direction)
             .await?;
-        uow.changelog().append(&entry).await?;
+        drop(commissions);
+        if moved {
+            uow.changelog().append(&entry).await?;
+        }
         uow.commit().await?;
         Ok(Output)
     }

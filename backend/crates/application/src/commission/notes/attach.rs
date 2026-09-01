@@ -4,14 +4,12 @@ use domain::{
         commission::{CommissionId, NewChangelogEntry},
         user::UserId,
     },
-    ports::UnitOfWork,
     string_builder::StringBuilder,
 };
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, notes::Notes},
+    commission::{CommissionError, CommissionResult, notes::Notes},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {

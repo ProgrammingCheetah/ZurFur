@@ -2,19 +2,14 @@ use domain::{
     datetime::DateTimeUtc,
     elements::{
         account::{AccountId, AccountName},
-        did::Did,
         handle::{Handle, HandleDomain},
         role::Role,
         user::UserId,
     },
-    ports::{HandleTaken, UnitOfWork},
 };
 use shared::settings::{HANDLE_CHANGE_LIMIT, HANDLE_CHANGE_WINDOW, HANDLE_QUARANTINE_WINDOW};
 
-use crate::{
-    account::{AccountError, AccountPorts, AccountResult, Accounts},
-    transaction,
-};
+use crate::account::{AccountError, AccountResult, Accounts};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command {

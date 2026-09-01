@@ -1,20 +1,14 @@
 use domain::{
     datetime::DateTimeUtc,
     elements::{
-        commission::{ChangelogEntryKind, CommissionId, DeadlineStatus, NewChangelogEntry},
+        commission::{CommissionId, DeadlineStatus},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
-use serde_json::json;
 
 use crate::{
-    commission::{
-        CommissionError, CommissionPorts, CommissionResult,
-        deadline::{Deadline, DeadlineSetEventPayload, status::Status},
-    },
+    commission::{CommissionError, CommissionResult, deadline::status::Status},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -25,8 +19,13 @@ pub struct Command {
 pub struct Output;
 
 impl Status<'_> {
+    /// Flag the commission as slipping — the manual Participant act.
+    ///
+    /// `Delayed` is the only value a hand may set: `Late` is the system's word,
+    /// written by the deadline sweep, and asking for it is a malformed request
+    /// rather than a permission problem. Re-flagging an already-Delayed
+    /// commission is an idempotent no-op.
     pub async fn set(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
-        let ports = self.ports();
         let Command {
             actor_id,
             commission_id,
@@ -34,47 +33,10 @@ impl Status<'_> {
         } = cmd;
         match status {
             DeadlineStatus::Delayed => {}
-            DeadlineStatus::Late => {
-                return Err(CommissionError::InvalidStateRequested);
-            }
+            DeadlineStatus::Late => return Err(CommissionError::InvalidStateRequested),
         }
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::CommissionNotFound)?;
 
-        if commission.deadline_status == Some(DeadlineStatus::Late) {
-            return Err(CommissionError::CommissionAlreadyAtState);
-        };
-
-        if commission.deadline.is_none() {
-            return Err(CommissionError::InvalidStateRequested);
-        };
-
-        let payload = DeadlineSetEventPayload {
-            from: commission.deadline_status.map(|s| s.to_string()),
-            to: Some(DeadlineStatus::Delayed.to_string()),
-            deadline: commission.deadline,
-        };
-        let entry = NewChangelogEntry::event(
-            commission.id,
-            ChangelogEntryKind::Delayed,
-            actor_id,
-            json!({
-                "from": payload.from,
-                "to": payload.to,
-                "deadline": payload.deadline
-            }),
-            now,
-        );
-        let mut uow = self.ports().database.begin().await?;
-        uow.commissions()
-            .set_deadline_status(&commission.id, Some(status))
-            .await?;
-        uow.changelog().append(&entry).await?;
-        uow.commit().await?;
-
+        super::apply(self.ports(), &commission_id, actor_id, Some(status), now).await?;
         Ok(Output)
     }
 }

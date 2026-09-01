@@ -1,13 +1,6 @@
-use domain::{
-    elements::{account::AccountId, did, role::Role, user::UserId},
-    ports::UnitOfWork,
-};
+use domain::elements::{account::AccountId, role::Role, user::UserId};
 
-use crate::{
-    account::{AccountError, AccountPorts, AccountResult, Accounts, facts},
-    commission::{CommissionPorts, CommissionResult},
-    transaction,
-};
+use crate::account::{AccountError, AccountResult, Accounts, facts};
 
 pub struct Command {
     pub actor_id: UserId,
@@ -37,6 +30,16 @@ impl<'a> Accounts<'a> {
             account_id,
             actor_id,
         } = cmd;
+
+        // Existence before standing, as `change_handle` already does: without
+        // the first check a deletion aimed at an account that does not exist
+        // came back `403 forbidden` — a refusal implying there is something
+        // there to be refused.
+        ports
+            .accounts
+            .find(&account_id)
+            .await?
+            .ok_or(AccountError::AccountNotFound)?;
 
         ports
             .accounts

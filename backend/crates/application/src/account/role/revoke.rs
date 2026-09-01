@@ -1,15 +1,8 @@
-use domain::{
-    elements::{
-        account::AccountId,
-        user::{User, UserId},
-    },
-    ports::UnitOfWork,
-};
+use domain::elements::{account::AccountId, user::UserId};
 
 use crate::{
-    account::{AccountError, AccountPorts, AccountResult, role::Roles},
+    account::{AccountError, AccountResult, role::Roles},
     ports::WithPorts,
-    transaction,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,17 +26,38 @@ impl Roles<'_> {
             actor_id,
         } = cmd;
 
+        ports
+            .accounts
+            .find(&account_id)
+            .await?
+            .ok_or(AccountError::AccountNotFound)?;
+
+        // The actor's own standing is settled BEFORE the target's membership is
+        // looked at, as `grant` already does. The order is load-bearing: the two
+        // refusals below are told apart on the wire (`404 member_not_found` vs
+        // `403 forbidden`), so probing the target first would answer "is X a
+        // member of this account?" for any signed-in caller, member or not.
+        let actor_role = ports
+            .accounts
+            .role_of(&actor_id, &account_id)
+            .await?
+            .ok_or(AccountError::IncorrectRole)?;
+
+        // A target who holds no role here is a *missing membership*, not a
+        // refusal — every sibling use case (`leave`, `transfer_ownership`,
+        // `invitation::revoke`) already answers `NotAMember`. This one answered
+        // `UserNotFound`, which the driver renders `403`: a revoke of someone
+        // who was never a member reported as "you may not", not "there is no
+        // such member".
         let target_role = ports
             .accounts
             .role_of(&target_id, &account_id)
             .await?
-            .ok_or(AccountError::UserNotFound)?;
-        ports
-            .accounts
-            .role_of(&actor_id, &account_id)
-            .await?
-            .filter(|role| role.can_grant(&target_role)) // <- Elegant
-            .ok_or(AccountError::IncorrectRole)?;
+            .ok_or(AccountError::NotAMember)?;
+
+        if !actor_role.can_grant(&target_role) {
+            return Err(AccountError::IncorrectRole);
+        }
 
         let mut uow = ports.database.begin().await?;
         uow.accounts().revoke_role(&target_id, &account_id).await?;

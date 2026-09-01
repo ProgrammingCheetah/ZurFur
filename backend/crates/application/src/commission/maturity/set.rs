@@ -1,16 +1,12 @@
-use domain::{
-    elements::{
-        commission::CommissionId,
-        maturity::{self, MaturityRating},
-        user::UserId,
-    },
-    ports::UnitOfWork,
+use domain::elements::{
+    commission::CommissionId,
+    maturity::{self, MaturityRating},
+    user::UserId,
 };
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, maturity::Maturity},
+    commission::{CommissionResult, maturity::Maturity, require_owner},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -30,14 +26,7 @@ impl Maturity<'_> {
             maturity_rating,
             graphic,
         } = cmd;
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::CommissionNotFound)?;
-        if !commission.is_owned_by(&actor_id) {
-            return Err(CommissionError::InsufficientPermissions);
-        }
+        let commission = require_owner(ports, &commission_id, &actor_id).await?;
 
         let maturity = maturity::Maturity {
             graphic,

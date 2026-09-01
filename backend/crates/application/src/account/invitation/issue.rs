@@ -6,13 +6,11 @@ use domain::{
         role::Role,
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 
 use crate::{
-    account::{AccountError, AccountPorts, AccountResult, Accounts, invitation::Invitations},
+    account::{AccountError, AccountResult, invitation::Invitations},
     ports::WithPorts,
-    transaction,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -69,6 +67,7 @@ impl Invitations<'_> {
             .find_pending_invitation(&account_id, &target.id)
             .await?
         {
+            uow.commit().await?;
             return Ok(Output {
                 account_id,
                 invitation_id: existing_invitation.id,
@@ -82,6 +81,7 @@ impl Invitations<'_> {
         let invitation = Invitation::issue(account_id, target.id, role, actor_id, now);
 
         let stored = uow.accounts().create_invitation(&invitation).await?;
+        uow.commit().await?;
 
         let outcome = if invitation.id == stored.id {
             InviteOutcome::Minted

@@ -1,13 +1,6 @@
-use domain::{
-    datetime::DateTimeUtc,
-    elements::{account::AccountId, role::Role, user::UserId},
-    ports::UnitOfWork,
-};
+use domain::elements::{account::AccountId, role::Role, user::UserId};
 
-use crate::{
-    account::{AccountError, AccountPorts, AccountResult, Accounts},
-    transaction,
-};
+use crate::account::{AccountError, AccountResult, Accounts};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command {
@@ -34,6 +27,13 @@ impl Accounts<'_> {
         if actor_id == target_id {
             return Err(AccountError::CannotTransferToSelf);
         }
+
+        ports
+            .accounts
+            .find(&account_id)
+            .await?
+            .ok_or(AccountError::AccountNotFound)?;
+
         ports
             .accounts
             .role_of(&actor_id, &account_id)

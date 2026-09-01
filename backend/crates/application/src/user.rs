@@ -1,11 +1,6 @@
 //! Use cases about the acting [`User`].
 
-use domain::elements::{did::Did, profile::Profile, user::UserId};
-use domain::ports::{ProfileCache, ProfileSource, UserStore};
-
-mod me;
-/// `me`'s input: the caller whose identity to report. How `user_id` was
-/// established — a session, an identity file — is the driver's.
+pub mod me;
 
 /// User use cases, with the ports already bound. Needs no optional port, so
 /// it converts from the bag infallibly.

@@ -4,14 +4,12 @@ use domain::{
         commission::{ChangelogEntryKind, CommissionId, NewChangelogEntry},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, deadline::Deadline},
+    commission::{CommissionResult, deadline::Deadline, require_participant},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -22,6 +20,11 @@ pub struct Command {
 pub struct Output;
 
 impl Deadline<'_> {
+    /// Set — or move — the commission's deadline, as a Participant.
+    ///
+    /// Re-setting the deadline already held is an idempotent no-op: nothing is
+    /// written and nothing is appended. A later deadline than the one held
+    /// records as `DeadlineExtended`, anything else as `DeadlineSet`.
     pub async fn set(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let ports = self.ports();
         let Command {
@@ -29,26 +32,17 @@ impl Deadline<'_> {
             commission_id,
             deadline,
         } = cmd;
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::UserNotFound)?;
+        let commission = require_participant(ports, &commission_id, &actor_id).await?;
 
-        if !ports
-            .commissions
-            .is_participant(&commission.id, &actor_id)
-            .await?
-        {
-            return Err(CommissionError::NotAMember);
+        // The no-op is "the stored deadline already IS the requested one".
+        // Comparing the stored deadline to `now` instead — as this did — is
+        // never true in practice, so every repeat set appended a fresh entry.
+        if commission.deadline == Some(deadline) {
+            return Ok(Output);
         }
 
-        if commission.deadline.is_some_and(|d| d == now) {
-            return Err(CommissionError::CommissionAlreadyAtState);
-        }
-
-        let kind = match (commission.deadline, deadline) {
-            (Some(old), new) if new > old => ChangelogEntryKind::DeadlineExtended,
+        let kind = match commission.deadline {
+            Some(old) if deadline > old => ChangelogEntryKind::DeadlineExtended,
             _ => ChangelogEntryKind::DeadlineSet,
         };
 
@@ -60,11 +54,15 @@ impl Deadline<'_> {
             now,
         );
 
-        let mut uow = self.ports().database.begin().await?;
-        uow.commissions()
+        let mut uow = ports.database.begin().await?;
+        let mut commissions = uow.commissions();
+        let moved = commissions
             .set_deadline(&commission.id, Some(deadline))
             .await?;
-        uow.changelog().append(&entry).await?;
+        drop(commissions);
+        if moved {
+            uow.changelog().append(&entry).await?;
+        }
         uow.commit().await?;
         Ok(Output)
     }

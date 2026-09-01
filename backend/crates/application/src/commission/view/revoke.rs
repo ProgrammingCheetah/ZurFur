@@ -4,14 +4,12 @@ use domain::{
         commission::{ChangelogEntryKind, CommissionId, NewChangelogEntry},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, view::View},
+    commission::{CommissionError, CommissionResult, view::View},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -49,10 +47,17 @@ impl View<'_> {
             now,
         );
 
-        uow.commissions()
+        // Keyed on a real revocation: revoking a grant nobody holds changes
+        // nothing, so it records nothing. The changelog is evidence, not a log
+        // of attempts.
+        let mut commissions = uow.commissions();
+        let revoked = commissions
             .revoke_view(&commission.id, &target_user.id)
             .await?;
-        uow.changelog().append(&entry).await?;
+        drop(commissions);
+        if revoked {
+            uow.changelog().append(&entry).await?;
+        }
         uow.commit().await?;
         Ok(Output)
     }

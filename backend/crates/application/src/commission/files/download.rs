@@ -1,10 +1,10 @@
 use domain::elements::{
-    commission::{Commission, CommissionId, FileDownload, FileKey},
+    commission::{CommissionId, FileDownload, FileKey},
     user::UserId,
 };
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, files::Files},
+    commission::{CommissionError, CommissionResult, files::Files},
     ports::WithPorts,
 };
 
@@ -18,13 +18,12 @@ pub struct Output {
     pub result: FileDownload,
 }
 
-/// Retrieves a file entry's metadata and a live reader over its bytes.
-/// Participant-gated; `FileNotFound` for a key that is absent, or belongs to
-/// another commission — the same answer either way, so retrieval is never a
-/// cross-commission existence oracle. A blob missing under an existing link
-/// is an internal inconsistency, surfaced as `Infrastructure`.
-
 impl Files<'_> {
+    /// Retrieves a file entry's metadata and a live reader over its bytes.
+    /// Participant-gated; `FileNotFound` for a key that is absent, or belongs to
+    /// another commission — the same answer either way, so retrieval is never a
+    /// cross-commission existence oracle. A blob missing under an existing link
+    /// is an internal inconsistency, surfaced as `Infrastructure`.
     pub async fn download(&self, query: Query) -> CommissionResult<Output> {
         let Query {
             actor_id,

@@ -1,6 +1,6 @@
 use domain::elements::account::AccountId;
 
-use crate::account::{AccountPorts, AccountResult, facts::Facts};
+use crate::account::{AccountResult, facts::Facts};
 
 pub struct Query {
     pub account_id: AccountId,

@@ -1,6 +1,6 @@
 use domain::elements::{commission::Commission, user::UserId};
 
-use crate::commission::{CommissionPorts, CommissionResult, Commissions};
+use crate::commission::{CommissionResult, Commissions};
 pub struct Command {
     pub user_id: UserId,
 }

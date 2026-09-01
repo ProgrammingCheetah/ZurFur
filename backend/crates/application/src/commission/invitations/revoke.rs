@@ -4,13 +4,11 @@ use domain::{
         commission::{CommissionId, element::SeatId},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 
 use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, invitations::Invitations},
+    commission::{CommissionError, CommissionResult, invitations::Invitations, require_owner},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -35,21 +33,13 @@ impl Invitations<'_> {
             seat_id,
         } = cmd;
 
-        ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .filter(|c| c.is_owned_by(&actor_id))
-            .ok_or(CommissionError::InsufficientPermissions)?;
+        require_owner(ports, &commission_id, &actor_id).await?;
 
-        ports
-            .commissions
-            .seats(&commission_id)
-            .await?
-            .into_iter()
-            .find(|seat| seat.id == seat_id)
-            .ok_or(CommissionError::SeatNotFound)?;
-
+        // No seat-existence gate on purpose. The pending-invitation lookup is
+        // already commission-scoped, so a seat id belonging to some *other*
+        // commission simply resolves to nothing and the revoke is a bare no-op
+        // — it must never become a `404` that confirms the id is real
+        // somewhere, nor reach an offer the caller has no business touching.
         let Some(mut invitation) = ports
             .commissions
             .find_pending_seat_invitation(&commission_id, &seat_id, &target_id)
@@ -69,6 +59,7 @@ impl Invitations<'_> {
         uow.commissions()
             .revoke_seat_invitation(&invitation.id)
             .await?;
+        uow.commit().await?;
 
         Ok(Output {
             commission_id,

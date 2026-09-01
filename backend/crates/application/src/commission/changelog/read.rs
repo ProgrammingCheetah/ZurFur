@@ -7,9 +7,7 @@ use domain::{
 };
 
 use crate::{
-    commission::{
-        CommissionError, CommissionPorts, CommissionResult, Commissions, changelog::Changelog,
-    },
+    commission::{CommissionError, CommissionResult, changelog::Changelog},
     ports::WithPorts,
 };
 pub struct Query {
@@ -41,7 +39,11 @@ impl Changelog<'_> {
             .is_participant(&commission_id, &actor_id)
             .await?
         {
-            return Err(CommissionError::InsufficientPermissions);
+            // The closed door: a non-participant is told the commission does
+            // not exist, never that it exists but is forbidden — a 403 here
+            // would confirm a private commission to any signed-in stranger who
+            // guessed (or was handed) its id.
+            return Err(CommissionError::NotAMember);
         }
 
         Ok(Output {

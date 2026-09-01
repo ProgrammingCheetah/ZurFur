@@ -1,17 +1,13 @@
 use domain::{
     datetime::DateTimeUtc,
     elements::{
-        commission::{ChangelogEntryKind, Commission, CommissionId, NewChangelogEntry},
+        commission::{ChangelogEntryKind, CommissionId, NewChangelogEntry},
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 use serde_json::json;
 
-use crate::{
-    commission::{CommissionError, CommissionPorts, CommissionResult, Commissions},
-    transaction,
-};
+use crate::commission::{CommissionResult, Commissions, require_owner};
 
 pub struct Command {
     pub actor_id: UserId,
@@ -20,27 +16,22 @@ pub struct Command {
 pub struct Outcome;
 
 impl Commissions<'_> {
+    /// Archive the commission — it leaves the active views; the record survives.
+    ///
+    /// Owner-only through the shared [`require_owner`] gate, so a
+    /// non-participant gets the uniform not-found. Archiving an
+    /// already-archived commission is an idempotent no-op: the flag write and
+    /// the `archived` entry land in one unit of work, and the entry is keyed on
+    /// the store reporting a *real* transition — a record of nothing changing
+    /// would be noise, not audit.
     pub async fn archive(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Outcome> {
         let ports = self.ports();
         let Command {
             actor_id,
             commission_id,
         } = cmd;
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::CommissionNotFound)?;
+        let commission = require_owner(ports, &commission_id, &actor_id).await?;
 
-        if commission.is_archived() {
-            return Err(CommissionError::CommissionAlreadyAtState);
-        }
-
-        if actor_id != commission.owner_id {
-            return Err(CommissionError::InsufficientPermissions);
-        }
-
-        // FIXME: This needs to be called using ports.changelog().event().new()
         let entry = NewChangelogEntry::event(
             commission.id,
             ChangelogEntryKind::Archived,
@@ -49,11 +40,13 @@ impl Commissions<'_> {
             now,
         );
 
-        let mut uow = self.ports().database.begin().await?;
-        uow.commissions()
-            .set_archived(&commission.id, Some(now))
-            .await?;
-        uow.changelog().append(&entry).await?;
+        let mut uow = ports.database.begin().await?;
+        let mut commissions = uow.commissions();
+        let moved = commissions.set_archived(&commission.id, Some(now)).await?;
+        drop(commissions);
+        if moved {
+            uow.changelog().append(&entry).await?;
+        }
         uow.commit().await?;
         Ok(Outcome)
     }

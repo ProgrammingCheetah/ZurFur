@@ -1,20 +1,11 @@
 use domain::{
     datetime::DateTimeUtc,
-    elements::{
-        commission::{ChangelogEntryKind, CommissionId, NewChangelogEntry},
-        user::UserId,
-    },
-    ports::UnitOfWork,
+    elements::{commission::CommissionId, user::UserId},
 };
-use serde_json::json;
 
 use crate::{
-    commission::{
-        CommissionError, CommissionPorts, CommissionResult,
-        deadline::{Deadline, DeadlineSetEventPayload, status::Status},
-    },
+    commission::{CommissionResult, deadline::status::Status},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
@@ -24,54 +15,19 @@ pub struct Command {
 pub struct Output;
 
 impl Status<'_> {
+    /// Clear the deadline-axis status — the Participant taking their own
+    /// slipping flag back down.
+    ///
+    /// A standing `Late` is refused here as it is on the set side: clearing it
+    /// by hand would overrule the system. The honest lever out of Late is
+    /// clearing the *deadline*. Clearing an already-clear axis is an idempotent
+    /// no-op.
     pub async fn clear(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let Command {
             actor_id,
             commission_id,
         } = cmd;
-        let ports = self.ports();
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::CommissionNotFound)?;
-
-        if !ports
-            .commissions
-            .is_participant(&commission.id, &actor_id)
-            .await?
-        {
-            return Err(CommissionError::NotAMember);
-        }
-
-        if commission.deadline_status.is_none() {
-            return Err(CommissionError::CommissionAlreadyAtState);
-        }
-
-        let payload = DeadlineSetEventPayload {
-            deadline: commission.deadline,
-            from: commission.deadline_status.map(|ds| ds.to_string()),
-            to: None,
-        };
-
-        let entry = NewChangelogEntry::event(
-            commission.id,
-            ChangelogEntryKind::DeadlineSet,
-            actor_id,
-            json!({
-                "from": payload.from,
-                "to": payload.to,
-                "deadline": payload.deadline
-            }),
-            now,
-        );
-        let mut uow = self.ports().database.begin().await?;
-        uow.commissions()
-            .set_deadline_status(&commission.id, None)
-            .await?;
-        uow.changelog().append(&entry).await?;
-
-        uow.commit().await?;
+        super::apply(self.ports(), &commission_id, actor_id, None, now).await?;
         Ok(Output)
     }
 }

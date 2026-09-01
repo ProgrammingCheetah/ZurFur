@@ -1,23 +1,20 @@
 use domain::{
     datetime::DateTimeUtc,
     elements::{
-        commission::{CommissionId, ElementId, SeatInvitation, SeatInvitationId, element::SeatId},
+        commission::{CommissionId, SeatInvitation, SeatInvitationId, element::SeatId},
         invitation::InvitationState,
         user::UserId,
     },
-    ports::UnitOfWork,
 };
 
 use crate::{
-    account::AccountPorts,
-    commission::{CommissionError, CommissionPorts, CommissionResult, invitations::Invitations},
+    commission::{CommissionError, CommissionResult, invitations::Invitations, require_owner},
     ports::WithPorts,
-    transaction,
 };
 
 pub struct Command {
-    pub inviting_actor_id: UserId,
-    pub invited_actor_id: UserId,
+    pub actor_id: UserId,
+    pub target_id: UserId,
     pub commission_id: CommissionId,
     pub seat_id: SeatId,
 }
@@ -38,33 +35,33 @@ impl Invitations<'_> {
     pub async fn issue(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let ports = self.ports();
         let Command {
-            inviting_actor_id: _,
-            invited_actor_id,
+            actor_id,
+            target_id,
             commission_id,
             seat_id,
         } = cmd;
-        let commission = ports
-            .commissions
-            .find(&commission_id)
-            .await?
-            .ok_or(CommissionError::CommissionNotFound)?;
-
-        if !commission.is_owned_by(&invited_actor_id) {
-            return Err(CommissionError::InsufficientPermissions);
-        }
+        let commission = require_owner(ports, &commission_id, &actor_id).await?;
 
         // Quick note: Before, users had their own ID. Since we changed it to DID, inviting a user
         // Is the semantic equivalent of using their DID every time.
         // An invited user MUST exist, therefore; always available.
         let mut uow = self.ports().database.begin().await?;
         // FIXME: Is a DID only a user's? How do we differentiate between them and accounts?
-        let target_user = uow.users().provision(&invited_actor_id).await?;
+        let target_user = uow.users().provision(&target_id).await?;
         let seats = ports.commissions.seats(&commission.id).await?;
 
+        // Two distinct answers, deliberately not folded into one: a seat this
+        // commission does not have is a `404`, while a seat that exists but is
+        // occupied is a `409`. Matching on vacancy *and* identity at once
+        // reported both as "no such seat", which told the caller nothing about
+        // the state they actually hit.
         let seat = seats
             .iter()
-            .find(|seat| seat.id == seat_id && seat.is_vacant())
+            .find(|seat| seat.id == seat_id)
             .ok_or(CommissionError::SeatNotFound)?;
+        if !seat.is_vacant() {
+            return Err(CommissionError::SeatFilled);
+        }
 
         if let Some(invitation) = ports
             .commissions
@@ -84,7 +81,7 @@ impl Invitations<'_> {
             commission.id,
             seat.id,
             target_user.id.clone(),
-            invited_actor_id.clone(),
+            target_id.clone(),
             now,
         );
         let minted = invitation.id;
