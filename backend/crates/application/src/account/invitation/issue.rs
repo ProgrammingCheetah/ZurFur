@@ -9,7 +9,7 @@ use domain::{
 };
 
 use crate::{
-    account::{AccountError, AccountResult, invitation::Invitations},
+    account::{AccountError, AccountResult, invitation::Invitations, require_live_account},
     ports::WithPorts,
 };
 
@@ -37,6 +37,11 @@ pub struct Output {
 }
 
 impl Invitations<'_> {
+    /// Issues a pending invitation into the account at `role`; a live offer for
+    /// the same user is returned as-is rather than duplicated. The actor must
+    /// hold a role that outranks the offered one. Answers `AccountNotFound` for
+    /// a dead account, `IncorrectRole` without the rank, `AlreadyMember` when
+    /// the invitee already holds one.
     pub async fn issue(&self, cmd: Command, now: DateTimeUtc) -> AccountResult<Output> {
         let ports = self.ports();
         let Command {
@@ -45,6 +50,7 @@ impl Invitations<'_> {
             actor_id,
             role,
         } = cmd;
+        require_live_account(ports, &account_id).await?;
         ports
             .accounts
             .role_of(&actor_id, &account_id)

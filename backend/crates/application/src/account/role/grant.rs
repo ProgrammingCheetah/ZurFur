@@ -1,7 +1,7 @@
 use domain::elements::{account::AccountId, role::Role, user::UserId, user_account::UserAccount};
 
 use crate::{
-    account::{AccountError, AccountResult, role::Roles},
+    account::{AccountError, AccountResult, require_live_account, role::Roles},
     ports::WithPorts,
 };
 
@@ -36,11 +36,7 @@ impl Roles<'_> {
             return Err(AccountError::IncorrectTransferOfAccount);
         };
 
-        ports
-            .accounts
-            .find(&account_id)
-            .await?
-            .ok_or(AccountError::AccountNotFound)?;
+        require_live_account(ports, &account_id).await?;
 
         let actor_role = ports
             .accounts

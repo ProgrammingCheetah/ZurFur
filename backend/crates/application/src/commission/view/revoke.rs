@@ -20,6 +20,9 @@ pub struct Command {
 pub struct Output;
 
 impl View<'_> {
+    /// Revokes the target User's view grant, hard-deleting the key. Owner-only;
+    /// every other caller gets the closed door's `CommissionNotFound`. Revoking
+    /// a key nobody holds succeeds and records nothing.
     pub async fn revoke(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let ports = self.ports();
         let Command {
@@ -27,14 +30,19 @@ impl View<'_> {
             target_user_id,
             commission_id,
         } = cmd;
-        let mut uow = self.ports().database.begin().await?;
-        let target_user = uow.users().provision(&target_user_id).await?;
+
+        // Authority is settled before the unit of work opens — `provision` is a
+        // WRITE keyed to a DID the caller names, and its refusals are
+        // distinguishable. See the twin note on `view::grant`.
         let commission = ports
             .commissions
             .find(&commission_id)
             .await?
             .filter(|c| c.is_owned_by(&actor_id))
             .ok_or(CommissionError::CommissionNotFound)?;
+
+        let mut uow = self.ports().database.begin().await?;
+        let target_user = uow.users().provision(&target_user_id).await?;
 
         let entry = NewChangelogEntry::event(
             commission.id,

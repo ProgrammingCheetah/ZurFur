@@ -9,7 +9,7 @@ use domain::{
 };
 use shared::settings::{HANDLE_CHANGE_LIMIT, HANDLE_CHANGE_WINDOW, HANDLE_QUARANTINE_WINDOW};
 
-use crate::account::{AccountError, AccountResult, Accounts};
+use crate::account::{AccountError, AccountResult, Accounts, require_live_account};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command {
@@ -39,11 +39,7 @@ impl<'a> Accounts<'a> {
             return Err(AccountError::UnsupportedHandle);
         };
         let ports = self.ports();
-        let account = ports
-            .accounts
-            .find(&account_id)
-            .await?
-            .ok_or(AccountError::AccountNotFound)?;
+        let account = require_live_account(ports, &account_id).await?;
 
         if account.handle == handle {
             return Err(AccountError::HandleUnchanged);

@@ -74,14 +74,16 @@ impl<'a> Commissions<'a> {
 impl<'a> TryFrom<&'a crate::Ports> for Commissions<'a> {
     type Error = crate::MissingPort;
 
-    /// Fails when the bag carries no blob store.
+    /// Cannot fail: [`Ports`](crate::Ports) carries a file store unconditionally,
+    /// so [`MissingPort`](crate::MissingPort) is unreachable from here.
     fn try_from(ports: &'a crate::Ports) -> Result<Self, Self::Error> {
         Ok(Self::new(ports))
     }
 }
 
 impl<'a> From<&'a crate::App> for Commissions<'a> {
-    /// Panics on a bag without a blob store — the composition root's contract.
+    /// Binds the namespace to the app's ports. The `expect` is unreachable while
+    /// [`try_from`](Commissions::try_from) is infallible.
     fn from(app: &'a crate::App) -> Self {
         Self::try_from(app.ports()).expect("composition root supplies the blob store")
     }

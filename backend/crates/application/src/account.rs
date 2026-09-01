@@ -1,7 +1,8 @@
 //! Use cases about [`Account`]s.
 
-use domain::ports::{
-    AccountStore, Database, DidBelongsToAnotherActor, DidMinter, HandleTaken, UserStore,
+use domain::{
+    elements::account::{Account, AccountId},
+    ports::{AccountStore, Database, DidBelongsToAnotherActor, DidMinter, HandleTaken, UserStore},
 };
 
 use crate::ports::WithPorts;
@@ -49,7 +50,8 @@ impl<'a> Accounts<'a> {
 impl<'a> TryFrom<&'a crate::Ports> for Accounts<'a> {
     type Error = crate::MissingPort;
 
-    /// Fails when the bag carries no DID minter.
+    /// Cannot fail: [`Ports`](crate::Ports) carries a DID minter unconditionally,
+    /// so [`MissingPort`](crate::MissingPort) is unreachable from here.
     fn try_from(ports: &'a crate::Ports) -> Result<Self, Self::Error> {
         let did_minter = ports.did_minter.as_ref();
         Ok(Self::new(ports, did_minter))
@@ -57,7 +59,8 @@ impl<'a> TryFrom<&'a crate::Ports> for Accounts<'a> {
 }
 
 impl<'a> From<&'a crate::App> for Accounts<'a> {
-    /// Panics on a bag without a DID minter — the composition root's contract.
+    /// Binds the namespace to the app's ports. The `expect` is unreachable while
+    /// [`try_from`](Accounts::try_from) is infallible.
     fn from(app: &'a crate::App) -> Self {
         Self::try_from(app.ports()).expect("composition root supplies the DID minter")
     }
@@ -186,6 +189,29 @@ impl From<anyhow::Error> for AccountError {
             Self::Infrastructure(err)
         }
     }
+}
+
+/// Resolve the account a use case acts on, or refuse with
+/// [`AccountNotFound`](AccountError::AccountNotFound) — the one liveness gate
+/// every account use case shares. An unknown id and a soft-deleted account get
+/// the same answer (DD `23003138`).
+pub(crate) async fn require_live_account(
+    ports: &crate::Ports,
+    account_id: &AccountId,
+) -> AccountResult<Account> {
+    // Existence before standing, and before any `role_of`: `role_of` reads the
+    // membership table alone, with no tombstone predicate, so a use case that
+    // starts there acts on soft-deleted accounts — an invitation could be
+    // issued into, and accepted on, an account that is gone. Answering here
+    // also keeps an act aimed at an account that is not there from coming back
+    // `403`, a refusal implying there is something to be refused (see
+    // `delete`). Lives here, once, because per-use-case copies drift — they
+    // already had, three ways.
+    ports
+        .accounts
+        .find(account_id)
+        .await?
+        .ok_or(AccountError::AccountNotFound)
 }
 
 /// The ports the account use cases reach: reads off [`AccountStore`], the

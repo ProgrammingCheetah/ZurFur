@@ -1,7 +1,7 @@
 use domain::elements::{account::AccountId, user::UserId};
 
 use crate::{
-    account::{AccountError, AccountResult, role::Roles},
+    account::{AccountError, AccountResult, require_live_account, role::Roles},
     ports::WithPorts,
 };
 
@@ -26,11 +26,7 @@ impl Roles<'_> {
             actor_id,
         } = cmd;
 
-        ports
-            .accounts
-            .find(&account_id)
-            .await?
-            .ok_or(AccountError::AccountNotFound)?;
+        require_live_account(ports, &account_id).await?;
 
         // The actor's own standing is settled BEFORE the target's membership is
         // looked at, as `grant` already does. The order is load-bearing: the two

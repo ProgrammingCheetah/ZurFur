@@ -1,6 +1,6 @@
 use domain::elements::{account::AccountId, role::Role, user::UserId};
 
-use crate::account::{AccountError, AccountResult, Accounts, facts};
+use crate::account::{AccountError, AccountResult, Accounts, facts, require_live_account};
 
 pub struct Command {
     pub actor_id: UserId,
@@ -35,11 +35,7 @@ impl<'a> Accounts<'a> {
         // the first check a deletion aimed at an account that does not exist
         // came back `403 forbidden` — a refusal implying there is something
         // there to be refused.
-        ports
-            .accounts
-            .find(&account_id)
-            .await?
-            .ok_or(AccountError::AccountNotFound)?;
+        require_live_account(ports, &account_id).await?;
 
         ports
             .accounts

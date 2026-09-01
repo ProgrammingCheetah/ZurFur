@@ -28,6 +28,9 @@ pub struct Output {
 }
 
 impl Changelog<'_> {
+    /// Reads the commission's changelog in stream order, ascending `seq`.
+    /// Participant-only: everyone else gets `NotAMember`, which the drivers
+    /// render byte-identically to an absent commission's `404`.
     pub async fn read(&self, query: Query) -> CommissionResult<Output> {
         let ports = self.ports();
         let Query {
@@ -52,9 +55,14 @@ impl Changelog<'_> {
                 .entries(&commission_id)
                 .await?
                 .into_iter()
-                .enumerate()
-                .map(|(seq, entry)| ChangelogEntry {
-                    seq: seq as i64,
+                // `seq` is the STORE's ordering key (a `bigserial` in pg),
+                // carried through untouched: it is monotonic per stream but not
+                // gapless, and the cursor semantics read from it. Renumbering
+                // it off the page's position — as an `enumerate()` here did —
+                // makes every stream start at 0 and invents an order the store
+                // never assigned.
+                .map(|entry| ChangelogEntry {
+                    seq: entry.seq,
                     actor_id: entry.actor_id,
                     kind: entry.kind,
                     payload: entry.payload,

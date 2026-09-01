@@ -444,7 +444,8 @@ async fn a_non_owner_gets_the_same_404_as_a_missing_commission() {
         "hidden and missing are indistinguishable (no existence oracle)",
     );
 
-    // Grant + revoke on a hidden commission are the same closed door.
+    // Grant + revoke on a hidden commission are the same closed door. Their
+    // bodies are kept: the actor-class check below compares against them.
     let grantee = UserId::new(Did::new("did:plc:would-be-grantee".to_string()));
     let grant = client
         .post(format!("{base}/commissions/{foreign}/grants"))
@@ -452,7 +453,10 @@ async fn a_non_owner_gets_the_same_404_as_a_missing_commission() {
         .send()
         .await
         .expect("POST grant hidden");
-    common::assert_problem(grant, 404, "commission_not_found").await;
+    assert_eq!(grant.status(), 404);
+    let grant_body = grant.text().await.expect("body");
+    let grant_problem: serde_json::Value = serde_json::from_str(&grant_body).expect("problem+json");
+    assert_eq!(grant_problem["code"], "commission_not_found");
 
     let revoke = client
         .delete(format!("{base}/commissions/{foreign}/grants/{}", *grantee))
@@ -460,7 +464,11 @@ async fn a_non_owner_gets_the_same_404_as_a_missing_commission() {
         .send()
         .await
         .expect("DELETE grant hidden");
-    common::assert_problem(revoke, 404, "commission_not_found").await;
+    assert_eq!(revoke.status(), 404);
+    let revoke_body = revoke.text().await.expect("body");
+    let revoke_problem: serde_json::Value =
+        serde_json::from_str(&revoke_body).expect("problem+json");
+    assert_eq!(revoke_problem["code"], "commission_not_found");
 
     // Nothing was written to the foreign commission.
     let store = backend.commission_store();
@@ -471,6 +479,52 @@ async fn a_non_owner_gets_the_same_404_as_a_missing_commission() {
             .unwrap()
             .is_none(),
         "the outsider placed nothing",
+    );
+
+    // The closed door must not leak the ACTOR CLASS of the DID the caller
+    // names. `provision` is a write keyed to that DID and it refuses a DID
+    // already interned as another kind of actor: while it ran before the
+    // ownership check, naming an Account's DID answered `409
+    // did_belongs_to_another_actor` where naming a free DID reached this `404`
+    // — telling a stranger apart "this DID is some other actor" from "it is
+    // not", on a commission id they invented. Both must be the same door.
+    let interned_elsewhere = account.to_string(); // an Account's DID, not a User's
+    let grant_interned = client
+        .post(format!("{base}/commissions/{foreign}/grants"))
+        .json(&json!({ "target_user_id": interned_elsewhere, "level": "total" }))
+        .send()
+        .await
+        .expect("POST grant naming a non-User actor");
+    assert_eq!(grant_interned.status(), 404);
+    let grant_interned_body = grant_interned.text().await.expect("body");
+
+    let revoke_interned = client
+        .delete(format!("{base}/commissions/{foreign}/grants/{}", *grantee))
+        .json(&json!({ "target_user_id": interned_elsewhere }))
+        .send()
+        .await
+        .expect("DELETE grant naming a non-User actor");
+    assert_eq!(revoke_interned.status(), 404);
+    let revoke_interned_body = revoke_interned.text().await.expect("body");
+
+    assert_eq!(
+        grant_interned_body, grant_body,
+        "an already-interned DID and a free one get the byte-identical closed door",
+    );
+    assert_eq!(
+        revoke_interned_body, revoke_body,
+        "an already-interned DID and a free one get the byte-identical closed door",
+    );
+
+    // And the refused grant/revoke left no User behind for the grantee — the
+    // commission-side twin of the account assertion in `account_scope_gate.rs`.
+    assert!(
+        backend
+            .find_by_did(&Did::new("did:plc:would-be-grantee".to_string()))
+            .await
+            .expect("find grantee")
+            .is_none(),
+        "a forbidden grant/revoke provisions no User for the grantee",
     );
 }
 

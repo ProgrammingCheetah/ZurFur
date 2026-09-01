@@ -1,7 +1,7 @@
 use domain::elements::{account::AccountId, role::Role, user::UserId};
 
 use crate::{
-    account::{AccountError, AccountResult, invitation::Invitations},
+    account::{AccountError, AccountResult, invitation::Invitations, require_live_account},
     ports::WithPorts,
 };
 
@@ -19,6 +19,9 @@ pub struct Output {
 }
 
 impl Invitations<'_> {
+    /// Accepts the caller's own pending invitation, seating them at the offered
+    /// role. Answers `AccountNotFound` for a dead account and
+    /// `NoPendingInvitation` when no live offer names them.
     pub async fn accept(&self, cmd: Command) -> AccountResult<Output> {
         let ports = self.ports();
         let Command {
@@ -26,6 +29,7 @@ impl Invitations<'_> {
             account_id,
             listed_on_profile,
         } = cmd;
+        require_live_account(ports, &account_id).await?;
         let invitation = ports
             .accounts
             .find_pending_invitation(&account_id, &target_id)

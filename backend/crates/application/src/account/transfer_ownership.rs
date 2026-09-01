@@ -1,6 +1,6 @@
 use domain::elements::{account::AccountId, role::Role, user::UserId};
 
-use crate::account::{AccountError, AccountResult, Accounts};
+use crate::account::{AccountError, AccountResult, Accounts, require_live_account};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Command {
@@ -28,11 +28,7 @@ impl Accounts<'_> {
             return Err(AccountError::CannotTransferToSelf);
         }
 
-        ports
-            .accounts
-            .find(&account_id)
-            .await?
-            .ok_or(AccountError::AccountNotFound)?;
+        require_live_account(ports, &account_id).await?;
 
         ports
             .accounts

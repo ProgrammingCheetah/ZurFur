@@ -21,6 +21,9 @@ pub struct Command {
 pub struct Output;
 
 impl View<'_> {
+    /// Issues the target User a view grant at `level`, replacing any key they
+    /// already hold, and records the issuance. Owner-only; every other caller
+    /// gets the closed door's `CommissionNotFound`.
     pub async fn grant(&self, cmd: Command, now: DateTimeUtc) -> CommissionResult<Output> {
         let ports = self.ports();
         let Command {
@@ -29,14 +32,23 @@ impl View<'_> {
             commission_id,
             level,
         } = cmd;
-        let mut uow = self.ports().database.begin().await?;
-        let target_user = uow.users().provision(&target_user_id).await?;
+
+        // Authority is settled before the unit of work opens, because
+        // `provision` is a WRITE keyed to a DID the caller names: running it
+        // first let an unauthorized caller intern a User row for a third party
+        // and, worse, tell the outcomes apart — a DID already held by another
+        // kind of actor answered `409 did_belongs_to_another_actor` where a
+        // free DID reached the closed door's `404`, an actor-class oracle over
+        // a commission id anyone can invent.
         let commission = ports
             .commissions
             .find(&commission_id)
             .await?
             .filter(|c| c.is_owned_by(&actor_id))
             .ok_or(CommissionError::CommissionNotFound)?;
+
+        let mut uow = self.ports().database.begin().await?;
+        let target_user = uow.users().provision(&target_user_id).await?;
 
         let entry = NewChangelogEntry::event(
             commission.id,
