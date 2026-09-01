@@ -41,6 +41,9 @@
 use std::collections::HashMap;
 use std::ops::Deref;
 
+use serde::Deserialize;
+use uuid::Uuid;
+
 use crate::{
     datetime::DateTimeUtc,
     elements::{
@@ -57,8 +60,10 @@ use crate::{
 /// A UUIDv7 wrapped for type safety, mirroring [`CommissionId`]: the app mints
 /// the key, the domain only names it. `Deref` exposes the inner UUID for foreign
 /// keys and lookups.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+#[serde(transparent)]
 pub struct ElementId(uuid::Uuid);
+pub type SeatId = ElementId;
 
 impl ElementId {
     /// Wraps an already-minted UUID — e.g. a row read back from the store, or a
@@ -88,6 +93,12 @@ impl std::str::FromStr for ElementId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         parse_uuid(s).map(Self)
+    }
+}
+
+impl From<Uuid> for ElementId {
+    fn from(value: Uuid) -> Self {
+        Self(value)
     }
 }
 
@@ -128,6 +139,14 @@ impl std::str::FromStr for TabId {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         parse_uuid(s).map(Self)
+    }
+}
+
+impl TryFrom<Uuid> for TabId {
+    type Error = IdError;
+
+    fn try_from(value: Uuid) -> Result<Self, Self::Error> {
+        Ok(Self(value))
     }
 }
 

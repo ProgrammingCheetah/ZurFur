@@ -38,8 +38,9 @@
 //! [`file`] submodule carries the file-entry shapes (ZMVP-88): the opaque
 //! [`FileKey`], the validated [`FileMetadata`], and the [`CommissionFile`]
 //! Index-canonical link. The [`markup`] submodule carries the [`Markup`]
-//! annotation shapes (ZMVP-90) that ride the `markup_added` changelog entry's
-//! payload. The [`slot`] submodule carries the declared **Slots** (ZMVP-77):
+//! annotation shapes (ZMVP-90), the [`MarkupKey`] that identifies one, and the
+//! [`CommissionMarkup`] row that stores it alongside the `markup_added` changelog
+//! entry. The [`slot`] submodule carries the declared **Slots** (ZMVP-77):
 //! Character positions as elements with a title/notes satellite — fill
 //! deferred wholesale to the Character epic. The [`seat`] submodule carries the
 //! **Seat** (ZMVP-76): the 1:1 structural participant position declared vacant,
@@ -69,14 +70,16 @@ pub use element::{
     TabId, TabName, TabRow, VisibilityMode, declared_tabs, declares_surface, effective_visibility,
 };
 pub use fact::Fact;
-pub use file::{CommissionFile, FileKey, FileMetadata, FileName, FileNameError, StoredFile};
-pub use markup::{Markup, MarkupError, MarkupShape};
+pub use file::{CommissionFile, FileDownload, FileKey, FileMetadata, FileName, FileNameError};
+pub use markup::{CommissionMarkup, Markup, MarkupError, MarkupKey, MarkupShape};
 pub use positioning::{GrantLevel, Placement};
 pub use seat::{
     NewSeat, Seat, SeatKind, SeatKindError, SeatLink, SeatLinkError, SeatPrompt, SeatPromptError,
 };
 pub use seat_invitation::{SeatInvitation, SeatInvitationId};
+use serde::{Deserialize, Serialize};
 pub use slot::{NewSlot, Slot, SlotTitle, SlotTitleError};
+use uuid::Uuid;
 
 use std::ops::Deref;
 use std::str::FromStr;
@@ -96,13 +99,20 @@ use crate::{
 /// A UUIDv7 wrapped for type safety, mirroring [`crate::elements::account::AccountId`]
 /// and [`crate::elements::user::UserId`]. The UUIDv7 carries the creation timestamp;
 /// Deref exposes the inner UUID for foreign keys and lookups.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct CommissionId(uuid::Uuid);
 
 impl CommissionId {
     /// Wraps an already-minted UUIDv7. Mirrors [`crate::elements::account::AccountId::new`]:
     /// the app mints the key (PG16 has no native `uuidv7()`), the domain only names it.
     pub fn new(id: uuid::Uuid) -> Self {
+        Self(id)
+    }
+}
+
+impl From<Uuid> for CommissionId {
+    fn from(id: Uuid) -> Self {
         Self(id)
     }
 }
@@ -463,6 +473,7 @@ pub enum DirectionStatus {
 
 impl DirectionStatus {
     /// Every value, in declaration order — the closed three-value vocabulary.
+    //FIXME: This is a disallowed pattern
     pub const ALL: &[DirectionStatus] = &[
         Self::WaitingForInput,
         Self::WaitingForApproval,
@@ -509,6 +520,16 @@ impl TryFrom<&str> for DirectionStatus {
             "changes_requested" => Self::ChangesRequested,
             _ => return Err(UnknownDirectionStatus),
         })
+    }
+}
+
+impl std::fmt::Display for DirectionStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WaitingForInput => write!(f, "waiting_for_input"),
+            Self::WaitingForApproval => write!(f, "waiting_for_approval"),
+            Self::ChangesRequested => write!(f, "changes_requested"),
+        }
     }
 }
 
@@ -561,21 +582,13 @@ impl std::fmt::Display for DeadlineStatus {
     }
 }
 
-/// Why a token failed to resolve to a [`DeadlineStatus`] — the same
-/// tamper-surfacing contract as [`UnknownLifecycleStep`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct UnknownDeadlineStatus;
-
-impl std::fmt::Display for UnknownDeadlineStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("token is not one of: delayed, late")
-    }
+pub enum DeadlineStatusError {
+    ParseError,
+    InvalidValue,
 }
 
-impl std::error::Error for UnknownDeadlineStatus {}
-
 impl TryFrom<&str> for DeadlineStatus {
-    type Error = UnknownDeadlineStatus;
+    type Error = DeadlineStatusError;
 
     /// Resolve a stored token back to its value — an explicit `match` on the
     /// closed vocabulary, the mirror of [`as_str`](Self::as_str).
@@ -583,19 +596,28 @@ impl TryFrom<&str> for DeadlineStatus {
         Ok(match token {
             "delayed" => Self::Delayed,
             "late" => Self::Late,
-            _ => return Err(UnknownDeadlineStatus),
+            _ => return Err(DeadlineStatusError::InvalidValue),
         })
     }
 }
 
+impl std::fmt::Display for DeadlineStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidValue => write!(f, "Invalid value"),
+            Self::ParseError => write!(f, "Parsing error"),
+        }
+    }
+}
+
 impl FromStr for DeadlineStatus {
-    type Err = UnknownDeadlineStatus;
+    type Err = DeadlineStatusError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
             "delayed" => Ok(Self::Delayed),
             "late" => Ok(Self::Late),
-            _ => return Err(UnknownDeadlineStatus),
+            _ => Err(DeadlineStatusError::InvalidValue),
         }
     }
 }

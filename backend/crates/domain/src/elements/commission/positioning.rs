@@ -22,6 +22,8 @@
 //! bookkeeping that cascades away with the commission (the tables are registered
 //! in `COMMISSION_NON_FACT_TABLES`).
 
+use std::str::FromStr;
+
 use crate::{
     datetime::DateTimeUtc,
     elements::{account::AccountId, commission::CommissionId, user::UserId},
@@ -51,29 +53,33 @@ pub enum GrantLevel {
     Total,
 }
 
-impl GrantLevel {
-    /// Every variant, in declaration order — the closed vocabulary, so a test can
-    /// prove the token mapping round-trips and stays collision-free.
-    pub const ALL: &[GrantLevel] = &[Self::Presentation, Self::Description, Self::Total];
-
-    /// The stable, lowercase wire/storage token — the value the pg adapter writes
-    /// to the `commission_view_grant.level` column and the API accepts/serves.
-    /// Stable across releases (it is persisted), so renaming a token is a
-    /// migration, not a free edit.
-    pub fn as_str(&self) -> &'static str {
+impl std::fmt::Display for GrantLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Presentation => "presentation",
-            Self::Description => "description",
-            Self::Total => "total",
+            Self::Presentation => write!(f, "presentation"),
+            Self::Description => write!(f, "description"),
+            Self::Total => write!(f, "total"),
         }
     }
+}
+#[derive(Debug)]
+pub struct GrantLevelError;
+impl std::fmt::Display for GrantLevelError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Grant level parsing error")
+    }
+}
+impl std::error::Error for GrantLevelError {}
+impl FromStr for GrantLevel {
+    type Err = GrantLevelError;
 
-    /// Resolve a token back to its level, or `None` for one outside the closed
-    /// vocabulary — a bad request at the boundary (`422`), and on a read path
-    /// row tampering or a missed migration (surfaced as an error, never a silent
-    /// default).
-    pub fn parse(token: &str) -> Option<Self> {
-        Self::ALL.iter().copied().find(|l| l.as_str() == token)
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "presentation" => Self::Presentation,
+            "description" => Self::Description,
+            "total" => Self::Total,
+            _ => Err(GrantLevelError)?,
+        })
     }
 }
 

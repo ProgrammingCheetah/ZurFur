@@ -1,6 +1,6 @@
 ---
 path: backend/crates/domain/src/elements
-charted: 2026-08-29
+charted: 2026-09-06
 fs:
   - name: account.rs
     role: Account, AccountId, membership, ListingScope
@@ -56,7 +56,7 @@ fs:
 ---
 **Is:** The domain's nouns: identity (user, account, actor identity, did, handle, keys), the commission aggregate, and value objects for maturity/markdown/profile/public records.
 
-**Conventions:** each file owns its id type, value objects, and pure invariant logic; no serde on loaded composition types (projection is a separate concern). A UUID-backed id's `FromStr` returns `id::IdError`; `Display` impls pair with it.
+**Conventions:** each file owns its id type, value objects, and pure invariant logic; id newtypes may derive serde (`Did`, `UserId`, `AccountId` — the CLI identity file needs them) but loaded entities never do (projection is a separate concern). Closed-vocabulary enums (`GrantLevel`, `MaturityRating`) implement std `Display`/`FromStr`, never bespoke `as_str`/`parse` pairs. A UUID-backed id's `FromStr` returns `id::IdError`; `Display` impls pair with it.
 
 **Entry points:** `commission/mod.rs`.
 

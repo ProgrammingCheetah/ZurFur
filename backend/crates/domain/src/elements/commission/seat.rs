@@ -20,6 +20,8 @@
 //! owner is a permanent Participant holding no Seat, inserted at commission
 //! creation and irremovable — the floor ZMVP-79's seated arm builds on.
 
+use std::str::FromStr;
+
 use crate::{
     datetime::DateTimeUtc,
     elements::{

@@ -21,6 +21,8 @@
 //!
 //! [`ElementType::slot`]: super::ElementType::slot
 
+use std::str::FromStr;
+
 use super::{
     CommissionId,
     element::{ElementId, SurfaceAddress},
@@ -66,13 +68,13 @@ impl std::fmt::Display for SlotTitleError {
 
 impl std::error::Error for SlotTitleError {}
 
-impl TryFrom<String> for SlotTitle {
-    type Error = SlotTitleError;
+/// Replaced the `TryFrom<String>`. If benchmarks start messing with this one,
+/// reimplement the `TryFrom<String>`, as that one does not remake memory
+impl FromStr for SlotTitle {
+    type Err = SlotTitleError;
 
-    /// Validate and wrap a title: trim surrounding whitespace, then reject an
-    /// empty result with [`SlotTitleError::Empty`].
-    fn try_from(raw: String) -> Result<Self, Self::Error> {
-        StringBuilder::new(raw)
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        StringBuilder::new(s)
             .trimmed()
             .non_empty()
             .build()
@@ -92,16 +94,6 @@ impl TryFrom<String> for SlotTitle {
                     SlotTitleError::Empty
                 }
             })
-    }
-}
-
-/// The std parsing door: `"…".parse::<SlotTitle>()?` — delegates to the
-/// [`TryFrom<String>`] rules (ruling R6: `FromStr` for string parsing).
-impl std::str::FromStr for SlotTitle {
-    type Err = SlotTitleError;
-
-    fn from_str(raw: &str) -> Result<Self, Self::Err> {
-        Self::try_from(raw.to_owned())
     }
 }
 

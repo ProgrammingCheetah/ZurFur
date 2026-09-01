@@ -1,9 +1,9 @@
 ---
 path: backend/crates/domain
-charted: 2026-08-29
+charted: 2026-09-06
 fs:
   - name: Cargo.toml
-    role: value-object-only deps: chrono, uuid, cid, serde, zeroize, async-trait
+    role: value-object deps: chrono, uuid, cid, serde, zeroize, async-trait; tokio io-util only to name AsyncRead for the streaming FileStore port
     node: false
   - name: README.md
     role: architecture overview: elements/ports/datetime, principles, usage

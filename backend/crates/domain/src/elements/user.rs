@@ -8,6 +8,8 @@
 
 use std::{ops::Deref, str::FromStr};
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     datetime::DateTimeUtc,
     elements::{
@@ -23,7 +25,7 @@ use crate::{
 /// public-facing identity is the user's [`Did`]. Deref exposes the inner UUID.
 ///
 /// References: [`new`](UserId::new), [`User::recognize`].
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct UserId(Did);
 
 impl UserId {
@@ -53,6 +55,12 @@ impl FromStr for UserId {
             .map_err(|_| IdError::ParsingError)?;
 
         Ok(did)
+    }
+}
+
+impl From<Did> for UserId {
+    fn from(value: Did) -> Self {
+        Self(value)
     }
 }
 

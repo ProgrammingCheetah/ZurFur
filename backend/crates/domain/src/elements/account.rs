@@ -10,6 +10,8 @@
 
 use std::{ops::Deref, str::FromStr};
 
+use serde::Deserialize;
+
 use crate::{
     datetime::DateTimeUtc,
     elements::{
@@ -28,7 +30,8 @@ use crate::{
 /// A UUIDv7 wrapped for type safety, mirroring [`crate::elements::user::UserId`].
 /// The account's *public* identity is its [`Did`]; this id is the private key
 /// used for foreign keys and lookups. Deref exposes the inner UUID.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(transparent)]
 pub struct AccountId(Did);
 
 impl AccountId {
