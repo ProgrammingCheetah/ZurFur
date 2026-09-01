@@ -9,13 +9,12 @@ use std::io::Cursor;
 
 use application::{
     commission::{
-        CommissionError, CommissionPorts,
-        files::{DownloadFileQuery, UploadFileCommand},
+        CommissionError,
+        files::{download, upload},
     },
     transaction,
 };
 use chrono::Utc;
-use composition::Runtime;
 use domain::{
     elements::{
         commission::{Commission, CommissionId, CommissionTitle, FileKey},
@@ -24,19 +23,6 @@ use domain::{
     ports::{Database, UnitOfWork},
 };
 use tokio::io::{AsyncRead, AsyncReadExt};
-
-/// Assembles a [`CommissionPorts`] straight off the in-memory fixture's port
-/// fields — the test twin of `api`'s `commission_ports`.
-fn commission_ports(runtime: &Runtime) -> CommissionPorts<'_> {
-    CommissionPorts {
-        commissions: &*runtime.commissions,
-        changelog: &*runtime.changelog,
-        users: &*runtime.users,
-        did_minter: &*runtime.did_minter,
-        database: &*runtime.database,
-        files: &*runtime.files,
-    }
-}
 
 /// Seeds a committed commission owned by a freshly provisioned `owner_did`.
 async fn seed_commission(database: &dyn Database, owner_did: &Did, title: &str) -> CommissionId {
@@ -79,28 +65,29 @@ async fn a_participant_uploads_then_downloads_the_exact_bytes() {
         .expect("owner provisioned");
 
     let bytes = b"the file contents".to_vec();
-    let command = UploadFileCommand {
+    let command = upload::Command {
         actor_id: owner.id.clone(),
         commission_id,
         filename: Some("ref.png".to_string()),
         content_type: Some("image/png".to_string()),
     };
-    let uploaded = application::commission::files::upload(
-        command,
-        commission_ports(&runtime),
-        Cursor::new(bytes.clone()),
-        1024,
-        Utc::now(),
-    )
-    .await
-    .expect("upload succeeds");
+    let app = runtime.app();
+    let uploaded = app
+        .commissions()
+        .files()
+        .upload(command, Cursor::new(bytes.clone()), 1024, Utc::now())
+        .await
+        .expect("upload succeeds");
 
-    let query = DownloadFileQuery {
+    let query = download::Query {
         actor_id: owner.id,
         commission_id,
         file_id: uploaded.id,
     };
-    let download = application::commission::files::download(query, commission_ports(&runtime))
+    let download::Output { result: download } = app
+        .commissions()
+        .files()
+        .download(query)
         .await
         .expect("download succeeds");
 
@@ -131,25 +118,23 @@ async fn upload_records_a_file_added_changelog_entry_with_byte_size() {
         .unwrap();
 
     let bytes = b"12345".to_vec();
-    let command = UploadFileCommand {
+    let command = upload::Command {
         actor_id: owner.id.clone(),
         commission_id,
         filename: Some("five.bin".to_string()),
         content_type: None,
     };
-    let uploaded = application::commission::files::upload(
-        command,
-        commission_ports(&runtime),
-        Cursor::new(bytes.clone()),
-        1024,
-        Utc::now(),
-    )
-    .await
-    .expect("upload succeeds");
+    let uploaded = runtime
+        .app()
+        .commissions()
+        .files()
+        .upload(command, Cursor::new(bytes.clone()), 1024, Utc::now())
+        .await
+        .expect("upload succeeds");
 
     let entries = runtime
         .changelog
-        .entries(commission_id)
+        .entries(&commission_id)
         .await
         .expect("read changelog");
     assert_eq!(entries.len(), 1, "the file_added entry, and only it");
@@ -176,20 +161,18 @@ async fn a_non_participant_upload_is_rejected_before_any_store_write() {
         .await
         .expect("provision outsider");
 
-    let command = UploadFileCommand {
+    let command = upload::Command {
         actor_id: outsider.id,
         commission_id,
         filename: Some("sneaky.png".to_string()),
         content_type: Some("image/png".to_string()),
     };
-    let result = application::commission::files::upload(
-        command,
-        commission_ports(&runtime),
-        Cursor::new(b"x".to_vec()),
-        1024,
-        Utc::now(),
-    )
-    .await;
+    let result = runtime
+        .app()
+        .commissions()
+        .files()
+        .upload(command, Cursor::new(b"x".to_vec()), 1024, Utc::now())
+        .await;
 
     assert!(
         matches!(result, Err(CommissionError::NotAMember)),
@@ -199,7 +182,7 @@ async fn a_non_participant_upload_is_rejected_before_any_store_write() {
     assert!(
         runtime
             .changelog
-            .entries(commission_id)
+            .entries(&commission_id)
             .await
             .unwrap()
             .is_empty(),
@@ -222,20 +205,18 @@ async fn an_over_cap_upload_is_rejected_and_its_blob_is_deleted() {
         .unwrap()
         .unwrap();
 
-    let command = UploadFileCommand {
+    let command = upload::Command {
         actor_id: owner.id,
         commission_id,
         filename: Some("big.bin".to_string()),
         content_type: None,
     };
-    let result = application::commission::files::upload(
-        command,
-        commission_ports(&runtime),
-        Cursor::new(vec![b'x'; 10]),
-        4,
-        Utc::now(),
-    )
-    .await;
+    let result = runtime
+        .app()
+        .commissions()
+        .files()
+        .upload(command, Cursor::new(vec![b'x'; 10]), 4, Utc::now())
+        .await;
 
     assert!(
         matches!(result, Err(CommissionError::FileTooLarge)),
@@ -262,20 +243,18 @@ async fn an_empty_upload_is_rejected_and_its_blob_is_deleted() {
         .unwrap()
         .unwrap();
 
-    let command = UploadFileCommand {
+    let command = upload::Command {
         actor_id: owner.id,
         commission_id,
         filename: Some("empty.bin".to_string()),
         content_type: None,
     };
-    let result = application::commission::files::upload(
-        command,
-        commission_ports(&runtime),
-        Cursor::new(Vec::new()),
-        1024,
-        Utc::now(),
-    )
-    .await;
+    let result = runtime
+        .app()
+        .commissions()
+        .files()
+        .upload(command, Cursor::new(Vec::new()), 1024, Utc::now())
+        .await;
 
     assert!(
         matches!(result, Err(CommissionError::FileEmpty)),
@@ -303,20 +282,18 @@ async fn an_invalid_filename_is_rejected() {
         .unwrap()
         .unwrap();
 
-    let command = UploadFileCommand {
+    let command = upload::Command {
         actor_id: owner.id,
         commission_id,
         filename: Some("../../etc/passwd".to_string()),
         content_type: None,
     };
-    let result = application::commission::files::upload(
-        command,
-        commission_ports(&runtime),
-        Cursor::new(b"x".to_vec()),
-        1024,
-        Utc::now(),
-    )
-    .await;
+    let result = runtime
+        .app()
+        .commissions()
+        .files()
+        .upload(command, Cursor::new(b"x".to_vec()), 1024, Utc::now())
+        .await;
 
     assert!(
         matches!(result, Err(CommissionError::InvalidFileName(_))),
@@ -343,15 +320,15 @@ async fn downloading_an_unknown_key_is_file_not_found() {
         .unwrap()
         .unwrap();
 
-    let query = DownloadFileQuery {
+    let query = download::Query {
         actor_id: owner.id,
         commission_id,
         file_id: FileKey::generate(),
     };
-    let result = application::commission::files::download(query, commission_ports(&runtime)).await;
+    let result = runtime.app().commissions().files().download(query).await;
 
-    // `FileDownload` (the `Ok` side) holds a live reader and cannot derive
-    // `Debug`, so the failure message names only the error side.
+    // `download::Output` (the `Ok` side) holds a live reader and cannot
+    // derive `Debug`, so the failure message names only the error side.
     match result {
         Err(CommissionError::FileNotFound) => {}
         Err(other) => panic!("expected FileNotFound, got Err({other:?})"),
